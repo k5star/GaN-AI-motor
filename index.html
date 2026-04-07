@@ -461,20 +461,55 @@ async function toggleConnect() {
 // Serial 連線（原有邏輯移至此）
 // ===================================================================
 async function connectSerial() {
+    // 讓使用者從彈窗選擇 COM 埠（Web Serial API 標準流程）
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 57600 });
-    await port.setSignals({ dataTerminalReady: true, requestToSend: true });
 
-    isConnected  = true;
-    keepReading  = true;
+    // 依序嘗試常見 baud rate，直到 open 成功
+    const BAUD_CANDIDATES = [57600, 115200, 38400, 19200, 9600];
+    let openedBaud = null;
+    let lastErr = null;
+
+    for (const br of BAUD_CANDIDATES) {
+        try {
+            await port.open({ baudRate: br });
+            openedBaud = br;
+            break;
+        } catch (e) {
+            lastErr = e;
+            // "already open" 代表已開啟，直接使用
+            if (e.message && e.message.includes('already open')) {
+                openedBaud = br;
+                break;
+            }
+            // "Failed to open" 通常是 port 被其他程式佔用，不再嘗試其他 baud
+            if (e.message && e.message.toLowerCase().includes('failed to open')) {
+                throw new Error(
+                    'COM port 無法開啟。\n\n可能原因：\n' +
+                    '① Python 腳本（set_hc_module.py / test_hc05.py）仍在執行中\n' +
+                    '② 其他串口工具（PuTTY / CoolTerm / Arduino IDE）正在使用此 port\n\n' +
+                    '請關閉上述程式後再試一次。'
+                );
+            }
+        }
+    }
+
+    if (openedBaud === null) {
+        throw new Error('所有常用 baud rate 均無法開啟 port，請確認裝置已連線。');
+    }
+
+    try { await port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch(_) {}
+
+    isConnected    = true;
+    keepReading    = true;
     connectionType = 'serial';
 
     const btn = document.getElementById('connectBtn');
     btn.innerHTML = "🔴 斷線";
     btn.classList.replace('bg-blue-600','bg-red-600');
-    document.getElementById('navSubtitle').innerText = "🔌 COM | 57600 8N1 | Modbus ASCII | 1400h NET-IO";
+    document.getElementById('navSubtitle').innerText =
+        `🔌 COM | ${openedBaud} 8N1 | Modbus ASCII | 1400h NET-IO`;
 
-    log("SYS", "Connected via Web Serial @ 57600 8N1 Modbus ASCII  ID=0x11(17)", "text-green-400");
+    log("SYS", `Connected via Web Serial @ ${openedBaud} 8N1 Modbus ASCII  ID=0x11(17)`, "text-green-400");
     readLoopSerial();
 
     // 10Hz 輪詢 Dynamic Data 0x0000~0x000F
@@ -1107,10 +1142,19 @@ function hideConnModal() {
 // 使用者在 Modal 點選按鈕 → 直接觸發連線（保留 User Gesture）
 function modalChoose(useSerial) {
     hideConnModal();
+    const handler = (e) => {
+        // 使用者主動取消選擇視窗，不算錯誤，靜默處理
+        if (e.name === 'NotFoundError' || (e.message && e.message.toLowerCase().includes('cancel'))) {
+            log("SYS", "已取消連線選擇", "text-slate-400");
+            return;
+        }
+        log("ERR", e.message, "text-red-400");
+        alert('連線失敗:\n\n' + e.message);
+    };
     if (useSerial) {
-        connectSerial().catch(e => { log("ERR", e.message, "text-red-400"); alert('連線失敗: ' + e.message); });
+        connectSerial().catch(handler);
     } else {
-        connectBLE().catch(e => { log("ERR", e.message, "text-red-400"); alert('連線失敗: ' + e.message); });
+        connectBLE().catch(handler);
     }
 }
 function modalCancel() {
