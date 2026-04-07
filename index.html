@@ -337,7 +337,9 @@ let connectionType = null;   // 'serial' | 'ble'
 let isConnected = false;
 let keepReading = false;
 let pollTimer   = null;
-let bleSending  = false;   // BLE 發送鎖，防止 GATT operation already in progress
+let bleSending  = false;   // BLE 發送鎖
+let bleQueue    = [];       // BLE 發送佇列（命令排隊，不掉包）
+let bleQueueRunning = false;
 let asciiBuffer = "";
 let currentValues = new Array(16).fill(0);
 let currentDir = 'CW';   // 目前方向
@@ -731,6 +733,30 @@ function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ===================================================================
 // 原始串流發送 — 自動路由 Serial / BLE
 // ===================================================================
+// BLE 佇列處理器：逐筆發送，保證不重疊
+async function processBLEQueue() {
+    if (bleQueueRunning) return;
+    bleQueueRunning = true;
+    while (bleQueue.length > 0) {
+        const { str, showLog } = bleQueue.shift();
+        if (!bleRxChar || !isConnected) break;
+        try {
+            const data = new TextEncoder().encode(str);
+            for (let i = 0; i < data.length; i += 20) {
+                await bleRxChar.writeValueWithoutResponse(data.slice(i, i + 20));
+                if (i + 20 < data.length) await new Promise(r => setTimeout(r, 20));
+            }
+            if (showLog) log("TX", str.trim(), "text-cyan-300");
+        } catch(e) {
+            if (!e.message.includes('in progress') && !e.message.includes('disconnected')) {
+                log("ERR", `BLE send: ${e.message}`, "text-red-400");
+            }
+        }
+        await new Promise(r => setTimeout(r, 30)); // 每筆之間稍作間隔
+    }
+    bleQueueRunning = false;
+}
+
 async function sendRawAscii(str, showLog) {
     if (!isConnected) return;
     try {
@@ -739,29 +765,19 @@ async function sendRawAscii(str, showLog) {
             const w = port.writable.getWriter();
             await w.write(new TextEncoder().encode(str));
             w.releaseLock();
+            if (showLog) log("TX", str.trim(), "text-cyan-300");
         } else if (connectionType === 'ble') {
             if (!bleRxChar) return;
-            // 發送鎖：若上一筆尚未完成則跳過，避免 GATT operation already in progress
-            if (bleSending) return;
-            bleSending = true;
-            try {
-                const data = new TextEncoder().encode(str);
-                // BLE MTU ≤ 20 bytes，超長分塊發送
-                for (let i = 0; i < data.length; i += 20) {
-                    await bleRxChar.writeValueWithoutResponse(data.slice(i, i + 20));
-                    if (data.length > 20) await new Promise(r => setTimeout(r, 10));
-                }
-            } finally {
-                bleSending = false;
-            }
+            // 輪詢封包若佇列已有待傳命令，捨棄此次輪詢（命令優先）
+            const isPoll = str.startsWith(':110300000010');
+            if (isPoll && bleQueue.some(q => !q.str.startsWith(':110300000010'))) return;
+            // 輪詢若佇列已有輪詢，也跳過（不重複堆積）
+            if (isPoll && bleQueue.some(q => q.str.startsWith(':110300000010'))) return;
+            bleQueue.push({ str, showLog });
+            processBLEQueue();
         }
-        if (showLog) log("TX", str.trim(), "text-cyan-300");
     } catch(e) {
-        bleSending = false;
-        // GATT in progress 是正常 BLE 壅塞，靜默處理
-        if (!e.message.includes('in progress')) {
-            log("ERR", `Send failed: ${e.message}`, "text-red-400");
-        }
+        log("ERR", `Send failed: ${e.message}`, "text-red-400");
     }
 }
 
