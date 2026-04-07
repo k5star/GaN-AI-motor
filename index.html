@@ -337,6 +337,7 @@ let connectionType = null;   // 'serial' | 'ble'
 let isConnected = false;
 let keepReading = false;
 let pollTimer   = null;
+let bleSending  = false;   // BLE 發送鎖，防止 GATT operation already in progress
 let asciiBuffer = "";
 let currentValues = new Array(16).fill(0);
 let currentDir = 'CW';   // 目前方向
@@ -593,8 +594,8 @@ async function connectBLE() {
 
     log("SYS", `Connected via Web Bluetooth BLE NUS  ID=0x11(17)`, "text-green-400");
 
-    // 10Hz 輪詢 Dynamic Data 0x0000~0x000F
-    pollTimer = setInterval(() => { sendRawAscii(":110300000010DC\r\n"); }, 100);
+    // BLE 模式用 2Hz 輪詢（500ms），避免 GATT operation already in progress
+    pollTimer = setInterval(() => { sendRawAscii(":110300000010DC\r\n"); }, 500);
 }
 
 // BLE 被動斷線處理
@@ -740,16 +741,27 @@ async function sendRawAscii(str, showLog) {
             w.releaseLock();
         } else if (connectionType === 'ble') {
             if (!bleRxChar) return;
-            const data = new TextEncoder().encode(str);
-            // BLE NUS RX MTU ≤ 20 bytes，超長分塊發送
-            for (let i = 0; i < data.length; i += 20) {
-                await bleRxChar.writeValueWithoutResponse(data.slice(i, i + 20));
-                if (data.length > 20) await delay(8);
+            // 發送鎖：若上一筆尚未完成則跳過，避免 GATT operation already in progress
+            if (bleSending) return;
+            bleSending = true;
+            try {
+                const data = new TextEncoder().encode(str);
+                // BLE MTU ≤ 20 bytes，超長分塊發送
+                for (let i = 0; i < data.length; i += 20) {
+                    await bleRxChar.writeValueWithoutResponse(data.slice(i, i + 20));
+                    if (data.length > 20) await new Promise(r => setTimeout(r, 10));
+                }
+            } finally {
+                bleSending = false;
             }
         }
         if (showLog) log("TX", str.trim(), "text-cyan-300");
     } catch(e) {
-        log("ERR", `Send failed: ${e.message}`, "text-red-400");
+        bleSending = false;
+        // GATT in progress 是正常 BLE 壅塞，靜默處理
+        if (!e.message.includes('in progress')) {
+            log("ERR", `Send failed: ${e.message}`, "text-red-400");
+        }
     }
 }
 
