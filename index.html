@@ -443,14 +443,9 @@ async function toggleConnect() {
 
     try {
         if (hasSerial && hasBLE) {
-            // 兩者都有 → 讓使用者選擇
-            const useSerial = confirm(
-                "請選擇連線方式：\n\n" +
-                "✅ 確定 → 🔌 Web Serial（USB / COM，桌面用）\n" +
-                "❌ 取消 → 📡 Web Bluetooth BLE（HM-10 / AT-09 / HC-08）"
-            );
-            if (useSerial) { await connectSerial(); }
-            else           { await connectBLE();    }
+            // 兩者都有 → 顯示 HTML Modal（不用 confirm，避免打斷 User Gesture）
+            showConnModal();
+            return;   // 後續由 Modal 按鈕的 onclick 直接呼叫 connectSerial/connectBLE
         } else if (hasSerial) {
             await connectSerial();
         } else {
@@ -1075,6 +1070,51 @@ function log(type, msg, cls) {
     // 限制 log 行數
     const lines = box.children;
     while (lines.length > 200) box.removeChild(lines[0]);
+}
+</script>
+
+<!-- ── 連線方式選擇 Modal（取代 confirm()，避免打斷 User Gesture） ── -->
+<div id="connModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:1rem;padding:1.5rem 1.75rem;max-width:320px;width:90%;box-shadow:0 8px 32px #0008;">
+    <p style="color:#f1f5f9;font-weight:700;font-size:1rem;margin-bottom:1rem;">請選擇連線方式</p>
+    <button id="btnSerial"
+      style="width:100%;margin-bottom:.75rem;padding:.65rem 1rem;background:#2563eb;color:#fff;border:none;border-radius:.6rem;font-size:.9rem;font-weight:600;cursor:pointer;"
+      onclick="modalChoose(true)">
+      ✅ Web Serial（USB / COM，桌面用）
+    </button>
+    <button id="btnBLE"
+      style="width:100%;padding:.65rem 1rem;background:#0f766e;color:#fff;border:none;border-radius:.6rem;font-size:.9rem;font-weight:600;cursor:pointer;"
+      onclick="modalChoose(false)">
+      📡 Web Bluetooth BLE（HM-10 / HC-10）
+    </button>
+    <button onclick="modalCancel()"
+      style="width:100%;margin-top:.6rem;padding:.45rem;background:transparent;color:#94a3b8;border:1px solid #334155;border-radius:.6rem;font-size:.8rem;cursor:pointer;">
+      取消
+    </button>
+  </div>
+</div>
+
+<script>
+// Modal 控制 — 必須由按鈕 onclick 直接呼叫，才不會打斷 User Gesture
+function showConnModal() {
+    const m = document.getElementById('connModal');
+    m.style.display = 'flex';
+}
+function hideConnModal() {
+    const m = document.getElementById('connModal');
+    m.style.display = 'none';
+}
+// 使用者在 Modal 點選按鈕 → 直接觸發連線（保留 User Gesture）
+function modalChoose(useSerial) {
+    hideConnModal();
+    if (useSerial) {
+        connectSerial().catch(e => { log("ERR", e.message, "text-red-400"); alert('連線失敗: ' + e.message); });
+    } else {
+        connectBLE().catch(e => { log("ERR", e.message, "text-red-400"); alert('連線失敗: ' + e.message); });
+    }
+}
+function modalCancel() {
+    hideConnModal();
 }
 </script>
 </body>
