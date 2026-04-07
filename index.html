@@ -529,14 +529,10 @@ let hm10Char = null;  // HM-10 FFE1 (讀寫共用)
 async function connectBLE() {
     log("SYS", "📡 掃描 BLE 裝置（HC-10 / HM-10 / NUS）...", "text-blue-300");
 
-    // 同時接受 HM-10 FFE0 與 Nordic NUS，讓使用者從清單選裝置
+    // acceptAllDevices = 顯示所有 BLE 裝置，讓使用者自行選擇 LTC8116
+    // （filters 過濾有時會因廣播時機問題而看不到裝置）
     bleDevice = await navigator.bluetooth.requestDevice({
-        filters: [
-            { services: [HM10_SERVICE] },   // HC-10 / HM-10
-            { services: [NUS_SERVICE]  },   // Nordic NUS
-            { name: 'LTC8115' },
-            { name: 'LTC8116' }
-        ],
+        acceptAllDevices: true,
         optionalServices: [HM10_SERVICE, NUS_SERVICE]
     });
 
