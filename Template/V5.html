@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EV 驅動器電流監控 (最終修正版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .value-glow { text-shadow: 0 0 15px rgba(34, 211, 238, 0.6); }
+    .mono { font-family: 'Courier New', Courier, monospace; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 p-6">
+
+  <div class="max-w-6xl mx-auto">
+    <nav class="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg mb-6 flex flex-wrap gap-4 items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+          ⚡ EV 驅動器監控
+          <span class="text-xs bg-blue-600 text-white px-2 py-1 rounded">ID: 17 (0x11)</span>
+        </h1>
+        <p class="text-xs text-gray-400 mt-1">協議: Modbus ASCII | 參數: 115200, 8, N, 1</p>
+      </div>
+
+      <div class="flex gap-3">
+        <div class="flex items-center gap-2 bg-gray-900 p-2 rounded border border-gray-600">
+           <label class="text-xs text-gray-400">COM Port</label>
+           <button id="connectBtn" onclick="connect()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1 rounded font-bold transition">
+             🔌 連線 (COM3)
+           </button>
+        </div>
+
+        <div class="flex items-center gap-2 bg-gray-900 p-2 rounded border border-gray-600">
+          <label class="text-xs text-gray-400">ID</label>
+          <input type="number" id="slaveId" value="17" class="w-12 bg-gray-800 border border-gray-600 text-center rounded text-white font-bold" />
+        </div>
+
+        <button id="pollBtn" onclick="togglePoll()" disabled class="bg-gray-600 text-gray-400 px-6 py-2 rounded font-bold cursor-not-allowed transition">
+          ▶ 開始讀取
+        </button>
+      </div>
+    </nav>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <div class="lg:col-span-2 bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg flex flex-col">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-blue-400">即時電流趨勢</h2>
+            <div class="text-xs text-gray-500 font-mono">Sampling: <span id="hzVal">0</span> Hz</div>
+        </div>
+        <div class="flex-1 min-h-[350px]">
+            <canvas id="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg text-center">
+          <h3 class="text-gray-400 text-sm uppercase tracking-wider">Output Current</h3>
+          <div class="mt-2 flex justify-center items-baseline gap-2">
+            <span id="currVal" class="text-6xl font-black text-cyan-400 value-glow mono">0.00</span>
+            <span class="text-xl text-gray-500 font-bold">A</span>
+          </div>
+          <p class="mt-4 text-xs text-gray-500 font-mono">Raw Hex: <span id="rawVal">--</span></p>
+        </div>
+
+        <div class="bg-black p-4 rounded-xl border border-gray-700 shadow-inner h-64 flex flex-col">
+          <div class="flex justify-between mb-2">
+            <span class="text-xs text-gray-400">通訊監控 (ASCII)</span>
+            <button onclick="clearLog()" class="text-xs text-red-500 hover:text-red-400">清除</button>
+          </div>
+          <div id="logBox" class="flex-1 overflow-y-auto font-mono text-xs space-y-1 pr-2">
+            <div class="text-gray-600 italic">等待連線...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  let port, writer, reader;
+  let keepReading = false;
+  let isPolling = false;
+  let pollTimer = null;
+  let lastTime = Date.now();
+  let asciiBuffer = "";
+
+  // 初始化圖表
+  const ctx = document.getElementById('chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: Array(50).fill(''),
+      datasets: [{
+        label: '電流 (A)',
+        data: Array(50).fill(null),
+        borderColor: '#22d3ee',
+        backgroundColor: 'rgba(34, 211, 238, 0.1)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        y: {
+            beginAtZero: true,
+            grid: { color: '#334155' },
+            ticks: { color: '#94a3b8' }
+        },
+        x: { display: false }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // ASCII LRC 計算
+  function calcLRC(bytes) {
+    let sum = 0;
+    for(let b of bytes) sum += b;
+    return ((~sum) + 1) & 0xFF;
+  }
+
+  function buildAsciiCmd(id, addr) {
+    // FC=03, Len=1
+    const pdu = [id, 0x03, (addr>>8)&0xFF, addr&0xFF, 0x00, 0x01];
+    const lrc = calcLRC(pdu);
+    // 轉 Hex String
+    const hex = pdu.map(b => b.toString(16).toUpperCase().padStart(2,'0')).join('') +
+                lrc.toString(16).toUpperCase().padStart(2,'0');
+    return ":" + hex + "\r\n";
+  }
+
+  async function connect() {
+    try {
+      port = await navigator.serial.requestPort();
+      // 固定 115200, 8N1
+      await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: "none" });
+
+      // ★ 關鍵：強制拉高訊號喚醒設備
+      await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+
+      const btn = document.getElementById('connectBtn');
+      btn.textContent = "✅ 已連線";
+      btn.classList.replace('bg-green-600', 'bg-gray-600');
+      btn.disabled = true;
+
+      const pollBtn = document.getElementById('pollBtn');
+      pollBtn.disabled = false;
+      pollBtn.classList.replace('bg-gray-600', 'bg-blue-600');
+      pollBtn.classList.replace('text-gray-400', 'text-white');
+      pollBtn.classList.replace('cursor-not-allowed', 'cursor-pointer');
+
+      addLog("系統", "連線成功 (115200, 8N1)", "text-green-400");
+
+      keepReading = true;
+      readLoop();
+    } catch (e) {
+      alert("連線失敗：" + e.message);
+    }
+  }
+
+  async function readLoop() {
+    const decoder = new TextDecoder();
+    while (port && port.readable && keepReading) {
+      try {
+        reader = port.readable.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            const chunk = decoder.decode(value);
+            asciiBuffer += chunk;
+            processBuffer();
+          }
+        }
+      } catch (e) { console.error(e); }
+      finally { reader.releaseLock(); }
+    }
+  }
+
+  function processBuffer() {
+    // 尋找完整封包 :... \r\n
+    let startIdx = asciiBuffer.indexOf(':');
+    let endIdx = asciiBuffer.indexOf('\r\n');
+
+    while (startIdx !== -1 && endIdx !== -1) {
+      if (endIdx < startIdx) {
+        // 只有結尾沒有頭，丟棄
+        asciiBuffer = asciiBuffer.substring(startIdx);
+        endIdx = asciiBuffer.indexOf('\r\n');
+        continue;
+      }
+
+      // 提取完整封包
+      const packet = asciiBuffer.substring(startIdx, endIdx); // 不含 \r\n
+      const fullLog = packet; // 用於顯示
+
+      // 處理
+      parsePacket(packet);
+
+      // 移除已處理部分
+      asciiBuffer = asciiBuffer.substring(endIdx + 2);
+      startIdx = asciiBuffer.indexOf(':');
+      endIdx = asciiBuffer.indexOf('\r\n');
+    }
+  }
+
+  function parsePacket(pkt) {
+    // 格式: :ID(2) FC(2) Bytes(2) Data(4) LRC(2) -> 最小長度 11
+    // 例如回應: :1103020049B1 (ID=11, FC=03, Bytes=02, Data=0049, LRC=B1)
+
+    addLog("RX", pkt, "text-cyan-400");
+
+    if (pkt.length < 11) return;
+
+    const content = pkt.substring(1); // 去掉冒號
+    const id = parseInt(content.substr(0, 2), 16);
+    const fc = parseInt(content.substr(2, 2), 16);
+
+    // 檢查功能碼是否為讀取回應 (03)
+    if (fc === 0x03) {
+       const byteCount = parseInt(content.substr(4, 2), 16);
+       if (byteCount === 2) {
+           const rawHex = content.substr(6, 4);
+           const rawVal = parseInt(rawHex, 16);
+
+           // 更新 UI
+           updateDashboard(rawVal, rawHex);
+       }
+    }
+  }
+
+  function updateDashboard(raw, hexStr) {
+     const amp = (raw * 0.01).toFixed(2); // 0.01A 單位
+
+     document.getElementById('currVal').textContent = amp;
+     document.getElementById('rawVal').textContent = `0x${hexStr} (${raw})`;
+
+     // Chart Update
+     const data = chart.data.datasets[0].data;
+     data.push(amp);
+     data.shift();
+     chart.update('none');
+
+     // Hz calc
+     const now = Date.now();
+     const diff = now - lastTime;
+     if(diff > 0) document.getElementById('hzVal').textContent = (1000/diff).toFixed(1);
+     lastTime = now;
+  }
+
+  async function sendReq() {
+    if (!port || !port.writable) return;
+
+    const id = parseInt(document.getElementById('slaveId').value);
+    // 固定讀取 000Ah (電流)
+    const cmd = buildAsciiCmd(id, 0x000A);
+
+    addLog("TX", cmd.trim(), "text-yellow-500");
+
+    const encoder = new TextEncoder();
+    const data = encoder.encode(cmd);
+
+    const writer = port.writable.getWriter();
+    await writer.write(data);
+    writer.releaseLock();
+  }
+
+  function togglePoll() {
+    const btn = document.getElementById('pollBtn');
+    if (isPolling) {
+        clearInterval(pollTimer);
+        isPolling = false;
+        btn.textContent = "▶ 開始讀取";
+        btn.classList.replace('bg-red-600', 'bg-blue-600');
+    } else {
+        sendReq(); // 先發一次
+        pollTimer = setInterval(sendReq, 200); // 200ms 輪詢
+        isPolling = true;
+        btn.textContent = "⏹ 停止讀取";
+        btn.classList.replace('bg-blue-600', 'bg-red-600');
+    }
+  }
+
+  function addLog(type, msg, color) {
+    const box = document.getElementById('logBox');
+    const time = new Date().toLocaleTimeString().split(' ')[0];
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="font-bold w-8 inline-block ${type==='TX'?'text-yellow-600':'text-blue-600'}">${type}</span> <span class="${color}">${msg}</span>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearLog() {
+      document.getElementById('logBox').innerHTML = '';
+  }
+</script>
+</body>
+</html>

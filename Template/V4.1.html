@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GaN Motor AI Platform - V4.6 RAM Optimized</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .value-glow { text-shadow: 0 0 8px rgba(34, 211, 238, 0.6); transition: color 0.2s; }
+        .control-btn { transition: all 0.1s; active: scale-95; }
+        .alarm-active { animation: pulse-red 2s infinite; border-color: #ef4444 !important; background: rgba(127,29,29,0.2); }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #22d3ee; margin-top: -6px; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+
+<nav class="border-b border-slate-700 px-4 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md h-14 shrink-0">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center font-bold text-white shadow">V4.6</div>
+        <div>
+            <h1 class="text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-cyan-400">Control Center</span></h1>
+            <p class="text-[10px] text-slate-500 font-mono -mt-1">ID:17 | RAM ADDR MODE | Modbus ASCII</p>
+        </div>
+    </div>
+    <div class="flex gap-2 items-center">
+        <button id="connectBtn" onclick="toggleConnect()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-2">
+            🔌 連線設備
+        </button>
+    </div>
+</nav>
+
+<main class="flex-1 p-3 grid grid-cols-12 gap-3 overflow-hidden">
+    <div class="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full overflow-hidden">
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg relative h-[40%] shrink-0">
+            <div class="absolute top-2 left-3 z-10 flex gap-2">
+                <select id="selectY1" class="bg-slate-900/80 border border-cyan-500/30 rounded px-1 py-0.5 text-[10px] text-cyan-400 outline-none"></select>
+                <select id="selectY2" class="bg-slate-900/80 border border-amber-500/30 rounded px-1 py-0.5 text-[10px] text-amber-400 outline-none"></select>
+            </div>
+            <canvas id="liveChart"></canvas>
+        </div>
+
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg p-4 flex-1 overflow-y-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">🎮 RAM 快速控制面板</h2>
+                <button onclick="sendCmd(0x0A00, 1)" class="bg-rose-700/50 hover:bg-rose-600 text-rose-200 border border-rose-600/50 px-3 py-1 rounded text-xs font-bold transition">⚠️ 故障重置 (0A00h)</button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col items-center gap-3">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Power Control</span>
+                    <div class="flex gap-2 w-full">
+                        <button onclick="runMotor()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-lg font-bold shadow active:translate-y-0.5 transition control-btn">▶ RUN</button>
+                        <button onclick="sendCmd(0x1400, 0)" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-4 rounded-lg font-bold shadow active:translate-y-0.5 transition control-btn">⏹ STOP</button>
+                    </div>
+                    <button onclick="sendCmd(0x0900, 1)" class="w-full text-[9px] bg-slate-800 text-blue-400 py-1 rounded border border-blue-500/20">📡 授權通訊控制 (0900h)</button>
+                </div>
+
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col gap-2">
+                    <div class="flex justify-between items-end">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase text-cyan-400">RAM Speed (3F08h)</span>
+                        <span id="targetRpmDisp" class="text-xl font-mono font-bold text-cyan-400">0</span>
+                    </div>
+                    <input type="range" id="rpmSlider" min="-3000" max="3000" step="100" value="0" class="w-full accent-cyan-500" oninput="document.getElementById('targetRpmDisp').innerText=this.value" onchange="sendCmd(0x3F08, this.value)">
+                    <div class="grid grid-cols-3 gap-1 mt-1">
+                        <button onclick="quickSetRpm(500)" class="bg-slate-700 py-1 rounded text-[10px]">500</button>
+                        <button onclick="quickSetRpm(1000)" class="bg-slate-700 py-1 rounded text-[10px]">1000</button>
+                        <button onclick="quickSetRpm(0)" class="bg-slate-800 py-1 rounded text-[10px] text-red-400">STOP</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col gap-3">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">Dynamic Ramp (RAM)</span>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] w-12 text-slate-400">加速 (4000)</label>
+                        <input type="number" id="accVal" value="10" class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white outline-none">
+                        <button onclick="sendCmd(0x4000, document.getElementById('accVal').value)" class="bg-cyan-700 text-white px-2 py-0.5 rounded text-[10px]">SET</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] w-12 text-slate-400">減速 (4008)</label>
+                        <input type="number" id="decVal" value="10" class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white outline-none">
+                        <button onclick="sendCmd(0x4008, document.getElementById('decVal').value)" class="bg-cyan-700 text-white px-2 py-0.5 rounded text-[10px]">SET</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden text-[10px]">
+        <div id="alarmBox" class="bg-slate-800 p-3 rounded-xl border border-slate-700 shrink-0">
+            <div class="flex items-center gap-3">
+                <div id="alarmIcon" class="text-xl">✅</div>
+                <div>
+                    <p id="alarmStatus" class="font-bold text-slate-300">系統就緒</p>
+                    <p id="alarmDetail" class="text-[9px] text-slate-500 font-mono tracking-tight">RAM Mode Active</p>
+                </div>
+            </div>
+        </div>
+        <div id="cardContainer" class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg flex-1 overflow-y-auto p-1"></div>
+        <div id="logContent" class="bg-black/40 rounded-lg border border-slate-700 p-2 h-72 shrink-0 font-mono text-[9px] overflow-y-auto text-slate-400"></div>
+    </div>
+</main>
+
+<script>
+    const motorDataConfig = [
+        { addr: 0x0000, name: '馬達狀態' }, { addr: 0x0002, name: '當前轉速' },
+        { addr: 0x0003, name: '報警代碼' }, { addr: 0x0009, name: '驅動電壓', scale: 0.01 },
+        { addr: 0x000A, name: '輸出電流', scale: 0.01 }, { addr: 0x0008, name: '實體 I/O', unit: 'hex' }
+    ];
+
+    let port, isConnected = false, keepReading = false, pollTimer = null;
+    let asciiBuffer = "", currentValues = {};
+
+    // === 改良版啟動序列 (使用 1400h 遙控 IO) ===
+    async function runMotor() {
+        if (!isConnected) return alert("請先連線設備");
+        const rpm = document.getElementById('rpmSlider').value;
+        log("SYS", "🚀 執行 RAM 優先啟動序列...", "text-cyan-400 font-bold underline");
+
+        // 1. 下達動作控制 (1400h <- 9: 啟動 + 釋放煞車)
+        await sendCmd(0x1400, 9);
+        await new Promise(r => setTimeout(r, 200));
+
+        // 2. RAM 寫入轉速 (3F08h)
+        await sendCmd(0x3F08, rpm);
+    }
+
+    async function toggleConnect() {
+        if (isConnected) { window.location.reload(); return; }
+        try {
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 57600 });
+            isConnected = true; keepReading = true;
+            document.getElementById('connectBtn').innerText = "🔴 斷線重整";
+            log("SYS", "Connected @ 57600 8N1 ASCII", "text-green-400 font-bold");
+            readLoop();
+            pollTimer = setInterval(() => sendRawAscii(":110300000010DC\r\n"), 100);
+        } catch (e) { alert("連線失敗: " + e.message); }
+    }
+
+    async function sendCmd(addr, val) {
+        if (!isConnected) return;
+        let v = parseInt(val);
+        if (v < 0) v = 0xFFFF + v + 1; // Signed 16-bit
+        const bytes = [0x11, 0x06, (addr >> 8) & 0xFF, addr & 0xFF, (v >> 8) & 0xFF, v & 0xFF];
+        let sum = 0; bytes.forEach(b => sum += b);
+        const lrc = ((~sum) + 1) & 0xFF;
+        const cmd = `:${bytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join('')}${lrc.toString(16).padStart(2, '0').toUpperCase()}\r\n`;
+
+        clearInterval(pollTimer);
+        await sendRawAscii(cmd);
+        log("TX", cmd.trim(), "text-cyan-300");
+        setTimeout(() => { if(isConnected) pollTimer = setInterval(() => sendRawAscii(":110300000010DC\r\n"), 100); }, 150);
+    }
+
+    async function sendRawAscii(str) {
+        if (!port || !port.writable) return;
+        const w = port.writable.getWriter();
+        await w.write(new TextEncoder().encode(str));
+        w.releaseLock();
+    }
+
+    async function readLoop() {
+        const decoder = new TextDecoder();
+        while (port && port.readable && keepReading) {
+            const reader = port.readable.getReader();
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    asciiBuffer += decoder.decode(value);
+                    let s = asciiBuffer.indexOf(':'), e = asciiBuffer.indexOf('\r\n');
+                    while (s !== -1 && e !== -1 && e > s) {
+                        const pkt = asciiBuffer.substring(s, e);
+                        parseResponse(pkt);
+                        asciiBuffer = asciiBuffer.substring(e + 2);
+                        s = asciiBuffer.indexOf(':'); e = asciiBuffer.indexOf('\r\n');
+                    }
+                }
+            } finally { reader.releaseLock(); }
+        }
+    }
+
+    function parseResponse(pkt) {
+        if (pkt.substr(3, 2) === "03" && pkt.length >= 70) {
+            const dataHex = pkt.substr(7, 64);
+            motorDataConfig.forEach((cfg, i) => {
+                let val = parseInt(dataHex.substr(i*4, 4), 16);
+                if (val > 32767) val -= 65536;
+                currentValues[cfg.addr] = val * (cfg.scale || 1);
+                const el = document.getElementById(`val-${cfg.addr}`);
+                if (el) el.innerText = currentValues[cfg.addr].toFixed(2);
+            });
+            updateUIStatus();
+        } else if (pkt.substr(3, 2) === "86") {
+            log("ERR", `設備拒絕操作 (Error 04) - 請確認已手動按「遠端授權」: ${pkt}`, "text-red-500 font-bold");
+        }
+    }
+
+    function updateUIStatus() {
+        const alm = currentValues[0x0003] || 0;
+        const box = document.getElementById('alarmBox');
+        if (alm > 0 && alm <= 22) {
+            box.classList.add('alarm-active');
+            document.getElementById('alarmIcon').innerText = "🚨";
+            document.getElementById('alarmStatus').innerText = "系統異常 (Code " + alm + ")";
+        } else {
+            box.classList.remove('alarm-active');
+            document.getElementById('alarmIcon').innerText = "✅";
+            document.getElementById('alarmStatus').innerText = "系統運作中";
+        }
+    }
+
+    function quickSetRpm(v) { document.getElementById('rpmSlider').value = v; document.getElementById('targetRpmDisp').innerText = v; sendCmd(0x3F08, v); }
+    function log(type, msg, cls) {
+        const box = document.getElementById('logContent');
+        box.innerHTML += `<div><span class="${cls}">[${type}]</span> ${msg}</div>`;
+        box.scrollTop = box.scrollHeight;
+    }
+
+    (function init() {
+        const container = document.getElementById('cardContainer');
+        motorDataConfig.forEach(cfg => {
+            container.innerHTML += `<div class="flex justify-between p-2 border-b border-slate-700/50"><span class="text-slate-400 font-bold">${cfg.name}</span><span id="val-${cfg.addr}" class="font-mono text-white font-bold">0.00</span></div>`;
+        });
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        window.chart = new Chart(ctx, { type: 'line', data: { labels: Array(30).fill(''), datasets: [{ label: 'Speed', borderColor: '#22d3ee', data: Array(30).fill(null), pointRadius: 0, borderWidth: 1.5, tension: 0.1 }] }, options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: false }, y: { grid: { color: '#1e293b' } } } } });
+    })();
+</script>
+</body>
+</html>
