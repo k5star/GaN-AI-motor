@@ -539,7 +539,26 @@ async function connectBLE() {
     bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnect);
     log("SYS", `📡 已選取: ${bleDevice.name || bleDevice.id}`, "text-blue-300");
 
-    bleServer = await bleDevice.gatt.connect();
+    // GATT 連線（最多重試 3 次，每次間隔 800ms）
+    bleServer = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            log("SYS", `📡 GATT 連線中... (${attempt}/3)`, "text-blue-300");
+            bleServer = await bleDevice.gatt.connect();
+            if (bleServer.connected) break;
+        } catch (e) {
+            if (attempt === 3) throw new Error(
+                'GATT 連線失敗（已重試 3 次）\n\n' +
+                '最常見原因：Windows 已配對並佔住此裝置\n\n' +
+                '解決方式：\n' +
+                '① Windows 設定 → 藍牙與裝置 → 找到 LTC8116 → 移除裝置\n' +
+                '   移除後重新用 Chrome 連線即可\n' +
+                '② 或改用手機 Chrome 連線（不受 Windows 干擾）'
+            );
+            await new Promise(r => setTimeout(r, 800));
+        }
+    }
+    if (!bleServer || !bleServer.connected) throw new Error('GATT 連線失敗，請先移除 Windows 藍牙配對');
 
     // 嘗試 HM-10 FFE0 服務（HC-10 標準）
     let svc = null;
