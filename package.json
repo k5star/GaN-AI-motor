@@ -1,0 +1,32 @@
+{
+  "name": "gan-ai-motor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "service-worker.js",
+  "scripts": {
+    "build": "node sync-www.mjs",
+    "sync": "node sync-www.mjs && npx cap sync android",
+    "open:android": "npx cap open android",
+    "serve": "npx serve . --listen 3000"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k5star/GaN-AI-motor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/k5star/GaN-AI-motor/issues"
+  },
+  "homepage": "https://github.com/k5star/GaN-AI-motor#readme",
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.97"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
+  }
+}

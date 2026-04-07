@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GaN Motor AI Platform</string>
+    <string name="title_activity_main">GaN Motor AI Platform</string>
+    <string name="package_name">com.ganmotor.ai</string>
+    <string name="custom_url_scheme">com.ganmotor.ai</string>
+</resources>
