@@ -322,10 +322,14 @@ const motorDataConfig = [
 // ── Web Serial (桌面) ──
 let port, reader;
 
-// ── Web Bluetooth BLE UART / Nordic NUS (手機) ──
+// ── Web Bluetooth BLE UART ──
+// HC-10 / HM-10 用 FFE0 服務（最常見）
+const HM10_SERVICE  = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const HM10_CHAR     = '0000ffe1-0000-1000-8000-00805f9b34fb'; // TX+RX 同一 characteristic
+// Nordic NUS（備用，部分模組使用）
 const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Phone→Device (write)
-const NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Device→Phone (notify)
+const NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 let bleDevice = null, bleServer = null, bleRxChar = null, bleTxChar = null;
 
 // ── 通用連線狀態 ──
@@ -517,24 +521,47 @@ async function connectSerial() {
 }
 
 // ===================================================================
-// BLE 連線（Nordic NUS — HM-10 / AT-09 / HC-08）
+// BLE 連線（自動偵測 HC-10/HM-10 FFE0 或 Nordic NUS）
 // ===================================================================
-async function connectBLE() {
-    log("SYS", "📡 掃描 BLE 裝置（NUS 服務）...", "text-blue-300");
+let bleMode = null;   // 'hm10' | 'nus'
+let hm10Char = null;  // HM-10 FFE1 (讀寫共用)
 
+async function connectBLE() {
+    log("SYS", "📡 掃描 BLE 裝置（HC-10 / HM-10 / NUS）...", "text-blue-300");
+
+    // 同時接受 HM-10 FFE0 與 Nordic NUS，讓使用者從清單選裝置
     bleDevice = await navigator.bluetooth.requestDevice({
         filters: [
-            { services: [NUS_SERVICE] }
-        ]
+            { services: [HM10_SERVICE] },   // HC-10 / HM-10
+            { services: [NUS_SERVICE]  },   // Nordic NUS
+            { name: 'LTC8115' },
+            { name: 'LTC8116' }
+        ],
+        optionalServices: [HM10_SERVICE, NUS_SERVICE]
     });
 
     bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnect);
     log("SYS", `📡 已選取: ${bleDevice.name || bleDevice.id}`, "text-blue-300");
 
     bleServer = await bleDevice.gatt.connect();
-    const svc = await bleServer.getPrimaryService(NUS_SERVICE);
-    bleRxChar = await svc.getCharacteristic(NUS_RX_CHAR);   // write
-    bleTxChar = await svc.getCharacteristic(NUS_TX_CHAR);   // notify
+
+    // 嘗試 HM-10 FFE0 服務（HC-10 標準）
+    let svc = null;
+    try {
+        svc = await bleServer.getPrimaryService(HM10_SERVICE);
+        hm10Char = await svc.getCharacteristic(HM10_CHAR);
+        bleRxChar = hm10Char;
+        bleTxChar = hm10Char;
+        bleMode = 'hm10';
+        log("SYS", "📡 偵測到 HC-10 / HM-10 (FFE0) 模式", "text-blue-300");
+    } catch (_) {
+        // 退回 Nordic NUS
+        svc = await bleServer.getPrimaryService(NUS_SERVICE);
+        bleRxChar = await svc.getCharacteristic(NUS_RX_CHAR);
+        bleTxChar = await svc.getCharacteristic(NUS_TX_CHAR);
+        bleMode = 'nus';
+        log("SYS", "📡 偵測到 Nordic NUS 模式", "text-blue-300");
+    }
 
     await bleTxChar.startNotifications();
     bleTxChar.addEventListener('characteristicvaluechanged', handleBLEData);
@@ -1143,8 +1170,13 @@ function hideConnModal() {
 function modalChoose(useSerial) {
     hideConnModal();
     const handler = (e) => {
-        // 使用者主動取消選擇視窗，不算錯誤，靜默處理
-        if (e.name === 'NotFoundError' || (e.message && e.message.toLowerCase().includes('cancel'))) {
+        // 使用者主動取消 → 靜默處理，不彈 alert
+        const msg = (e.message || '').toLowerCase();
+        if (e.name === 'NotFoundError' ||
+            msg.includes('cancel') ||
+            msg.includes('no port selected') ||
+            msg.includes('user cancelled') ||
+            msg.includes('chosen') ) {
             log("SYS", "已取消連線選擇", "text-slate-400");
             return;
         }
