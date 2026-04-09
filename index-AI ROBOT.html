@@ -556,15 +556,12 @@ async function sendToAI(text) {
                         })
                     }
                 );
-                if (resp.status === 429 || resp.status === 503) {
-                    const errData = await resp.json();
-                    lastError = new Error(`[${model}] 配額已用盡，切換模型...`);
-                    log('AI', `${model} 配額超限，嘗試下一個模型`, 'text-amber-400');
-                    continue; // 嘗試下一個模型
-                }
                 if (!resp.ok) {
                     const errData = await resp.json();
-                    throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+                    const errMsg = errData.error?.message || `HTTP ${resp.status}`;
+                    lastError = new Error(errMsg);
+                    log('AI', `[${model}] 失敗(${resp.status})，切換下一個模型...`, 'text-amber-400');
+                    continue; // 任何錯誤都嘗試下一個模型
                 }
                 const data = await resp.json();
                 let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
