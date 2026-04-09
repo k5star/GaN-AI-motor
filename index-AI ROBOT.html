@@ -184,7 +184,7 @@
             <div class="flex items-center justify-between mb-2">
                 <h2 class="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1">
                     ✨ AI 語音控制
-                    <span id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 rounded text-violet-300 border border-violet-700/50">gemini-1.5-flash</span>
+                    <span id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 rounded text-violet-300 border border-violet-700/50">gemma-4-26b-it</span>
                 </h2>
                 <div id="aiStatus" class="text-[9px] text-slate-500 font-mono">待機</div>
             </div>
@@ -534,7 +534,7 @@ async function sendToAI(text) {
 
     try {
         // 依序嘗試各模型，自動 fallback
-        const MODELS = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.0-pro'];
+        const MODELS = ['gemma-4-26b-it', 'gemma-4-31b-it', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
         let lastError = null, parsed = null;
 
         for (const model of MODELS) {
