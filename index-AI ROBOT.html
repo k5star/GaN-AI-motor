@@ -564,23 +564,22 @@ async function sendToAI(text) {
                     continue; // 任何錯誤都嘗試下一個模型
                 }
                 const data = await resp.json();
-                let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                log('AI', `[${model}] 原始回應: ${raw.substring(0,120)}`, 'text-slate-500');
+                const fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                log('AI', `[${model}] 原始: ${fullText.substring(0,200)}`, 'text-slate-500');
 
-                // 1. 從 markdown code block 擷取
-                const mdMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-                if (mdMatch) raw = mdMatch[1].trim();
-                // 2. 找最外層 { ... } JSON 物件（最後一個 } 為止）
-                const start = raw.indexOf('{');
-                const end   = raw.lastIndexOf('}');
-                if (start !== -1 && end !== -1) raw = raw.slice(start, end + 1);
-                // 3. 修正常見問題：移除 trailing comma
-                raw = raw.replace(/,\s*([}\]])/g, '$1');
-                // 4. 解析
+                // 找所有 JSON 候選，選擇最完整的（含 action 或 reply 欄位）
+                const bestJSON = extractBestJSON(fullText);
+                if (!bestJSON) {
+                    log('AI', `找不到有效 JSON，原始: ${fullText.substring(0,80)}`, 'text-red-500');
+                    lastError = new Error('No valid JSON in response'); continue;
+                }
                 try {
-                    parsed = JSON.parse(raw);
+                    parsed = JSON.parse(bestJSON);
+                    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+                        lastError = new Error('Response is not a JSON object'); continue;
+                    }
                 } catch(parseErr) {
-                    log('AI', `JSON 解析失敗: ${parseErr.message} | 內容: ${raw.substring(0,80)}`, 'text-red-500');
+                    log('AI', `JSON 解析失敗: ${parseErr.message} | ${bestJSON.substring(0,80)}`, 'text-red-500');
                     lastError = parseErr; continue;
                 }
                 break; // 成功，跳出迴圈
@@ -693,6 +692,52 @@ function addHistoryBubble(role, text) {
     hist.scrollTop = hist.scrollHeight;
     // 最多保留 20 條
     while (hist.children.length > 20) hist.removeChild(hist.firstChild);
+}
+
+// ===================================================================
+// extractBestJSON：從 AI 回應文字中找最完整的 JSON 物件
+// ===================================================================
+function extractBestJSON(text) {
+    const candidates = [];
+    // 掃描所有可能的 { ... } 起始點
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] !== '{') continue;
+        let depth = 0, inStr = false, escape = false;
+        for (let j = i; j < text.length; j++) {
+            const c = text[j];
+            if (escape) { escape = false; continue; }
+            if (c === '\\' && inStr) { escape = true; continue; }
+            if (c === '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (c === '{') depth++;
+            if (c === '}') {
+                depth--;
+                if (depth === 0) {
+                    let candidate = text.slice(i, j + 1);
+                    // 修正 trailing comma
+                    candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+                    try {
+                        const obj = JSON.parse(candidate);
+                        if (typeof obj === 'object' && !Array.isArray(obj)) {
+                            candidates.push({ obj, str: candidate });
+                        }
+                    } catch(_) {}
+                    break;
+                }
+            }
+        }
+    }
+    if (!candidates.length) return null;
+    // 優先選有 action/reply/response 欄位的最長 JSON
+    const scored = candidates.map(c => {
+        let score = Object.keys(c.obj).length;
+        if (c.obj.action)   score += 10;
+        if (c.obj.reply || c.obj.response || c.obj.message) score += 10;
+        if (c.obj.params)   score += 5;
+        return { ...c, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].str;
 }
 
 // ===================================================================
