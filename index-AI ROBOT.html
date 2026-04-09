@@ -507,8 +507,9 @@ async function sendToAI(text) {
 
     try {
         // 依序嘗試各模型，自動 fallback
-        const MODELS = ['gemini-2.5-flash', 'gemma-4-31b-it', 'gemma-3-27b-it', 'gemini-2.0-flash'];
-        let lastError = null, parsed = null;
+        // 只用 Gemini 系列（Gemma chain-of-thought 不可靠）
+        const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+        let lastError = null, parsed = null, retryCount = 0;
 
         for (const model of MODELS) {
             document.getElementById('aiModelBadge').textContent = model;
@@ -530,11 +531,20 @@ async function sendToAI(text) {
                     }
                 );
                 if (!resp.ok) {
-                    const errData = await resp.json();
+                    const errData = await resp.json().catch(()=>({}));
                     const errMsg = errData.error?.message || `HTTP ${resp.status}`;
                     lastError = new Error(errMsg);
-                    log('AI', `[${model}] 失敗(${resp.status})，切換下一個模型...`, 'text-amber-400');
-                    continue; // 任何錯誤都嘗試下一個模型
+                    if (resp.status === 503 || resp.status === 529) {
+                        // 服務暫時忙碌 → 等 3 秒重試同一模型（最多 2 次）
+                        log('AI', `[${model}] 503 忙碌，3秒後重試...`, 'text-amber-400');
+                        document.getElementById('aiStatus').textContent = '⏳ 重試中...';
+                        await new Promise(r => setTimeout(r, 3000));
+                        retryCount = (retryCount || 0) + 1;
+                        if (retryCount <= 2) { MODELS.unshift(model); } // 重新插回頭部
+                    } else {
+                        log('AI', `[${model}] 失敗(${resp.status})，切換下一個模型...`, 'text-amber-400');
+                    }
+                    continue;
                 }
                 const data = await resp.json();
                 const fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
