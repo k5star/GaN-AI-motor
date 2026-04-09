@@ -184,7 +184,7 @@
             <div class="flex items-center justify-between mb-2">
                 <h2 class="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1">
                     ✨ AI 語音控制
-                    <span id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 rounded text-violet-300 border border-violet-700/50">gemma-4-26b-it</span>
+                    <span id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 rounded text-violet-300 border border-violet-700/50">gemini-2.5-flash</span>
                 </h2>
                 <div id="aiStatus" class="text-[9px] text-slate-500 font-mono">待機</div>
             </div>
@@ -388,41 +388,14 @@ let voiceRecognition = null;
 let isListening = false;
 let aiHistory = [];
 
-const GEMINI_SYSTEM_PROMPT = `你是一個 GaN 馬達控制專家 AI。使用者會用中文語音或文字給你指令來控制馬達。
-
-你的任務是：
-1. 理解使用者的自然語言指令（中文、台語混用都可以）
-2. 判斷要執行的馬達動作
-3. 回傳 JSON 格式的控制指令
-
-可用的馬達控制動作：
-- run: 啟動馬達
-- stop: 停止馬達
-- setSpeed: 設定轉速（speed: RPM值，0~3000）
-- setDirection: 設定轉向（direction: "CW"順時針 或 "CCW"逆時針）
-- setAccel: 設定加速時間（accel: 毫秒，100~60000）
-- setDecel: 設定減速時間（decel: 毫秒，100~60000）
-- alarmReset: 清除故障
-- query: 查詢狀態（只回答，不執行動作）
-- sequence: 序列動作（steps: 動作陣列）
-
-馬達當前狀態會附在每次請求中。
-
-請用以下 JSON 格式回應（必須嚴格遵守）：
-{
-  "action": "動作名稱",
-  "params": { ... 動作參數 ... },
-  "reply": "親切的中文回覆說明你要做什麼",
-  "warning": "如有安全疑慮請填寫，否則留空字串"
-}
-
-範例：
-- 使用者說「啟動」→ {"action":"run","params":{},"reply":"好的，啟動馬達！","warning":""}
-- 使用者說「轉速設 500」→ {"action":"setSpeed","params":{"speed":500},"reply":"設定轉速為 500 RPM","warning":""}
-- 使用者說「跑快一點」→ 根據當前轉速增加 20%，{"action":"setSpeed","params":{"speed":當前值*1.2},"reply":"...","warning":""}
-- 使用者說「電流好像很高」→ {"action":"query","params":{},"reply":"目前電流 X A，建議降低轉速或檢查負載","warning":"電流偏高"}
-
-安全原則：轉速不能超過 3000 RPM，如指令不合理請說明原因。`;
+const GEMINI_SYSTEM_PROMPT = `你是GaN馬達控制AI。只輸出JSON，不輸出任何其他文字。
+可用action：run/stop/setSpeed/setDirection/setAccel/setDecel/alarmReset/query/sequence
+格式：{"action":"...","params":{...},"reply":"中文說明","warning":""}
+setSpeed params: {"speed":0~3000}
+setDirection params: {"direction":"CW"|"CCW"}
+setAccel params: {"accel":毫秒}
+setDecel params: {"decel":毫秒}
+sequence params: {"steps":[{"action":"...","params":{...},"delay":毫秒},...]}`;
 
 function getMotorStateText() {
     const status = MOTOR_STATUS[currentValues[0]] || { txt:'UNKNOWN' };
@@ -534,7 +507,7 @@ async function sendToAI(text) {
 
     try {
         // 依序嘗試各模型，自動 fallback
-        const MODELS = ['gemma-4-26b-it', 'gemma-4-31b-it', 'gemma-3-27b-it', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+        const MODELS = ['gemini-2.5-flash', 'gemma-4-31b-it', 'gemma-3-27b-it', 'gemini-2.0-flash'];
         let lastError = null, parsed = null;
 
         for (const model of MODELS) {
@@ -551,7 +524,7 @@ async function sendToAI(text) {
                             generationConfig: {
                                 temperature: 0.3,
                                 maxOutputTokens: 512,
-                                ...(model.startsWith('gemini') ? { responseMimeType: 'application/json' } : {})
+                                responseMimeType: model.startsWith('gemini') ? 'application/json' : undefined
                             }
                         })
                     }
