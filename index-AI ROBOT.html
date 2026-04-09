@@ -604,7 +604,13 @@ async function sendToAI(text) {
 
 function handleAIResponse(parsed, userInput) {
     setAIThinking(false);
-    const { action, params, reply, warning } = parsed;
+    // 相容各模型不同欄位名稱
+    const action  = parsed.action  || parsed.command  || parsed.cmd    || 'query';
+    const params  = parsed.params  || parsed.parameters || parsed.args || {};
+    const reply   = parsed.reply   || parsed.response  || parsed.message || parsed.text || parsed.answer || JSON.stringify(parsed);
+    const warning = parsed.warning || parsed.warn      || parsed.caution || '';
+
+    log('AI', `parsed: ${JSON.stringify(parsed).substring(0,120)}`, 'text-slate-600');
 
     // 顯示 AI 回覆
     document.getElementById('aiResponse').textContent = reply || '...';
@@ -621,7 +627,7 @@ function handleAIResponse(parsed, userInput) {
         document.getElementById('aiAction').classList.add('hidden');
     }
 
-    addHistoryBubble('ai', `🤖 ${reply}`);
+    addHistoryBubble('ai', `🤖 ${reply || JSON.stringify(parsed)}`);
     if (warning) addHistoryBubble('ai', `⚠️ ${warning}`);
 
     // 執行動作
