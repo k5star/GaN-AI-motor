@@ -902,7 +902,7 @@ async function readLoopSerial() {
 // BLE
 async function connectBLE() {
     const device=await navigator.bluetooth.requestDevice({
-        filters:[{namePrefix:''}],
+        acceptAllDevices: true,
         optionalServices:[HM10_SERVICE,'6e400001-b5a3-f393-e0a9-e50e24dcca9e']
     });
     bleDevice=device;
