@@ -523,8 +523,8 @@ async function sendToAI(text) {
                             system_instruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
                             contents: [{ role: 'user', parts: [{ text: userMessage }] }],
                             generationConfig: {
-                                temperature: 0.3,
-                                maxOutputTokens: 512,
+                                temperature: 0.1,
+                                maxOutputTokens: 2048,
                                 responseMimeType: model.startsWith('gemini') ? 'application/json' : undefined
                             }
                         })
@@ -711,12 +711,14 @@ function extractBestJSON(text) {
         }
     }
     if (!candidates.length) return null;
-    // 優先選有 action/reply/response 欄位的最長 JSON
+    // 優先選最完整的 JSON（字串長度最長 + 欄位評分）
     const scored = candidates.map(c => {
-        let score = Object.keys(c.obj).length;
-        if (c.obj.action)   score += 10;
-        if (c.obj.reply || c.obj.response || c.obj.message) score += 10;
-        if (c.obj.params)   score += 5;
+        let score = c.str.length * 0.01;          // 越長越完整
+        score += Object.keys(c.obj).length * 2;
+        if (c.obj.action)  score += 20;
+        if (c.obj.reply || c.obj.response || c.obj.message) score += 20;
+        if (c.obj.params)  score += 10;
+        if (c.obj.warning !== undefined) score += 5;  // 有 warning 欄位加分
         return { ...c, score };
     });
     scored.sort((a, b) => b.score - a.score);
