@@ -548,22 +548,32 @@ async function sendToAI(text) {
                 }
                 const data = await resp.json();
                 const fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                log('AI', `[${model}] 原始: ${fullText.substring(0,200)}`, 'text-slate-500');
+                log('AI', `[${model}] 原始: ${fullText.substring(0,300)}`, 'text-slate-500');
 
-                // 找所有 JSON 候選，選擇最完整的（含 action 或 reply 欄位）
-                const bestJSON = extractBestJSON(fullText);
-                if (!bestJSON) {
-                    log('AI', `找不到有效 JSON，原始: ${fullText.substring(0,80)}`, 'text-red-500');
-                    lastError = new Error('No valid JSON in response'); continue;
-                }
+                // Gemini + responseMimeType:json → 直接 parse 完整回應
+                // 其他模型 → 用 extractBestJSON 找最佳 JSON
+                const isGemini = model.startsWith('gemini');
                 try {
-                    parsed = JSON.parse(bestJSON);
+                    if (isGemini) {
+                        parsed = JSON.parse(fullText);
+                    } else {
+                        const bestJSON = extractBestJSON(fullText);
+                        if (!bestJSON) throw new Error('No valid JSON in response');
+                        parsed = JSON.parse(bestJSON);
+                    }
                     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
                         lastError = new Error('Response is not a JSON object'); continue;
                     }
                 } catch(parseErr) {
-                    log('AI', `JSON 解析失敗: ${parseErr.message} | ${bestJSON.substring(0,80)}`, 'text-red-500');
-                    lastError = parseErr; continue;
+                    // 若直接 parse 失敗（Gemini 偶爾有 markdown），改用 extractBestJSON
+                    try {
+                        const bestJSON = extractBestJSON(fullText);
+                        if (!bestJSON) throw parseErr;
+                        parsed = JSON.parse(bestJSON);
+                    } catch(e2) {
+                        log('AI', `JSON 解析失敗: ${e2.message} | ${fullText.substring(0,80)}`, 'text-red-500');
+                        lastError = e2; continue;
+                    }
                 }
                 break; // 成功，跳出迴圈
             } catch(e) {
