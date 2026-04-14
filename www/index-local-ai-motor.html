@@ -126,6 +126,11 @@
                             ⏹ STOP
                         </button>
                     </div>
+                    <button onclick="startVoiceInput()" id="voiceBtnMain"
+                            class="w-full flex items-center justify-center gap-2 bg-purple-700/60 hover:bg-purple-600 active:bg-purple-500 text-white py-2 rounded-lg text-xs font-bold transition border border-purple-500/40"
+                            title="語音控制（Chrome）">
+                        🎙️ <span id="voiceBtnMainTxt">語音控制</span>
+                    </button>
                     <div class="w-full h-[1px] bg-slate-700"></div>
                     <div class="w-full flex justify-between items-center px-1">
                         <span class="text-[10px] text-slate-400">轉向 (1400h Bit1)</span>
@@ -134,12 +139,6 @@
                             <button onclick="setDir('CCW')" id="dirCCW" class="px-2 py-0.5 text-[10px] rounded text-slate-400 hover:text-white transition">CCW ↺</button>
                         </div>
                     </div>
-                    <div class="w-full h-[1px] bg-slate-700"></div>
-                    <button onclick="startVoiceInput()" id="voiceBtnMain"
-                            class="w-full flex items-center justify-center gap-2 bg-purple-700/60 hover:bg-purple-600 active:bg-purple-500 text-white py-2 rounded-lg text-xs font-bold transition border border-purple-500/40"
-                            title="語音控制（Chrome）">
-                        🎙️ <span id="voiceBtnMainTxt">語音控制</span>
-                    </button>
                 </div>
 
                 <!-- Speed 3F08h -->
