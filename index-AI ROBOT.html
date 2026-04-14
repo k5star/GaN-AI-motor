@@ -184,7 +184,11 @@
             <div class="flex items-center justify-between mb-2">
                 <h2 class="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1">
                     ✨ AI 語音控制
-                    <span id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 rounded text-violet-300 border border-violet-700/50">gemini-2.5-flash</span>
+                    <select id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 py-0.5 rounded text-violet-300 border border-violet-700/50 outline-none cursor-pointer hover:border-violet-500 transition">
+                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+                    </select>
                 </h2>
                 <div id="aiStatus" class="text-[9px] text-slate-500 font-mono">待機</div>
             </div>
@@ -508,11 +512,13 @@ async function sendToAI(text) {
     try {
         // 依序嘗試各模型，自動 fallback
         // 只用 Gemini 系列（Gemma chain-of-thought 不可靠）
-        const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+        const selectedModel = document.getElementById('aiModelBadge').value;
+        const ALL_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+        const MODELS = [selectedModel, ...ALL_MODELS.filter(m => m !== selectedModel)];
         let lastError = null, parsed = null, retryCount = 0;
 
         for (const model of MODELS) {
-            document.getElementById('aiModelBadge').textContent = model;
+            document.getElementById('aiModelBadge').value = model;
             try {
                 const resp = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
