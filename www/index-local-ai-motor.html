@@ -19,51 +19,58 @@
         input[type=range]{ -webkit-appearance:none; background:transparent; }
         input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; height:16px; width:16px; border-radius:50%; background:#34d399; margin-top:-6px; cursor:pointer; }
         input[type=range]::-webkit-slider-runnable-track{ width:100%; height:4px; cursor:pointer; background:#334155; border-radius:2px; }
+        /* 手機版觸控優化 */
+        @media (max-width: 768px) {
+            button { min-height: 36px; }
+            details > summary { min-height: 32px; }
+            #aiInput { font-size: 16px; } /* 防止 iOS 自動縮放 */
+        }
+        details > summary::-webkit-details-marker { display: none; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+<body class="bg-slate-900 text-slate-100 font-sans flex flex-col md:h-screen md:overflow-hidden overflow-y-auto">
 
 <!-- ── NAV ── -->
-<nav class="border-b border-slate-700 px-4 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md h-14 shrink-0">
-    <div class="flex items-center gap-3">
-        <div class="w-8 h-8 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-lg flex items-center justify-center font-bold text-white shadow text-lg">🤖</div>
+<nav class="border-b border-slate-700 px-3 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md shrink-0 h-12 md:h-14">
+    <div class="flex items-center gap-2">
         <div>
-            <h1 class="text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-purple-400">LOCAL AI</span> <span class="text-emerald-400">ROBOT</span></h1>
-            <p id="navSubtitle" class="text-[10px] text-slate-500 font-mono -mt-1">ID:1 | 115200 8N1 | Modbus RTU | Open WebUI AI</p>
+            <h1 class="text-sm md:text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-purple-400">LOCAL AI</span> <span class="text-emerald-400">ROBOT</span></h1>
+            <p id="navSubtitle" class="text-[9px] md:text-[10px] text-slate-500 font-mono -mt-0.5">ID:1 | 115200 8N1 | Modbus RTU</p>
         </div>
     </div>
-    <div class="flex gap-2 items-center">
-        <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2">
-            <button id="recBtn" onclick="toggleRecord()" class="px-3 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
-                <span class="w-2 h-2 rounded-full bg-red-500 opacity-50" id="recDot"></span> REC
+    <div class="flex gap-1.5 md:gap-2 items-center">
+        <!-- REC 群組 -->
+        <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+            <button id="recBtn" onclick="toggleRecord()" class="px-2 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+                <span class="w-2 h-2 rounded-full bg-red-500 opacity-50" id="recDot"></span>
+                <span class="hidden sm:inline">REC</span>
             </button>
-            <div class="h-4 w-[1px] bg-slate-600 mx-1"></div>
-            <span id="recCount" class="text-[10px] font-mono w-12 text-center text-slate-500">0</span>
-            <button onclick="downloadCSV()" id="dlBtn" class="px-2 py-1 text-xs text-slate-500 hover:text-emerald-400 disabled:opacity-30" disabled>📥</button>
+            <span id="recCount" class="hidden sm:inline text-[10px] font-mono w-10 text-center text-slate-500">0</span>
+            <button onclick="downloadCSV()" id="dlBtn" class="px-1.5 py-1 text-xs text-slate-500 hover:text-emerald-400 disabled:opacity-30" disabled>📥</button>
         </div>
-        <button onclick="showAnalysis()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
-            📊 分析
+        <button onclick="showAnalysis()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-2 md:px-3 py-1.5 rounded-lg text-xs font-bold transition">
+            📊<span class="hidden md:inline"> 分析</span>
         </button>
-        <button onclick="showAISettings()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
-            🔑 AI設定
+        <button onclick="showAISettings()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-2 md:px-3 py-1.5 rounded-lg text-xs font-bold transition">
+            🔑<span class="hidden md:inline"> AI設定</span>
         </button>
-        <button onclick="document.getElementById('aiInput').focus();document.getElementById('aiInput').scrollIntoView({behavior:'smooth'})" class="bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
-            ✨ AI控制
+        <button onclick="document.getElementById('aiInput').focus();document.getElementById('aiInput').scrollIntoView({behavior:'smooth'})" class="bg-purple-700 hover:bg-purple-600 text-white px-2 md:px-3 py-1.5 rounded-lg text-xs font-bold transition">
+            ✨<span class="hidden sm:inline"> AI控制</span>
         </button>
-        <button id="connectBtn" onclick="toggleConnect()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-2">
-            🔌 連線
+        <button id="connectBtn" onclick="toggleConnect()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-3 md:px-4 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-1.5">
+            🔌<span class="hidden sm:inline"> 連線</span>
         </button>
     </div>
 </nav>
 
 <!-- ── MAIN ── -->
-<main class="flex-1 p-3 grid grid-cols-12 gap-3 overflow-hidden">
+<main class="flex-1 p-2 md:p-3 grid grid-cols-12 gap-2 md:gap-3 md:overflow-hidden">
 
     <!-- Left: Chart + Controls -->
-    <div class="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full overflow-hidden">
+    <div class="col-span-12 lg:col-span-9 flex flex-col gap-2 md:gap-3 md:h-full md:overflow-hidden">
 
         <!-- Chart -->
-        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg relative flex flex-col h-[35%] shrink-0">
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg relative flex flex-col h-[180px] md:h-[35%] shrink-0">
             <div class="absolute top-2 left-3 z-10 flex gap-2">
                 <select id="selectY1" class="bg-slate-900/80 border border-emerald-500/30 rounded px-1 py-0.5 text-[10px] text-emerald-400 outline-none"></select>
                 <select id="selectY2" class="bg-slate-900/80 border border-amber-500/30 rounded px-1 py-0.5 text-[10px] text-amber-400 outline-none"></select>
@@ -75,7 +82,7 @@
         <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg p-4 flex-1 overflow-y-auto">
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                    🤖 ROBOT 控制
+                    ⚙️ ROBOT 控制
                     <span id="cmdStatus" class="text-[10px] text-slate-500 font-normal normal-case">Ready — Modbus RTU ID=1 | 1400h NET-IO</span>
                 </h2>
                 <div class="flex gap-2">
@@ -103,10 +110,10 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
 
                 <!-- Run/Stop 1400h -->
-                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col items-center justify-center gap-3">
+                <div class="col-span-2 md:col-span-1 bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col items-center justify-center gap-2 md:gap-3">
                     <div class="flex items-center gap-2">
                         <span class="text-[10px] text-slate-400 font-bold uppercase">主控開關</span>
                         <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400">NET-IO 1400h</span>
@@ -184,7 +191,7 @@
     </div>
 
     <!-- Right: Alarm + AI Chat + Cards + Log -->
-    <div class="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden">
+    <div class="col-span-12 lg:col-span-3 flex flex-col gap-2 md:gap-3 md:h-full md:overflow-hidden">
 
         <!-- Alarm -->
         <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0" id="alarmBox">
@@ -198,12 +205,11 @@
         </div>
 
         <!-- ── AI 語音控制（內嵌）── -->
-        <div class="bg-slate-800 rounded-xl border border-purple-500/40 shadow-lg flex flex-col shrink-0" style="height:220px">
+        <div class="bg-slate-800 rounded-xl border border-purple-500/40 shadow-lg flex flex-col shrink-0" style="height:240px">
             <div class="flex justify-between items-center px-3 py-1.5 border-b border-slate-700 shrink-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold text-purple-300">✨ AI 馬達控制</span>
-                    <span id="aiModelBadge" class="text-[9px] text-slate-500 font-mono"></span>
-                </div>
+                <span class="text-xs font-bold text-purple-300">✨ AI 語音控制</span>
+                <!-- aiModelBadge 隱藏，僅設定頁使用 -->
+                <span id="aiModelBadge" class="hidden"></span>
                 <button onclick="showAISettings()" class="text-slate-500 hover:text-purple-400 text-[10px] transition">⚙️設定</button>
             </div>
             <div id="aiChatLog" class="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1 text-[11px]">
@@ -228,12 +234,17 @@
         </div>
 
         <!-- Data Cards -->
-        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg flex-1 overflow-y-auto p-1" id="cardContainer"></div>
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg h-40 md:flex-1 md:h-auto overflow-y-auto p-1" id="cardContainer"></div>
 
-        <!-- TX/RX Log -->
-        <div class="bg-black/40 rounded-lg border border-slate-700 p-2 h-28 shrink-0 font-mono text-[9px] overflow-y-auto" id="logContent">
-            <div class="text-slate-600 text-center mt-3">TX/RX Log — Modbus RTU Binary</div>
-        </div>
+        <!-- TX/RX Log (折疊在手機) -->
+        <details class="shrink-0">
+            <summary class="bg-black/40 rounded-lg border border-slate-700 px-3 py-1.5 font-mono text-[9px] text-slate-500 cursor-pointer select-none list-none flex items-center justify-between">
+                <span>TX/RX Log</span><span class="text-[8px]">▼</span>
+            </summary>
+            <div class="bg-black/40 rounded-b-lg border border-t-0 border-slate-700 p-2 h-24 md:h-28 font-mono text-[9px] overflow-y-auto" id="logContent">
+                <div class="text-slate-600 text-center mt-2">TX/RX Log — Modbus RTU Binary</div>
+            </div>
+        </details>
     </div>
 
 </main>
@@ -320,18 +331,14 @@
             <label class="text-[10px] text-slate-400">Model</label>
             <select id="aiModelInput"
                     class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-xs text-white outline-none focus:border-purple-500">
-                <option value="qwen2.5:14b">qwen2.5:14b ⭐ 推薦 — 指令理解最準，JSON格式穩定</option>
-                <option value="qwen2.5vl:7b">qwen2.5vl:7b — 速度快，支援視覺，適合輕量使用</option>
-                <option value="gemma4:26b-a4b-it-q4_K_M">gemma4:26b — Google最大模型，回應豐富但較慢</option>
-                <option value="qwen2.5:latest">qwen2.5:latest — 通用版本</option>
-                <option value="llama3:8b">llama3:8b — Meta Llama 3，英文推理較強</option>
-                <option value="llava:latest">llava:latest — 視覺語言，支援圖片輸入</option>
-                <option value="deepseek-coder:latest">deepseek-coder — 程式碼專用，不建議用於馬達控制</option>
+                <option value="qwen2.5:14b">⭐ AI 模型 A（推薦，指令最準）</option>
+                <option value="qwen2.5vl:7b">AI 模型 B（速度快，輕量）</option>
+                <option value="gemma4:26b-a4b-it-q4_K_M">AI 模型 C（大型，回應豐富）</option>
+                <option value="qwen2.5:latest">AI 模型 D（通用）</option>
+                <option value="llama3:8b">AI 模型 E（英文推理）</option>
+                <option value="llava:latest">AI 模型 F（支援圖片）</option>
+                <option value="deepseek-coder:latest">AI 模型 G（程式碼）</option>
             </select>
-            <p class="text-[9px] text-slate-500 leading-relaxed mt-0.5">
-                ⚠️ 各模型為獨立預訓練模型，互不影響，不共享訓練資料。<br>
-                對話結束後不保留記憶，切換模型不會互相學習。
-            </p>
         </div>
 
         <div class="flex gap-2 mt-1">
