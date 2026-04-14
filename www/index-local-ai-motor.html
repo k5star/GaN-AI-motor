@@ -47,7 +47,7 @@
         <button onclick="showAISettings()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
             🔑 AI設定
         </button>
-        <button onclick="toggleAIPanel()" class="bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
+        <button onclick="document.getElementById('aiInput').focus();document.getElementById('aiInput').scrollIntoView({behavior:'smooth'})" class="bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
             ✨ AI控制
         </button>
         <button id="connectBtn" onclick="toggleConnect()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-2">
@@ -183,7 +183,7 @@
         </div>
     </div>
 
-    <!-- Right: Alarm + Cards + Log -->
+    <!-- Right: Alarm + AI Chat + Cards + Log -->
     <div class="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden">
 
         <!-- Alarm -->
@@ -197,12 +197,42 @@
             </div>
         </div>
 
+        <!-- ── AI 語音控制（內嵌）── -->
+        <div class="bg-slate-800 rounded-xl border border-purple-500/40 shadow-lg flex flex-col shrink-0" style="height:220px">
+            <div class="flex justify-between items-center px-3 py-1.5 border-b border-slate-700 shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-purple-300">✨ AI 馬達控制</span>
+                    <span id="aiModelBadge" class="text-[9px] text-slate-500 font-mono"></span>
+                </div>
+                <button onclick="showAISettings()" class="text-slate-500 hover:text-purple-400 text-[10px] transition">⚙️設定</button>
+            </div>
+            <div id="aiChatLog" class="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1 text-[11px]">
+                <div class="text-slate-600 text-center text-[10px] mt-2">
+                    說出或輸入指令，例如：<br>
+                    「左轉30秒後右轉30秒」<br>
+                    「1500轉啟動」／「停止」
+                </div>
+            </div>
+            <div class="p-2 border-t border-slate-700 shrink-0 flex gap-1.5">
+                <input id="aiInput"
+                       class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-purple-500"
+                       placeholder="輸入指令...">
+                <button onclick="startVoiceInput()" id="voiceBtn"
+                        class="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1.5 rounded-lg text-xs font-bold transition"
+                        title="語音輸入（Chrome）">🎙️</button>
+                <button onclick="sendAIMessage()"
+                        class="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1.5 rounded-lg text-xs font-bold transition">
+                    送出
+                </button>
+            </div>
+        </div>
+
         <!-- Data Cards -->
         <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg flex-1 overflow-y-auto p-1" id="cardContainer"></div>
 
         <!-- TX/RX Log -->
-        <div class="bg-black/40 rounded-lg border border-slate-700 p-2 h-48 shrink-0 font-mono text-[9px] overflow-y-auto" id="logContent">
-            <div class="text-slate-600 text-center mt-6">TX/RX Log — Modbus RTU Binary</div>
+        <div class="bg-black/40 rounded-lg border border-slate-700 p-2 h-28 shrink-0 font-mono text-[9px] overflow-y-auto" id="logContent">
+            <div class="text-slate-600 text-center mt-3">TX/RX Log — Modbus RTU Binary</div>
         </div>
     </div>
 
@@ -317,35 +347,6 @@
     </div>
 </div>
 
-<!-- ── AI CHAT PANEL ── -->
-<div id="aiPanel" class="hidden fixed bottom-4 right-4 z-40 w-80 bg-slate-800 border border-purple-500/40 rounded-xl shadow-2xl flex flex-col" style="max-height:440px">
-    <div class="flex justify-between items-center px-4 py-2 border-b border-slate-700 shrink-0">
-        <div class="flex flex-col">
-            <span class="text-xs font-bold text-purple-300">✨ AI 馬達控制</span>
-            <span id="aiModelBadge" class="text-[9px] text-slate-500 font-mono"></span>
-        </div>
-        <button onclick="toggleAIPanel()" class="text-slate-400 hover:text-white text-sm leading-none">✕</button>
-    </div>
-    <div id="aiChatLog" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 text-[11px]" style="min-height:220px">
-        <div class="text-slate-600 text-center text-[10px] mt-4">
-            說出或輸入指令，例如：<br>
-            「轉速 1000 正轉啟動」<br>
-            「停止」／「清除故障」
-        </div>
-    </div>
-    <div class="p-3 border-t border-slate-700 shrink-0 flex gap-2">
-        <input id="aiInput"
-               class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-purple-500"
-               placeholder="輸入指令...">
-        <button onclick="startVoiceInput()" id="voiceBtn"
-                class="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1.5 rounded-lg text-xs font-bold transition"
-                title="語音輸入（Chrome）">🎙️</button>
-        <button onclick="sendAIMessage()"
-                class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
-            送出
-        </button>
-    </div>
-</div>
 
 <script>
 // ===================================================================
@@ -806,19 +807,25 @@ let aiConfig = {
     model:   localStorage.getItem('aiModel')   || 'qwen2.5:14b'
 };
 
-const AI_SYSTEM_PROMPT = `你是GaN馬達控制AI。只輸出JSON，不輸出其他文字。
-單一動作格式：{"action":"動作","params":{...},"reply":"繁體中文說明"}
-序列動作格式：{"action":"sequence","params":{"steps":[{"action":"...","params":{...},"delay":毫秒},...]}, "reply":"說明"}
+const AI_SYSTEM_PROMPT = `你是GaN馬達控制AI。必須只輸出JSON，絕對不輸出任何其他文字或說明。
+回應格式（擇一）：
+單一動作：{"action":"動作","params":{...},"reply":"繁體中文說明"}
+序列動作：{"action":"sequence","params":{"steps":[{"action":"...","params":{...},"delay":毫秒},{"action":"...","params":{...},"delay":毫秒}]},"reply":"說明"}
+
 可用action：
-- run: 啟動（params: rpm 0-3000, dir CW|CCW）
-- stop: 停止
-- setSpeed: 設轉速 rpm
-- setDir: 設方向 dir:CW|CCW
-- setAcc: 設加速時間 ms
-- setDec: 設減速時間 ms
-- alarmReset: 清除故障
-- none: 僅回覆
-安全：rpm最大3000，序列步驟delay單位毫秒。`;
+- run: 啟動（params: {rpm:0-3000, dir:"CW"|"CCW"}）
+- stop: 停止（params: {}）
+- setSpeed: 設轉速（params: {rpm:0-3000}）
+- setDir: 設方向（params: {dir:"CW"|"CCW"}）
+- setAcc: 設加速時間（params: {ms:毫秒}）
+- setDec: 設減速時間（params: {ms:毫秒}）
+- alarmReset: 清除故障（params: {}）
+- none: 僅回覆（params: {}）
+
+範例「左轉30秒後右轉30秒」：
+{"action":"sequence","params":{"steps":[{"action":"run","params":{"dir":"CCW","rpm":1500},"delay":0},{"action":"stop","params":{},"delay":30000},{"action":"run","params":{"dir":"CW","rpm":1500},"delay":2000},{"action":"stop","params":{},"delay":30000}]},"reply":"先CCW轉30秒，再CW轉30秒"}
+
+安全：rpm最大3000，delay單位毫秒。`;
 
 function showAISettings() {
     document.getElementById('aiBaseUrlInput').value = aiConfig.baseUrl;
@@ -839,16 +846,18 @@ function saveAISettings() {
     aiLog('系統', `✓ 設定已儲存，使用模型：${aiConfig.model}`, '#a78bfa');
 }
 
+// 頁面載入後顯示 model badge
+window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
+});
+
 function toggleAIPanel() {
-    const p = document.getElementById('aiPanel');
-    p.classList.toggle('hidden');
-    if (!p.classList.contains('hidden')) {
-        document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
-        if (!aiConfig.apiKey) {
-            aiLog('系統', '⚠️ 請先點「🔑 AI設定」填入 API Key', '#fbbf24');
-        }
-        document.getElementById('aiInput').focus();
+    // AI 已內嵌於頁面，直接 focus 輸入框
+    document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
+    if (!aiConfig.apiKey) {
+        aiLog('系統', '⚠️ 請先點「⚙️設定」填入 API Key', '#fbbf24');
     }
+    document.getElementById('aiInput').focus();
 }
 
 function aiLog(role, msg, color='#e2e8f0') {
@@ -896,7 +905,8 @@ async function sendAIMessage() {
                     { role: 'user',   content: fullMsg }
                 ],
                 max_tokens: 1024,
-                temperature: 0.1
+                temperature: 0.1,
+                response_format: { type: 'json_object' }
             })
         });
 
@@ -908,11 +918,19 @@ async function sendAIMessage() {
 
         let parsed;
         try {
-            const jsonStr = content.match(/\{[\s\S]*\}/)?.[0] || content;
-            parsed = JSON.parse(jsonStr);
+            // response_format:json_object 保證純JSON，直接解析
+            parsed = JSON.parse(content);
         } catch {
-            aiLog('AI', content, '#c4b5fd');
-            return;
+            // fallback：從文字中擷取最長的 {...}
+            const candidates = [];
+            let depth = 0, start = -1;
+            for (let i = 0; i < content.length; i++) {
+                if (content[i] === '{') { if (depth === 0) start = i; depth++; }
+                else if (content[i] === '}') { depth--; if (depth === 0 && start >= 0) { candidates.push(content.slice(start, i+1)); start = -1; } }
+            }
+            const best = candidates.sort((a,b) => b.length - a.length)[0];
+            try { parsed = JSON.parse(best); }
+            catch { aiLog('AI', `⚠️ 模型未返回JSON：${content.slice(0,120)}`, '#f87171'); return; }
         }
 
         aiLog('AI', parsed.reply || '執行中...', '#c4b5fd');
@@ -959,6 +977,21 @@ async function executeAIAction(cmd) {
         case 'alarmReset':
             await alarmReset();
             break;
+        case 'sequence': {
+            const steps = params.steps || [];
+            aiLog('系統', `▶ 序列執行：共 ${steps.length} 步`, '#a78bfa');
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                aiLog('系統', `步驟 ${i+1}/${steps.length}：${step.action} ${JSON.stringify(step.params||{})}`, '#94a3b8');
+                await executeAIAction(step);
+                if (step.delay && step.delay > 0) {
+                    aiLog('系統', `⏱ 等待 ${step.delay/1000} 秒...`, '#64748b');
+                    await new Promise(r => setTimeout(r, step.delay));
+                }
+            }
+            aiLog('系統', '✅ 序列完成', '#34d399');
+            break;
+        }
         case 'none':
         default:
             break;
