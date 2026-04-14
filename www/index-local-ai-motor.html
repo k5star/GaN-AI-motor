@@ -931,12 +931,12 @@ window.addEventListener('DOMContentLoaded', () => {
 // ===================================================================
 // 登入驗證 (SHA-256，hash = k5star:k5star)
 // ===================================================================
-const AUTH_HASH = '06e6e17f7526cbca536c7103a0084b56c048c355a4be7e2c8fd0f0c63cc42a7b';
+const AUTH_HASH = '9589e0b6cb59086872c8c7a6b13cfb6e172029db6bce3f447ca1e35cb2e922b2';
 
 async function doLogin() {
     const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value;
-    const raw  = user + ':' + pass;
+    const raw  = user + ':' + pass + ':GaNM0t0r#2025';
     const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
     const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 

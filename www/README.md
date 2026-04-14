@@ -29,9 +29,7 @@ https://k5star.github.io/GaN-AI-motor/www/index-local-ai-motor.html
 
 ## 登入
 
-| 帳號 | 密碼 |
-|------|------|
-| `k5star` | `k5star` |
+帳號密碼由管理員私下提供，不公開於此文件。
 
 - 勾選「記住我」→ 下次開啟自動登入（存於 localStorage）
 - 未勾選 → 關閉分頁後需重新登入（sessionStorage）
