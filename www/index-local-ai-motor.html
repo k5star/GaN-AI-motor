@@ -26,9 +26,56 @@
             #aiInput { font-size: 16px; } /* 防止 iOS 自動縮放 */
         }
         details > summary::-webkit-details-marker { display: none; }
+        /* 登入遮罩 */
+        #loginOverlay {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            display: flex; align-items: center; justify-content: center;
+        }
+        #loginOverlay.hidden { display: none; }
+        #loginBox {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 16px; padding: 36px 32px; width: 320px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+        }
+        #loginBox input {
+            width: 100%; background: #0f172a; border: 1px solid #334155;
+            border-radius: 8px; padding: 10px 14px; color: white;
+            font-size: 14px; outline: none; box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        #loginBox input:focus { border-color: #7c3aed; }
+        #loginBox input.error { border-color: #ef4444; animation: shake 0.3s ease; }
+        @keyframes shake {
+            0%,100%{ transform:translateX(0); }
+            25%{ transform:translateX(-6px); }
+            75%{ transform:translateX(6px); }
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans flex flex-col md:h-screen md:overflow-hidden overflow-y-auto">
+
+<!-- ── 登入遮罩 ── -->
+<div id="loginOverlay">
+    <div id="loginBox">
+        <div class="flex flex-col items-center mb-6 gap-2">
+            <div class="w-12 h-12 bg-gradient-to-br from-purple-600 to-emerald-600 rounded-xl flex items-center justify-center text-2xl shadow-lg">⚡</div>
+            <h1 class="text-white font-bold text-lg tracking-tight">GaN Motor Control</h1>
+            <p class="text-slate-500 text-xs">請登入以繼續</p>
+        </div>
+        <div class="flex flex-col gap-3">
+            <input id="loginUser" type="text" placeholder="帳號" autocomplete="username"
+                   onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+            <input id="loginPass" type="password" placeholder="密碼" autocomplete="current-password"
+                   onkeydown="if(event.key==='Enter')doLogin()">
+            <button onclick="doLogin()"
+                    class="w-full bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm transition mt-1">
+                登入
+            </button>
+            <p id="loginErr" class="text-red-400 text-xs text-center hidden">帳號或密碼錯誤</p>
+        </div>
+    </div>
+</div>
 
 <!-- ── NAV ── -->
 <nav class="border-b border-slate-700 px-3 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md shrink-0 h-12 md:h-14">
@@ -861,7 +908,41 @@ function saveAISettings() {
 // 頁面載入後顯示 model badge
 window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
+    // 檢查登入 session
+    if (sessionStorage.getItem('auth') === 'ok') {
+        document.getElementById('loginOverlay').classList.add('hidden');
+    } else {
+        setTimeout(() => document.getElementById('loginUser').focus(), 100);
+    }
 });
+
+// ===================================================================
+// 登入驗證 (SHA-256，hash = k5star:k5star)
+// ===================================================================
+const AUTH_HASH = '06e6e17f7526cbca536c7103a0084b56c048c355a4be7e2c8fd0f0c63cc42a7b';
+
+async function doLogin() {
+    const user = document.getElementById('loginUser').value.trim();
+    const pass = document.getElementById('loginPass').value;
+    const raw  = user + ':' + pass;
+    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+
+    if (hash === AUTH_HASH) {
+        sessionStorage.setItem('auth', 'ok');
+        document.getElementById('loginOverlay').classList.add('hidden');
+    } else {
+        // 錯誤動畫
+        ['loginUser','loginPass'].forEach(id => {
+            const el = document.getElementById(id);
+            el.classList.add('error');
+            setTimeout(() => el.classList.remove('error'), 400);
+        });
+        document.getElementById('loginErr').classList.remove('hidden');
+        document.getElementById('loginPass').value = '';
+        setTimeout(() => document.getElementById('loginErr').classList.add('hidden'), 2500);
+    }
+}
 
 function toggleAIPanel() {
     // AI 已內嵌於頁面，直接 focus 輸入框
