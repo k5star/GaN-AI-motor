@@ -1,0 +1,19 @@
+# Python 虛擬環境
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node.js
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code 內部設定
+.claude/
+
+# 系統檔
+.DS_Store
+Thumbs.db

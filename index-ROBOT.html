@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GaN Motor ROBOT Platform - RTU</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .value-glow { text-shadow: 0 0 8px rgba(52,211,153,0.6); transition: color 0.2s; }
+        .alarm-active { animation: pulse-red 2s infinite; border-color:#ef4444!important; background:rgba(127,29,29,0.2); }
+        @keyframes pulse-red {
+            0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+            70%  { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+            100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        }
+        .sto-safe    { background:rgba(16,185,129,0.15); border-color:#10b981; }
+        .sto-tripped { background:rgba(239,68,68,0.15);  border-color:#ef4444; animation: pulse-red 1s infinite; }
+        input[type=range]{ -webkit-appearance:none; background:transparent; }
+        input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; height:16px; width:16px; border-radius:50%; background:#34d399; margin-top:-6px; cursor:pointer; }
+        input[type=range]::-webkit-slider-runnable-track{ width:100%; height:4px; cursor:pointer; background:#334155; border-radius:2px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+
+<!-- ── NAV ── -->
+<nav class="border-b border-slate-700 px-4 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md h-14 shrink-0">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-lg flex items-center justify-center font-bold text-white shadow text-lg">🤖</div>
+        <div>
+            <h1 class="text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-emerald-400">ROBOT</span></h1>
+            <p id="navSubtitle" class="text-[10px] text-slate-500 font-mono -mt-1">ID:1 | 115200 8N1 | Modbus RTU | 1400h NET-IO</p>
+        </div>
+    </div>
+    <div class="flex gap-2 items-center">
+        <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2">
+            <button id="recBtn" onclick="toggleRecord()" class="px-3 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+                <span class="w-2 h-2 rounded-full bg-red-500 opacity-50" id="recDot"></span> REC
+            </button>
+            <div class="h-4 w-[1px] bg-slate-600 mx-1"></div>
+            <span id="recCount" class="text-[10px] font-mono w-12 text-center text-slate-500">0</span>
+            <button onclick="downloadCSV()" id="dlBtn" class="px-2 py-1 text-xs text-slate-500 hover:text-emerald-400 disabled:opacity-30" disabled>📥</button>
+        </div>
+        <button onclick="showAnalysis()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">
+            📊 分析
+        </button>
+        <button id="connectBtn" onclick="toggleConnect()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-2">
+            🔌 連線
+        </button>
+    </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="flex-1 p-3 grid grid-cols-12 gap-3 overflow-hidden">
+
+    <!-- Left: Chart + Controls -->
+    <div class="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full overflow-hidden">
+
+        <!-- Chart -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg relative flex flex-col h-[35%] shrink-0">
+            <div class="absolute top-2 left-3 z-10 flex gap-2">
+                <select id="selectY1" class="bg-slate-900/80 border border-emerald-500/30 rounded px-1 py-0.5 text-[10px] text-emerald-400 outline-none"></select>
+                <select id="selectY2" class="bg-slate-900/80 border border-amber-500/30 rounded px-1 py-0.5 text-[10px] text-amber-400 outline-none"></select>
+            </div>
+            <div class="flex-1 w-full relative"><canvas id="liveChart"></canvas></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg p-4 flex-1 overflow-y-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    🤖 ROBOT 控制
+                    <span id="cmdStatus" class="text-[10px] text-slate-500 font-normal normal-case">Ready — Modbus RTU ID=1 | 1400h NET-IO</span>
+                </h2>
+                <div class="flex gap-2">
+                    <button onclick="alarmReset()" class="bg-amber-700/50 hover:bg-amber-600 text-amber-200 border border-amber-600/50 px-3 py-1 rounded text-xs font-bold transition">
+                        ⚠️ 清除故障
+                    </button>
+                </div>
+            </div>
+
+            <!-- STO Safety Status -->
+            <div class="grid grid-cols-2 gap-2 mb-3" id="stoPanel">
+                <div class="border rounded-lg p-2 flex items-center gap-2 transition-all sto-safe" id="sto1Box">
+                    <span class="text-lg" id="sto1Icon">🟢</span>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-300">STO1</div>
+                        <div class="text-[9px] font-mono text-slate-400" id="sto1Txt">等待連線</div>
+                    </div>
+                </div>
+                <div class="border rounded-lg p-2 flex items-center gap-2 transition-all sto-safe" id="sto2Box">
+                    <span class="text-lg" id="sto2Icon">🟢</span>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-300">STO2</div>
+                        <div class="text-[9px] font-mono text-slate-400" id="sto2Txt">等待連線</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                <!-- Run/Stop 1400h -->
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col items-center justify-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase">主控開關</span>
+                        <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400">NET-IO 1400h</span>
+                    </div>
+                    <div class="flex gap-2 w-full">
+                        <button onclick="runMotor()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold shadow-lg active:translate-y-0.5 transition">
+                            ▶ RUN
+                        </button>
+                        <button onclick="stopMotor()" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-3 rounded-lg font-bold shadow-lg active:translate-y-0.5 transition">
+                            ⏹ STOP
+                        </button>
+                    </div>
+                    <div class="w-full h-[1px] bg-slate-700"></div>
+                    <div class="w-full flex justify-between items-center px-1">
+                        <span class="text-[10px] text-slate-400">轉向 (1400h Bit1)</span>
+                        <div class="flex bg-slate-800 rounded p-0.5 border border-slate-600">
+                            <button onclick="setDir('CW')"  id="dirCW"  class="px-2 py-0.5 text-[10px] rounded bg-emerald-600 text-white transition">CW ↻</button>
+                            <button onclick="setDir('CCW')" id="dirCCW" class="px-2 py-0.5 text-[10px] rounded text-slate-400 hover:text-white transition">CCW ↺</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Speed 3F08h -->
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col gap-2">
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase">目標轉速</span>
+                            <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400 ml-1">RAM 3F08h</span>
+                        </div>
+                        <span id="targetRpmDisp" class="text-xl font-mono font-bold text-emerald-400">0 <span class="text-xs text-slate-500">RPM</span></span>
+                    </div>
+                    <input type="range" id="rpmSlider" min="0" max="3000" step="10" value="0"
+                           class="w-full"
+                           oninput="updateRpmDisplay(this.value)"
+                           onchange="sendSpeedRAM(parseInt(this.value))">
+                    <div class="flex justify-between text-[9px] text-slate-600 font-mono">
+                        <span>0</span><span onclick="setRpm(0)" class="cursor-pointer hover:text-white">STOP</span><span>3000</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1 mt-1">
+                        <button onclick="setRpm(300)"  class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">300</button>
+                        <button onclick="setRpm(500)"  class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">500</button>
+                        <button onclick="setRpm(1000)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">1000</button>
+                        <button onclick="setRpm(3000)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">3000</button>
+                    </div>
+                </div>
+
+                <!-- Acc/Dec RAM -->
+                <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700 flex flex-col gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase">加減速 (ms)</span>
+                        <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400">RAM</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] w-14 text-slate-400 shrink-0">加速 4000h</label>
+                        <input type="number" id="accVal" value="2000" min="1" max="60000"
+                               class="bg-slate-800 border border-slate-600 rounded w-20 px-1 text-xs text-center focus:border-emerald-500 outline-none text-white">
+                        <button onclick="sendCmd(0x4000, parseInt(document.getElementById('accVal').value))"
+                                class="bg-slate-700 hover:bg-emerald-700 text-emerald-400 px-2 py-0.5 rounded text-[10px]">SET</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] w-14 text-slate-400 shrink-0">減速 4008h</label>
+                        <input type="number" id="decVal" value="2000" min="1" max="60000"
+                               class="bg-slate-800 border border-slate-600 rounded w-20 px-1 text-xs text-center focus:border-emerald-500 outline-none text-white">
+                        <button onclick="sendCmd(0x4008, parseInt(document.getElementById('decVal').value))"
+                                class="bg-slate-700 hover:bg-emerald-700 text-emerald-400 px-2 py-0.5 rounded text-[10px]">SET</button>
+                    </div>
+                    <div class="mt-auto text-[9px] text-slate-500 leading-tight">
+                        * 單位: ms（A_HMI 顯示同步）<br>
+                        * 預設 2000ms
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Alarm + Cards + Log -->
+    <div class="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden">
+
+        <!-- Alarm -->
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0" id="alarmBox">
+            <div class="flex items-center gap-3">
+                <div id="alarmIcon" class="text-2xl grayscale transition-all">⚪</div>
+                <div class="overflow-hidden">
+                    <p id="alarmStatus" class="text-sm font-bold text-slate-300">等待連線</p>
+                    <p id="alarmDetail" class="text-[10px] text-slate-500 font-mono truncate">馬達狀態: --</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Cards -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg flex-1 overflow-y-auto p-1" id="cardContainer"></div>
+
+        <!-- TX/RX Log -->
+        <div class="bg-black/40 rounded-lg border border-slate-700 p-2 h-48 shrink-0 font-mono text-[9px] overflow-y-auto" id="logContent">
+            <div class="text-slate-600 text-center mt-6">TX/RX Log — Modbus RTU Binary</div>
+        </div>
+    </div>
+
+</main>
+
+<!-- ── ANALYSIS MODAL ── -->
+<div id="analysisModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-800 rounded-xl border border-slate-600 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
+        <div class="flex justify-between items-center px-5 py-3 border-b border-slate-700 shrink-0">
+            <h2 class="text-base font-bold text-slate-200">📊 離線數據分析</h2>
+            <button onclick="closeAnalysis()" class="text-slate-400 hover:text-white text-xl leading-none">✕</button>
+        </div>
+        <div class="px-5 py-3 border-b border-slate-700 shrink-0 flex items-center gap-3 flex-wrap">
+            <label class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition select-none">
+                📂 載入 CSV
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="loadCSV(this)">
+            </label>
+            <span id="csvFileName" class="text-xs text-slate-500 font-mono">未載入檔案</span>
+            <span id="qualityBadge" class="hidden text-xs font-bold px-2 py-0.5 rounded"></span>
+        </div>
+        <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+            <div id="qualityReport" class="hidden bg-slate-900/60 rounded-lg border border-slate-700 p-4 text-xs font-mono"></div>
+            <div id="anaChartArea" class="hidden bg-slate-900/60 rounded-lg border border-slate-700 p-3">
+                <div class="flex gap-3 items-center mb-2">
+                    <label class="text-[10px] text-slate-400">繪圖欄位</label>
+                    <select id="anaChartSel" class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-emerald-400 outline-none"></select>
+                </div>
+                <div class="h-52 relative"><canvas id="anaChartCanvas"></canvas></div>
+            </div>
+            <div id="anaStatsArea" class="hidden">
+                <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">統計摘要（有效行）</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[10px] font-mono border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-700 text-slate-500 text-right">
+                                <th class="text-left p-1.5">欄位</th>
+                                <th class="p-1.5">最小值</th><th class="p-1.5">最大值</th>
+                                <th class="p-1.5">平均值</th><th class="p-1.5">標準差</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anaStatsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── CONNECTION MODAL ── -->
+<div id="connModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;align-items:center;justify-content:center;">
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:320px;text-align:center;">
+        <div style="font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:16px;">選擇連線方式</div>
+        <button onclick="modalChoose(true)"  style="width:100%;margin-bottom:8px;padding:10px;border-radius:8px;background:#065f46;color:white;font-weight:700;border:none;cursor:pointer;font-size:13px;">
+            🔌 Web Serial (USB / COM 埠)
+        </button>
+        <button onclick="modalChoose(false)" style="width:100%;margin-bottom:8px;padding:10px;border-radius:8px;background:#134e4a;color:white;font-weight:700;border:none;cursor:pointer;font-size:13px;">
+            📡 Web Bluetooth BLE (HM-10)
+        </button>
+        <button onclick="hideConnModal()" style="width:100%;padding:8px;border-radius:8px;background:#1e293b;color:#94a3b8;font-size:12px;border:1px solid #334155;cursor:pointer;">
+            取消
+        </button>
+    </div>
+</div>
+
+<script>
+// ===================================================================
+// 暫存器位址定義 (Modbus RTU, Slave ID=1)
+// ===================================================================
+const SLAVE_ID = 1;
+
+const REG = {
+    NET_IO:   0x1400,
+    SPD_RAM0: 0x3F08,
+    SPD_RAM1: 0x3F09,
+    SPD_RAM2: 0x3F0A,
+    SPD_RAM3: 0x3F0B,
+    ACC_RAM0: 0x4000,
+    DEC_RAM0: 0x4008,
+    ALM_RST:  0x0A00,
+    CFG_CMD:  0x0A27,
+};
+
+const BIT = {
+    START_STOP: 0x01,
+    CCW_CW:     0x02,
+    ALM_RST:    0x04,
+    STOP_MODE:  0x08,
+};
+
+const MOTOR_STATUS = {
+    0: { txt:'STOP',      icon:'⬛', clr:'text-slate-400' },
+    2: { txt:'RUN',       icon:'🟢', clr:'text-emerald-400' },
+    3: { txt:'EBRAKE',    icon:'🟠', clr:'text-orange-400' },
+    4: { txt:'FREE',      icon:'⚪', clr:'text-slate-400' },
+    5: { txt:'FAULT',     icon:'🔴', clr:'text-red-400' },
+    6: { txt:'INHIBIT',   icon:'🟡', clr:'text-yellow-400' },
+    7: { txt:'SERVO-ON',  icon:'🟣', clr:'text-purple-400' },
+    8: { txt:'POS-KEEP',  icon:'🔵', clr:'text-blue-400' },
+};
+
+// Dynamic Data 0x0000~0x000F
+const motorDataConfig = [
+    { id:'D00', addr:0x0000, name:'馬達狀態',   unit:'',    scale:1,    note:'0=STOP 2=RUN 5=FAULT' },
+    { id:'D01', addr:0x0001, name:'指令轉速',   unit:'RPM', scale:1,    note:'' },
+    { id:'D02', addr:0x0002, name:'實際轉速',   unit:'RPM', scale:1,    note:'' },
+    { id:'D03', addr:0x0003, name:'Alarm No.',  unit:'',    scale:1,    note:'' },
+    { id:'D04', addr:0x0004, name:'轉向',       unit:'',    scale:1,    note:'0=CW 1=CCW' },
+    { id:'D05', addr:0x0005, name:'目標轉速',   unit:'RPM', scale:1,    note:'' },
+    { id:'D06', addr:0x0006, name:'保留',       unit:'',    scale:1,    note:'' },
+    { id:'D07', addr:0x0007, name:'輸出功率',   unit:'W',   scale:1,    note:'' },
+    { id:'D08', addr:0x0008, name:'I/O 狀態',  unit:'bit', scale:1,    note:'bit格式' },
+    { id:'D09', addr:0x0009, name:'BUS 電壓',  unit:'V',   scale:0.01, note:'輸入電源電壓' },
+    { id:'D10', addr:0x000A, name:'保留',       unit:'',    scale:1,    note:'' },
+    { id:'D11', addr:0x000B, name:'輸出Duty',  unit:'%',   scale:0.1,  note:'' },
+    { id:'D12', addr:0x000C, name:'輸出電流',  unit:'A',   scale:0.01, note:'' },
+    { id:'D13', addr:0x000D, name:'保留',       unit:'',    scale:1,    note:'' },
+    { id:'D14', addr:0x000E, name:'保留',       unit:'',    scale:1,    note:'' },
+    { id:'D15', addr:0x000F, name:'保留',       unit:'',    scale:1,    note:'' },
+];
+
+// ===================================================================
+// 狀態變數
+// ===================================================================
+let port, reader;
+const HM10_SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const HM10_CHAR    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const NUS_SERVICE  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX_CHAR  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX_CHAR  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+let bleDevice=null, bleServer=null, bleRxChar=null, bleTxChar=null, bleMode=null, hm10Char=null;
+
+let connectionType = null;   // 'serial' | 'ble'
+let isConnected    = false;
+let keepReading    = false;
+let pollTimer      = null;
+let currentDir     = 'CW';
+let currentValues  = new Array(16).fill(0);
+let isRecording    = false;
+let logData        = [];
+
+// RTU 二進位接收緩衝
+let rtuBuffer = new Uint8Array(256);
+let rtuBufLen = 0;
+
+// BLE 發送佇列
+let bleQueue = [], bleQueueRunning = false;
+
+const VALID_STATUS = new Set([0,2,3,4,5,6,7,8]);
+
+// ===================================================================
+// CRC16 (Modbus)
+// ===================================================================
+function crc16(data) {
+    let crc = 0xFFFF;
+    for (const b of data) {
+        crc ^= b;
+        for (let i = 0; i < 8; i++) {
+            crc = (crc & 1) ? (crc >>> 1) ^ 0xA001 : crc >>> 1;
+        }
+    }
+    return crc;
+}
+
+// ===================================================================
+// RTU 封包建構
+// ===================================================================
+function buildFC03(slaveId, startAddr, qty) {
+    const buf = new Uint8Array([
+        slaveId, 0x03,
+        (startAddr >> 8) & 0xFF, startAddr & 0xFF,
+        (qty >> 8) & 0xFF, qty & 0xFF,
+        0, 0
+    ]);
+    const c = crc16(buf.slice(0, 6));
+    buf[6] = c & 0xFF; buf[7] = (c >> 8) & 0xFF;
+    return buf;
+}
+
+function buildFC06(slaveId, addr, value) {
+    let v = Math.round(Number(value));
+    if (v < 0) v = (0xFFFF + v + 1) & 0xFFFF;
+    v &= 0xFFFF;
+    const buf = new Uint8Array([
+        slaveId, 0x06,
+        (addr >> 8) & 0xFF, addr & 0xFF,
+        (v >> 8) & 0xFF, v & 0xFF,
+        0, 0
+    ]);
+    const c = crc16(buf.slice(0, 6));
+    buf[6] = c & 0xFF; buf[7] = (c >> 8) & 0xFF;
+    return buf;
+}
+
+function hex(buf) {
+    return Array.from(buf).map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ');
+}
+
+// ===================================================================
+// RTU 封包解析
+// ===================================================================
+function tryParseRTU() {
+    let safety = 0;
+    while (rtuBufLen > 0 && safety++ < 10) {
+        // 確保第一個位元組是 Slave ID
+        if (rtuBuffer[0] !== SLAVE_ID) {
+            let found = -1;
+            for (let i = 1; i < rtuBufLen; i++) {
+                if (rtuBuffer[i] === SLAVE_ID) { found = i; break; }
+            }
+            if (found > 0) { rtuBuffer.copyWithin(0, found); rtuBufLen -= found; }
+            else { rtuBufLen = 0; }
+            continue;
+        }
+
+        if (rtuBufLen < 2) break;
+        const fc = rtuBuffer[1];
+
+        // FC03 回應: [ID][03][ByteCount=32][32 bytes data][CRC_L][CRC_H] = 37 bytes
+        if (fc === 0x03) {
+            if (rtuBufLen < 5) break;
+            const byteCount = rtuBuffer[2];
+            const totalLen  = 3 + byteCount + 2;
+            if (rtuBufLen < totalLen) break;
+            const frame = rtuBuffer.slice(0, totalLen);
+            const dataCRC  = crc16(frame.slice(0, totalLen - 2));
+            const frameCRC = frame[totalLen - 2] | (frame[totalLen - 1] << 8);
+            if (dataCRC === frameCRC) {
+                parseFC03Response(frame, byteCount);
+                rtuBuffer.copyWithin(0, totalLen);
+                rtuBufLen -= totalLen;
+            } else {
+                log("RX", `CRC錯誤 FC03 [${hex(frame.slice(0,6))}...]`, "text-red-600");
+                rtuBuffer.copyWithin(0, 1); rtuBufLen -= 1;
+            }
+            continue;
+        }
+
+        // FC06 echo: [ID][06][AH][AL][VH][VL][CRC_L][CRC_H] = 8 bytes
+        if (fc === 0x06) {
+            if (rtuBufLen < 8) break;
+            const frame = rtuBuffer.slice(0, 8);
+            const dataCRC  = crc16(frame.slice(0, 6));
+            const frameCRC = frame[6] | (frame[7] << 8);
+            if (dataCRC === frameCRC) {
+                const addr = (frame[2] << 8) | frame[3];
+                const val  = (frame[4] << 8) | frame[5];
+                log("RX", `✓ FC06 Echo  0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`, "text-emerald-400");
+            } else {
+                log("RX", `CRC錯誤 FC06`, "text-red-600");
+            }
+            rtuBuffer.copyWithin(0, 8); rtuBufLen -= 8;
+            continue;
+        }
+
+        // 例外回應 (FC | 0x80): [ID][FC+0x80][ExCode][CRC_L][CRC_H] = 5 bytes
+        if (fc & 0x80) {
+            if (rtuBufLen < 5) break;
+            const frame = rtuBuffer.slice(0, 5);
+            const dataCRC  = crc16(frame.slice(0, 3));
+            const frameCRC = frame[3] | (frame[4] << 8);
+            if (dataCRC === frameCRC) {
+                const ERR = {1:'Illegal Function',2:'Illegal Address',3:'Illegal Value',4:'Device Failure'};
+                log("ERR", `Exception FC=${(fc&0x7F).toString(16)} Code=0x${frame[2].toString(16).toUpperCase()} ${ERR[frame[2]]||''}`, "text-red-400");
+            }
+            rtuBuffer.copyWithin(0, 5); rtuBufLen -= 5;
+            continue;
+        }
+
+        // 未知 FC，跳過一個位元組重新同步
+        rtuBuffer.copyWithin(0, 1); rtuBufLen -= 1;
+    }
+}
+
+function parseFC03Response(frame, byteCount) {
+    const dataBytes = byteCount;
+    const regCount  = Math.floor(dataBytes / 2);
+    const now = new Date();
+    let rowObj = { time: now.toLocaleTimeString(), timestamp: now.getTime() };
+
+    for (let i = 0; i < Math.min(regCount, 16); i++) {
+        let v = (frame[3 + i*2] << 8) | frame[4 + i*2];
+        if (v > 32767) v -= 65536;
+        currentValues[i] = v;
+        rowObj[`d${i}`] = (v * motorDataConfig[i].scale).toFixed(2);
+    }
+    updateDashboard();
+    if (isRecording && VALID_STATUS.has(currentValues[0])) {
+        logData.push(rowObj);
+        document.getElementById('recCount').innerText = logData.length;
+    }
+}
+
+// ===================================================================
+// 圖表初始化
+// ===================================================================
+const ctx = document.getElementById('liveChart').getContext('2d');
+const liveChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: Array(60).fill(''),
+        datasets: [
+            { label:'Y1', borderColor:'#34d399', data:Array(60).fill(null), yAxisID:'y',  pointRadius:0, borderWidth:1.5, tension:0.2 },
+            { label:'Y2', borderColor:'#fbbf24', data:Array(60).fill(null), yAxisID:'y1', pointRadius:0, borderWidth:1.5, tension:0.2 }
+        ]
+    },
+    options: {
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{ legend:{ display:false } },
+        scales:{
+            x: { display:false },
+            y: { position:'left',  grid:{ color:'#1e293b' }, ticks:{ color:'#34d399', font:{size:9} }, border:{display:false} },
+            y1:{ position:'right', grid:{ display:false },   ticks:{ color:'#fbbf24', font:{size:9} }, border:{display:false} }
+        }
+    }
+});
+
+// ===================================================================
+// UI 初始化
+// ===================================================================
+(function initUI() {
+    const container = document.getElementById('cardContainer');
+    const s1 = document.getElementById('selectY1');
+    const s2 = document.getElementById('selectY2');
+    motorDataConfig.forEach((item, idx) => {
+        container.innerHTML += `
+            <div class="flex justify-between items-center p-2 border-b border-slate-700/50 hover:bg-slate-700/30 transition text-[10px]" id="card-${idx}">
+                <div class="flex flex-col">
+                    <span class="text-slate-600 font-mono">${item.id} 0x${item.addr.toString(16).toUpperCase().padStart(4,'0')}h</span>
+                    <span class="text-slate-300 font-bold">${item.name}</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-base font-mono font-bold text-white value-glow" id="val-${idx}">--</span>
+                    <span class="text-slate-500 text-[9px] ml-0.5">${item.unit}</span>
+                </div>
+            </div>`;
+        const opt = `<option value="${idx}">${item.name}</option>`;
+        s1.innerHTML += opt;
+        s2.innerHTML += opt;
+    });
+    s1.value = 2;   // 實際轉速
+    s2.value = 12;  // 輸出電流
+    [s1, s2].forEach(s => s.addEventListener('change', () => {
+        liveChart.data.datasets[0].label = motorDataConfig[s1.value].name;
+        liveChart.data.datasets[1].label = motorDataConfig[s2.value].name;
+    }));
+})();
+
+// ===================================================================
+// 連線管理
+// ===================================================================
+async function toggleConnect() {
+    if (isConnected) {
+        clearInterval(pollTimer); keepReading = false; isConnected = false;
+        if (connectionType === 'serial' && port) {
+            try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch(_){}
+            try { await port.close(); } catch(_){}
+            port = null;
+        } else if (connectionType === 'ble' && bleDevice) {
+            try { bleDevice.gatt.disconnect(); } catch(_){}
+            bleDevice=null; bleRxChar=null; bleTxChar=null;
+        }
+        connectionType = null;
+        const btn = document.getElementById('connectBtn');
+        btn.innerHTML = "🔌 連線"; btn.className = btn.className.replace('bg-red-600','bg-emerald-700');
+        document.getElementById('navSubtitle').innerText = "ID:1 | 115200 8N1 | Modbus RTU | 1400h NET-IO";
+        log("SYS","已斷線","text-amber-400");
+        return;
+    }
+    const hasSerial = !!navigator.serial;
+    const hasBLE    = !!navigator.bluetooth;
+    if (!hasSerial && !hasBLE) { alert("此瀏覽器不支援 Web Serial 也不支援 Web Bluetooth。"); return; }
+    try {
+        if (hasSerial && hasBLE) { showConnModal(); return; }
+        else if (hasSerial)      { await connectSerial(); }
+        else                     { await connectBLE(); }
+    } catch(e) { log("ERR", e.message, "text-red-400"); alert(`連線失敗: ${e.message}`); }
+}
+
+// ===================================================================
+// Web Serial 連線 (Modbus RTU, 115200)
+// ===================================================================
+async function connectSerial() {
+    port = await navigator.serial.requestPort();
+    try {
+        await port.open({ baudRate: 115200 });
+    } catch(e) {
+        if (!e.message.includes('already open')) throw e;
+    }
+    try { await port.setSignals({ dataTerminalReady:true, requestToSend:true }); } catch(_){}
+    isConnected = true; keepReading = true; connectionType = 'serial';
+    rtuBufLen = 0;
+    const btn = document.getElementById('connectBtn');
+    btn.innerHTML = "🔴 斷線"; btn.className = btn.className.replace('bg-emerald-700','bg-red-600');
+    document.getElementById('navSubtitle').innerText = `🔌 COM | 115200 8N1 | Modbus RTU | ID=${SLAVE_ID}`;
+    log("SYS", `Connected via Web Serial 115200 RTU  Slave ID=${SLAVE_ID}`, "text-emerald-400");
+    readLoopSerial();
+    // 10Hz 輪詢 Dynamic Data
+    const pollPkt = buildFC03(SLAVE_ID, 0x0000, 16);
+    pollTimer = setInterval(() => sendRTU(pollPkt), 100);
+}
+
+// ===================================================================
+// Web Bluetooth BLE 連線 (HM-10 FFE0 / Nordic NUS)
+// ===================================================================
+async function connectBLE() {
+    log("SYS", "📡 掃描 BLE 裝置...", "text-blue-300");
+    bleDevice = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [HM10_SERVICE, NUS_SERVICE]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnect);
+    log("SYS", `📡 已選取: ${bleDevice.name || bleDevice.id}`, "text-blue-300");
+    bleServer = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            log("SYS", `📡 GATT 連線中... (${attempt}/3)`, "text-blue-300");
+            bleServer = await bleDevice.gatt.connect();
+            if (bleServer.connected) break;
+        } catch(e) {
+            if (attempt === 3) throw new Error('GATT 連線失敗（已重試 3 次）\n\n解決方式：\nWindows 藍牙設定 → 移除 LTC8116 配對 → 重新用 Chrome 連線');
+            await new Promise(r => setTimeout(r, 800));
+        }
+    }
+    if (!bleServer || !bleServer.connected) throw new Error('GATT 連線失敗');
+    let svc = null;
+    try {
+        svc = await bleServer.getPrimaryService(HM10_SERVICE);
+        hm10Char = await svc.getCharacteristic(HM10_CHAR);
+        bleRxChar = hm10Char; bleTxChar = hm10Char; bleMode = 'hm10';
+        log("SYS", "📡 HM-10 FFE0 模式", "text-blue-300");
+    } catch(_) {
+        svc = await bleServer.getPrimaryService(NUS_SERVICE);
+        bleRxChar = await svc.getCharacteristic(NUS_RX_CHAR);
+        bleTxChar = await svc.getCharacteristic(NUS_TX_CHAR);
+        bleMode = 'nus';
+        log("SYS", "📡 Nordic NUS 模式", "text-blue-300");
+    }
+    await bleTxChar.startNotifications();
+    bleTxChar.addEventListener('characteristicvaluechanged', handleBLEData);
+    isConnected = true; keepReading = true; connectionType = 'ble';
+    rtuBufLen = 0;
+    const btn = document.getElementById('connectBtn');
+    btn.innerHTML = "🔴 斷線"; btn.className = btn.className.replace('bg-emerald-700','bg-red-600');
+    document.getElementById('navSubtitle').innerText = `📡 BLE: ${bleDevice.name||'LTC8116'} | Modbus RTU | ID=${SLAVE_ID}`;
+    log("SYS", `Connected via BLE RTU  Slave ID=${SLAVE_ID}`, "text-emerald-400");
+    // BLE 用 2Hz 輪詢
+    const pollPkt = buildFC03(SLAVE_ID, 0x0000, 16);
+    pollTimer = setInterval(() => sendRTU(pollPkt), 500);
+}
+
+function onBLEDisconnect() {
+    if (!isConnected) return;
+    clearInterval(pollTimer); isConnected=false; keepReading=false; connectionType=null;
+    bleDevice=null; bleRxChar=null; bleTxChar=null;
+    const btn = document.getElementById('connectBtn');
+    btn.innerHTML = "🔌 連線"; btn.className = btn.className.replace('bg-red-600','bg-emerald-700');
+    document.getElementById('navSubtitle').innerText = "ID:1 | 115200 8N1 | Modbus RTU | 1400h NET-IO";
+    log("SYS","BLE 裝置已斷線","text-amber-400");
+}
+
+function handleBLEData(event) {
+    const view = event.target.value;
+    for (let i = 0; i < view.byteLength; i++) {
+        if (rtuBufLen < rtuBuffer.length) rtuBuffer[rtuBufLen++] = view.getUint8(i);
+    }
+    tryParseRTU();
+}
+
+// ===================================================================
+// Serial 讀取迴圈（二進位）
+// ===================================================================
+async function readLoopSerial() {
+    while (port && port.readable && keepReading) {
+        try {
+            reader = port.readable.getReader();
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value) {
+                    for (const b of value) {
+                        if (rtuBufLen < rtuBuffer.length) rtuBuffer[rtuBufLen++] = b;
+                    }
+                    tryParseRTU();
+                }
+            }
+        } catch(e) { console.error(e); }
+        finally { try { reader.releaseLock(); } catch(_){} }
+    }
+}
+
+// ===================================================================
+// RTU 發送（自動路由 Serial / BLE）
+// ===================================================================
+async function processBLEQueue() {
+    if (bleQueueRunning) return;
+    bleQueueRunning = true;
+    while (bleQueue.length > 0) {
+        const { buf, showLog } = bleQueue.shift();
+        if (!bleRxChar || !isConnected) break;
+        try {
+            for (let i = 0; i < buf.length; i += 20) {
+                await bleRxChar.writeValueWithoutResponse(buf.slice(i, i + 20));
+                if (i + 20 < buf.length) await new Promise(r => setTimeout(r, 20));
+            }
+            if (showLog) log("TX", hex(buf), "text-emerald-300");
+        } catch(e) {
+            if (!e.message.includes('in progress') && !e.message.includes('disconnected'))
+                log("ERR", `BLE send: ${e.message}`, "text-red-400");
+        }
+        await new Promise(r => setTimeout(r, 30));
+    }
+    bleQueueRunning = false;
+}
+
+async function sendRTU(buf, showLog=false) {
+    if (!isConnected) return;
+    try {
+        if (connectionType === 'serial') {
+            if (!port || !port.writable) return;
+            const w = port.writable.getWriter();
+            await w.write(buf);
+            w.releaseLock();
+            if (showLog) log("TX", hex(buf), "text-emerald-300");
+        } else if (connectionType === 'ble') {
+            if (!bleRxChar) return;
+            const isPoll = buf[1] === 0x03 && buf[2] === 0x00 && buf[3] === 0x00;
+            if (isPoll && bleQueue.some(q => !q.isPoll)) return;
+            if (isPoll && bleQueue.some(q => q.isPoll)) return;
+            bleQueue.push({ buf, showLog, isPoll });
+            processBLEQueue();
+        }
+    } catch(e) { log("ERR", `Send failed: ${e.message}`, "text-red-400"); }
+}
+
+// ===================================================================
+// FC06 寫入單一暫存器
+// ===================================================================
+async function sendCmd(addr, val) {
+    if (!isConnected) return alert("請先連線");
+    clearInterval(pollTimer);
+    const buf = buildFC06(SLAVE_ID, addr, val);
+    await sendRTU(buf, true);
+    log("CMD", `FC06 → 0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`, "text-yellow-400");
+    setTimeout(() => {
+        if (isConnected) {
+            const poll = buildFC03(SLAVE_ID, 0x0000, 16);
+            const rate = connectionType === 'ble' ? 500 : 100;
+            pollTimer = setInterval(() => sendRTU(poll), rate);
+        }
+    }, 200);
+    const s = document.getElementById('cmdStatus');
+    s.innerText = `→ 0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`;
+    s.classList.add('text-yellow-400');
+    setTimeout(() => s.classList.remove('text-yellow-400'), 1000);
+}
+
+// ===================================================================
+// 馬達控制命令
+// ===================================================================
+async function runMotor() {
+    if (!isConnected) return alert("請先連線");
+    const rpm = parseInt(document.getElementById('rpmSlider').value) || 300;
+    if (rpm === 0) { log("WARN","請先設定轉速 (非0) 再啟動","text-amber-400"); return; }
+    const isCCW = (currentDir === 'CCW');
+    const netVal = BIT.START_STOP | (isCCW ? BIT.CCW_CW : 0);
+    log("SYS", `▶ 1400h 啟動序列`, "text-emerald-400");
+    await sendCmd(REG.SPD_RAM0, rpm);
+    await delay(150);
+    await sendCmd(REG.NET_IO, netVal);
+}
+
+async function stopMotor() {
+    if (!isConnected) return alert("請先連線");
+    log("SYS", "⏹ STOP → 1400h ← 0x0000", "text-red-400");
+    await sendCmd(REG.NET_IO, 0x0000);
+}
+
+async function alarmReset() {
+    if (!isConnected) return alert("請先連線");
+    log("SYS","⚠ Alarm Reset → 0A00h ← 1","text-amber-400");
+    await sendCmd(REG.ALM_RST, 1);
+}
+
+function setDir(dir) {
+    currentDir = dir;
+    document.getElementById('dirCW').className  = dir==='CW'  ? "px-2 py-0.5 text-[10px] rounded bg-emerald-600 text-white transition"  : "px-2 py-0.5 text-[10px] rounded text-slate-400 hover:text-white transition";
+    document.getElementById('dirCCW').className = dir==='CCW' ? "px-2 py-0.5 text-[10px] rounded bg-amber-600 text-white transition"    : "px-2 py-0.5 text-[10px] rounded text-slate-400 hover:text-white transition";
+    log("SYS", `方向: ${dir}`, "text-slate-400");
+}
+
+async function sendSpeedRAM(rpm) {
+    if (!isConnected) return;
+    await sendCmd(REG.SPD_RAM0, rpm);
+}
+
+function updateRpmDisplay(val) {
+    document.getElementById('targetRpmDisp').innerHTML = `${val} <span class="text-xs text-slate-500">RPM</span>`;
+}
+function setRpm(val) {
+    document.getElementById('rpmSlider').value = val;
+    updateRpmDisplay(val);
+    sendSpeedRAM(val);
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ===================================================================
+// Dashboard 更新
+// ===================================================================
+function updateDashboard() {
+    // Data cards
+    currentValues.forEach((raw, idx) => {
+        const cfg = motorDataConfig[idx];
+        const v   = raw * cfg.scale;
+        let disp  = v.toFixed(cfg.scale < 1 ? 2 : 0);
+        if (idx === 0) { const s = MOTOR_STATUS[raw]; disp = s ? s.txt : `${raw}`; }
+        const el = document.getElementById(`val-${idx}`);
+        if (el && el.innerText !== disp) {
+            el.style.color = '#34d399';
+            el.innerText = disp;
+            setTimeout(() => el.style.color = 'white', 200);
+        }
+    });
+
+    // 圖表
+    const i1 = parseInt(document.getElementById('selectY1').value);
+    const i2 = parseInt(document.getElementById('selectY2').value);
+    liveChart.data.datasets[0].data.push(currentValues[i1]*motorDataConfig[i1].scale); liveChart.data.datasets[0].data.shift();
+    liveChart.data.datasets[1].data.push(currentValues[i2]*motorDataConfig[i2].scale); liveChart.data.datasets[1].data.shift();
+    liveChart.update('none');
+
+    // Alarm / 狀態
+    const statusCode = currentValues[0];
+    const almCode    = currentValues[3];
+    const ioStatus   = currentValues[8];  // D08 I/O狀態
+    const box    = document.getElementById('alarmBox');
+    const icon   = document.getElementById('alarmIcon');
+    const statusEl = document.getElementById('alarmStatus');
+    const detailEl = document.getElementById('alarmDetail');
+    const s = MOTOR_STATUS[statusCode] || { txt:`Unknown(${statusCode})`, icon:'❓', clr:'text-slate-400' };
+    statusEl.innerText = s.txt;
+    statusEl.className = `text-sm font-bold ${s.clr}`;
+    icon.innerText = s.icon;
+    if (almCode !== 0 || statusCode === 5) {
+        box.classList.add('alarm-active'); icon.classList.remove('grayscale');
+        statusEl.innerText = `ALARM (${almCode})`;
+        detailEl.innerText = `Alarm Code: ${almCode}  |  狀態: ${s.txt}`;
+    } else {
+        box.classList.remove('alarm-active');
+        icon.classList.toggle('grayscale', statusCode !== 2);
+        detailEl.innerText = `狀態: ${s.txt}  |  ${currentValues[2]} RPM`;
+    }
+
+    // STO 狀態（從 I/O 暫存器 D08 解析，或從 D09 電壓判斷）
+    // STO1=bit mapping依裝置手冊，目前用電壓>10V判斷連線狀態
+    const busV = currentValues[9] * 0.01;
+    const stoActive = busV > 10;
+    updateSTO('sto1', stoActive, stoActive ? 'ON - 安全' : '未供電');
+    updateSTO('sto2', stoActive, stoActive ? 'ON - 安全' : '未供電');
+}
+
+function updateSTO(id, safe, text) {
+    const box  = document.getElementById(`${id}Box`);
+    const icon = document.getElementById(`${id}Icon`);
+    const txt  = document.getElementById(`${id}Txt`);
+    if (safe) {
+        box.classList.remove('sto-tripped'); box.classList.add('sto-safe');
+        icon.innerText = '🟢';
+    } else {
+        box.classList.remove('sto-safe'); box.classList.add('sto-tripped');
+        icon.innerText = '🔴';
+    }
+    txt.innerText = text;
+}
+
+// ===================================================================
+// 錄製 / CSV
+// ===================================================================
+function toggleRecord() {
+    isRecording = !isRecording;
+    const dot = document.getElementById('recDot');
+    const dl  = document.getElementById('dlBtn');
+    const btn = document.getElementById('recBtn');
+    if (isRecording) {
+        logData = [];
+        dot.classList.remove('opacity-50'); dot.classList.add('animate-ping');
+        btn.classList.add('text-white'); dl.disabled = true;
+        log("SYS","Recording Started","text-emerald-400");
+    } else {
+        dot.classList.add('opacity-50'); dot.classList.remove('animate-ping');
+        btn.classList.remove('text-white'); dl.disabled = false;
+        log("SYS",`Recording Stopped (${logData.length} rows)`,"text-yellow-400");
+    }
+}
+
+function downloadCSV() {
+    if (!logData.length) return;
+    let csv = "Timestamp,Time";
+    motorDataConfig.forEach(c => csv += `,${c.name}(${c.unit})`);
+    csv += "\n";
+    logData.forEach(r => {
+        csv += `${r.timestamp},${r.time}`;
+        for (let i = 0; i < 16; i++) csv += `,${r['d'+i]}`;
+        csv += "\n";
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+    a.download = `RobotLog_${Date.now()}.csv`;
+    a.click();
+}
+
+// ===================================================================
+// 離線分析
+// ===================================================================
+let analysisChart = null;
+let anaData = { all:[], valid:[] };
+function showAnalysis()  { document.getElementById('analysisModal').classList.remove('hidden'); }
+function closeAnalysis() { document.getElementById('analysisModal').classList.add('hidden'); }
+
+function loadCSV(input) {
+    const file = input.files[0]; if (!file) return;
+    document.getElementById('csvFileName').innerText = file.name;
+    const fr = new FileReader();
+    fr.onload = function(e) {
+        const lines = e.target.result.split('\n').filter(l => l.trim());
+        if (lines.length < 2) { alert("CSV 內容太少"); return; }
+        const headers = lines[0].split(',').map(h => h.trim());
+        const allRows = [];
+        for (let i = 1; i < lines.length; i++) {
+            const cells = lines[i].split(',');
+            if (cells.length < 3) continue;
+            const row = {}; headers.forEach((h,j) => row[h]=(cells[j]||'').trim());
+            allRows.push(row);
+        }
+        const statusCol = headers.find(h => h.includes('馬達狀態')) || headers[2];
+        const validRows = allRows.filter(r => { const st=parseFloat(r[statusCol]); return !isNaN(st)&&VALID_STATUS.has(Math.round(st)); });
+        anaData.all = allRows; anaData.valid = validRows;
+        renderQualityReport(allRows, validRows);
+        renderAnaStats(validRows, headers);
+        renderAnaChart(validRows, headers);
+    };
+    fr.readAsText(file, 'UTF-8');
+}
+
+function renderQualityReport(all, valid) {
+    const total=all.length, validN=valid.length, invalid=total-validN;
+    const pct=(total?(invalid/total*100):0).toFixed(1);
+    const good=(100-parseFloat(pct)).toFixed(1);
+    const badge=document.getElementById('qualityBadge');
+    badge.classList.remove('hidden');
+    badge.className=`text-xs font-bold px-2 py-0.5 rounded ${parseFloat(pct)>20?'bg-red-900/60 text-red-300':'bg-emerald-900/60 text-emerald-300'}`;
+    badge.innerText=`有效率 ${good}%`;
+    const report=document.getElementById('qualityReport');
+    report.classList.remove('hidden');
+    report.innerHTML=`<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
+        <div><div class="text-slate-500 text-[9px] mb-0.5">總行數</div><div class="text-xl font-bold text-white">${total}</div></div>
+        <div><div class="text-slate-500 text-[9px] mb-0.5">有效行</div><div class="text-xl font-bold text-emerald-400">${validN}</div></div>
+        <div><div class="text-slate-500 text-[9px] mb-0.5">無效行</div><div class="text-xl font-bold text-red-400">${invalid}</div></div>
+        <div><div class="text-slate-500 text-[9px] mb-0.5">無效率</div><div class="text-xl font-bold ${parseFloat(pct)>20?'text-red-400':'text-emerald-400'}">${pct}%</div></div>
+    </div>`;
+}
+
+function renderAnaStats(validRows, headers) {
+    if (!validRows.length) return;
+    document.getElementById('anaStatsArea').classList.remove('hidden');
+    const tbody=document.getElementById('anaStatsBody'); tbody.innerHTML='';
+    headers.filter(h=>h!=='Timestamp'&&h!=='Time').forEach(col => {
+        const vals=validRows.map(r=>parseFloat(r[col])).filter(v=>!isNaN(v));
+        if (!vals.length) return;
+        const min=Math.min(...vals), max=Math.max(...vals);
+        const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+        const std=Math.sqrt(vals.reduce((a,b)=>a+(b-avg)**2,0)/vals.length);
+        const tr=document.createElement('tr');
+        tr.className='border-b border-slate-800 hover:bg-slate-700/30';
+        tr.innerHTML=`<td class="p-1 text-slate-300">${col}</td>
+            <td class="p-1 text-right text-blue-400">${min.toFixed(2)}</td>
+            <td class="p-1 text-right text-orange-400">${max.toFixed(2)}</td>
+            <td class="p-1 text-right text-white">${avg.toFixed(2)}</td>
+            <td class="p-1 text-right text-slate-500">±${std.toFixed(2)}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderAnaChart(validRows, headers) {
+    if (!validRows.length) return;
+    document.getElementById('anaChartArea').classList.remove('hidden');
+    const numCols=headers.filter(h=>h!=='Timestamp'&&h!=='Time');
+    const sel=document.getElementById('anaChartSel'); sel.innerHTML='';
+    numCols.forEach((col,i)=>{ const o=document.createElement('option'); o.value=i; o.text=col; sel.appendChild(o); });
+    const rpmIdx=numCols.findIndex(h=>h.includes('實際轉速'));
+    if (rpmIdx>=0) sel.value=rpmIdx;
+    sel.onchange=()=>drawAnaChart(validRows, numCols);
+    drawAnaChart(validRows, numCols);
+}
+
+function drawAnaChart(validRows, numCols) {
+    const col=numCols[parseInt(document.getElementById('anaChartSel').value)];
+    const vals=validRows.map(r=>parseFloat(r[col])||0);
+    const labels=validRows.map(r=>r['Time']||'');
+    if (analysisChart) analysisChart.destroy();
+    analysisChart=new Chart(document.getElementById('anaChartCanvas').getContext('2d'),{
+        type:'line', data:{ labels, datasets:[{ label:col, data:vals, borderColor:'#34d399', pointRadius:0, borderWidth:1.5, tension:0.2, fill:false }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}},
+            scales:{ x:{display:false}, y:{ grid:{color:'#1e293b'}, ticks:{color:'#34d399',font:{size:9}}, border:{display:false}} }}
+    });
+}
+
+// ===================================================================
+// 日誌
+// ===================================================================
+function log(type, msg, clr='text-slate-400') {
+    const el=document.getElementById('logContent');
+    const now=new Date().toLocaleTimeString('zh-TW',{hour12:false,timeZone:'Asia/Taipei'});
+    const colors={SYS:'text-slate-500',CMD:'text-yellow-400',TX:'text-emerald-300',RX:'text-teal-400',ERR:'text-red-400',WARN:'text-amber-400'};
+    const typeClr=colors[type]||'text-slate-500';
+    el.innerHTML+=`<div><span class="text-slate-600">${now} </span><span class="${typeClr} font-bold">[${type}]</span> <span class="${clr}">${msg}</span></div>`;
+    if (el.children.length>200) el.removeChild(el.firstChild);
+    el.scrollTop=el.scrollHeight;
+}
+
+// ===================================================================
+// 連線 Modal
+// ===================================================================
+function showConnModal()  { document.getElementById('connModal').style.display='flex'; }
+function hideConnModal()  { document.getElementById('connModal').style.display='none'; }
+async function modalChoose(useSerial) {
+    hideConnModal();
+    try {
+        if (useSerial) await connectSerial();
+        else           await connectBLE();
+    } catch(e) { log("ERR", e.message, "text-red-400"); alert(`連線失敗: ${e.message}`); }
+}
+
+// ===================================================================
+// 頁面載入時初始化連線按鈕
+// ===================================================================
+(function initConnectionUI() {
+    const btn=document.getElementById('connectBtn');
+    if (!navigator.serial && !navigator.bluetooth) {
+        btn.disabled=true; btn.title="此瀏覽器不支援 Web Serial / Web Bluetooth";
+        btn.className=btn.className+" opacity-50 cursor-not-allowed";
+    }
+})();
+</script>
+</body>
+</html>
