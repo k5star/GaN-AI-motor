@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaN Motor ROBOT Platform - RTU</title>
+    <title>GaN Motor LOCAL AI ROBOT</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -28,8 +28,8 @@
     <div class="flex items-center gap-3">
         <div class="w-8 h-8 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-lg flex items-center justify-center font-bold text-white shadow text-lg">🤖</div>
         <div>
-            <h1 class="text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-emerald-400">ROBOT</span></h1>
-            <p id="navSubtitle" class="text-[10px] text-slate-500 font-mono -mt-1">ID:1 | 115200 8N1 | Modbus RTU | 1400h NET-IO</p>
+            <h1 class="text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-purple-400">LOCAL AI</span> <span class="text-emerald-400">ROBOT</span></h1>
+            <p id="navSubtitle" class="text-[10px] text-slate-500 font-mono -mt-1">ID:1 | 115200 8N1 | Modbus RTU | Open WebUI AI</p>
         </div>
     </div>
     <div class="flex gap-2 items-center">
@@ -806,18 +806,19 @@ let aiConfig = {
     model:   localStorage.getItem('aiModel')   || 'qwen2.5:14b'
 };
 
-const AI_SYSTEM_PROMPT = `你是 GaN 馬達控制助手。根據使用者自然語言指令輸出 JSON 控制馬達。
-只輸出 JSON，不輸出其他任何文字，格式：
-{"action":"run|stop|setSpeed|setDir|setAcc|setDec|alarmReset|none","params":{"rpm":數字,"dir":"CW|CCW","ms":數字},"reply":"繁體中文回覆"}
-可用動作：
-- run: 啟動馬達（可帶 rpm 0-3000、dir CW或CCW）
-- stop: 停止馬達
-- setSpeed: 僅設定轉速 rpm，不啟動
-- setDir: 設定方向 CW 正轉 或 CCW 反轉
-- setAcc: 設定加速時間 ms（1-60000）
-- setDec: 設定減速時間 ms（1-60000）
-- alarmReset: 清除故障警報
-- none: 僅回覆問題，不執行動作`;
+const AI_SYSTEM_PROMPT = `你是GaN馬達控制AI。只輸出JSON，不輸出其他文字。
+單一動作格式：{"action":"動作","params":{...},"reply":"繁體中文說明"}
+序列動作格式：{"action":"sequence","params":{"steps":[{"action":"...","params":{...},"delay":毫秒},...]}, "reply":"說明"}
+可用action：
+- run: 啟動（params: rpm 0-3000, dir CW|CCW）
+- stop: 停止
+- setSpeed: 設轉速 rpm
+- setDir: 設方向 dir:CW|CCW
+- setAcc: 設加速時間 ms
+- setDec: 設減速時間 ms
+- alarmReset: 清除故障
+- none: 僅回覆
+安全：rpm最大3000，序列步驟delay單位毫秒。`;
 
 function showAISettings() {
     document.getElementById('aiBaseUrlInput').value = aiConfig.baseUrl;
@@ -876,6 +877,11 @@ async function sendAIMessage() {
     loadingDiv.innerText = 'AI 思考中...';
     document.getElementById('aiChatLog').appendChild(loadingDiv);
 
+    // 加入馬達當前狀態至 user 訊息
+    const status = MOTOR_STATUS[currentValues[0]] || { txt:'UNKNOWN' };
+    const motorState = `[馬達狀態] ${status.txt} | 轉速:${currentValues[2]}RPM | 電流:${(currentValues[12]*0.01).toFixed(2)}A | BUS:${(currentValues[9]*0.01).toFixed(1)}V | 功率:${currentValues[7]}W | 轉向:${currentValues[4]===0?'CW':'CCW'}`;
+    const fullMsg = `${motorState}\n\n${msg}`;
+
     try {
         const res = await fetch(`${aiConfig.baseUrl}/api/v1/chat/completions`, {
             method: 'POST',
@@ -887,9 +893,9 @@ async function sendAIMessage() {
                 model: aiConfig.model,
                 messages: [
                     { role: 'system', content: AI_SYSTEM_PROMPT },
-                    { role: 'user',   content: msg }
+                    { role: 'user',   content: fullMsg }
                 ],
-                max_tokens: 200,
+                max_tokens: 1024,
                 temperature: 0.1
             })
         });
