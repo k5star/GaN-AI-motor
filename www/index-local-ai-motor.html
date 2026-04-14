@@ -219,15 +219,15 @@
                     「1500轉啟動」／「停止」
                 </div>
             </div>
-            <div class="p-2 border-t border-slate-700 shrink-0 flex gap-1.5">
+            <div class="p-2 border-t border-slate-700 shrink-0 flex gap-1.5 items-center">
                 <input id="aiInput"
-                       class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-purple-500"
+                       class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-2 py-2 text-xs text-white outline-none focus:border-purple-500"
                        placeholder="輸入指令...">
                 <button onclick="startVoiceInput()" id="voiceBtn"
-                        class="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1.5 rounded-lg text-xs font-bold transition"
+                        class="bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white w-11 h-11 rounded-xl text-xl font-bold transition flex items-center justify-center shadow"
                         title="語音輸入（Chrome）">🎙️</button>
                 <button onclick="sendAIMessage()"
-                        class="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1.5 rounded-lg text-xs font-bold transition">
+                        class="bg-purple-600 hover:bg-purple-500 text-white px-3 h-11 rounded-xl text-xs font-bold transition">
                     送出
                 </button>
             </div>
@@ -850,7 +850,7 @@ function saveAISettings() {
     localStorage.setItem('aiModel',   aiConfig.model);
     document.getElementById('aiSettingsModal').classList.add('hidden');
     document.getElementById('aiModelBadge').innerText = aiConfig.model;
-    aiLog('系統', `✓ 設定已儲存，使用模型：${aiConfig.model}`, '#a78bfa');
+    aiLog('系統', '✓ 設定已儲存', '#a78bfa');
 }
 
 // 頁面載入後顯示 model badge
