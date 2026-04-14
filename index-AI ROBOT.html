@@ -185,6 +185,7 @@
                 <h2 class="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1">
                     ✨ AI 語音控制
                     <select id="aiModelBadge" class="text-[9px] font-mono bg-violet-900/50 px-1.5 py-0.5 rounded text-violet-300 border border-violet-700/50 outline-none cursor-pointer hover:border-violet-500 transition">
+                        <option value="">⚙ 設定</option>
                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                         <option value="gemini-2.0-flash">gemini-2.0-flash</option>
                         <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
@@ -512,13 +513,13 @@ async function sendToAI(text) {
     try {
         // 依序嘗試各模型，自動 fallback
         // 只用 Gemini 系列（Gemma chain-of-thought 不可靠）
-        const selectedModel = document.getElementById('aiModelBadge').value;
+        const selectedModel = document.getElementById('aiModelBadge').value || 'gemini-2.5-flash';
         const ALL_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
         const MODELS = [selectedModel, ...ALL_MODELS.filter(m => m !== selectedModel)];
         let lastError = null, parsed = null, retryCount = 0;
 
         for (const model of MODELS) {
-            document.getElementById('aiModelBadge').value = model;
+            // 不更新下拉顯示，避免洩漏實際使用的模型
             try {
                 const resp = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
