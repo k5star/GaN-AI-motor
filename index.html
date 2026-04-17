@@ -56,9 +56,13 @@
 
         <!-- Chart -->
         <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg relative flex flex-col h-[38%] shrink-0">
-            <div class="absolute top-2 left-3 z-10 flex gap-2">
+            <div class="absolute top-2 left-3 z-10 flex gap-2 items-center">
                 <select id="selectY1" class="bg-slate-900/80 border border-cyan-500/30 rounded px-1 py-0.5 text-[10px] text-cyan-400 outline-none"></select>
                 <select id="selectY2" class="bg-slate-900/80 border border-amber-500/30 rounded px-1 py-0.5 text-[10px] text-amber-400 outline-none"></select>
+                <button id="pauseChartBtn" onclick="toggleChartPause()" class="bg-slate-700/80 hover:bg-slate-600 text-slate-300 rounded px-2 py-0.5 text-[10px] font-bold transition">⏸ 暫停</button>
+                <button onclick="chartZoom(0.5)" class="bg-slate-700/80 hover:bg-slate-600 text-slate-300 rounded px-1.5 py-0.5 text-[10px] transition">🔍+</button>
+                <button onclick="chartZoom(2)" class="bg-slate-700/80 hover:bg-slate-600 text-slate-300 rounded px-1.5 py-0.5 text-[10px] transition">🔍-</button>
+                <button onclick="chartZoomReset()" class="bg-slate-700/80 hover:bg-slate-600 text-slate-300 rounded px-1.5 py-0.5 text-[10px] transition">↺</button>
             </div>
             <div class="flex-1 w-full relative"><canvas id="liveChart"></canvas></div>
         </div>
@@ -164,7 +168,7 @@
     </div>
 
     <!-- Right: Alarm + Cards + Log -->
-    <div class="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden">
+    <div class="col-span-12 lg:col-span-3 flex flex-col gap-2 h-full overflow-y-auto pr-0.5">
 
         <!-- Alarm -->
         <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0" id="alarmBox">
@@ -174,6 +178,114 @@
                     <p id="alarmStatus" class="text-sm font-bold text-slate-300">等待連線</p>
                     <p id="alarmDetail" class="text-[10px] text-slate-500 font-mono truncate">馬達狀態: --</p>
                 </div>
+            </div>
+        </div>
+
+        <!-- ① MOS OT 溫度 (Page10 RTU 讀取 + D03 Alarm 判斷) -->
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0" id="mosOTCard">
+            <div class="flex items-center justify-between mb-1.5">
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest">MOS OT 溫度</p>
+                <span class="text-[9px] text-slate-600 font-mono">Page10·0008h RTU</span>
+            </div>
+            <div class="flex items-end justify-between mb-1.5">
+                <div>
+                    <p class="text-[9px] text-slate-500">ADC 原始值</p>
+                    <span class="text-sm font-mono text-orange-400" id="mosOTadcDisp">--</span>
+                </div>
+                <div class="text-center">
+                    <p class="text-[9px] text-slate-500">溫度</p>
+                    <span class="text-2xl font-mono font-bold" id="mosOTtempDisp" style="color:#4ade80">--</span>
+                    <span class="text-xs text-slate-400"> °C</span>
+                </div>
+                <div class="text-right">
+                    <p class="text-[9px] text-slate-500">狀態</p>
+                    <span class="text-lg font-bold" id="mosOTstatusDisp" style="color:#4ade80">OK</span>
+                </div>
+            </div>
+            <!-- 溫度進度條 0~120°C -->
+            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mb-0.5">
+                <div id="mosOTbar" class="h-full rounded-full transition-all duration-500 bg-green-400" style="width:0%"></div>
+            </div>
+            <div class="flex justify-between text-[8px] text-slate-600">
+                <span>0°C</span><span>閾值: <span id="mosOTthreshDisp">-- ADC</span></span><span>回復: <span id="mosOTrecDisp">-- ADC</span></span><span>120°C</span>
+            </div>
+            <p class="text-[8px] text-slate-600 mt-1">ADC 每 8s 自動更新 (0x090Ah WatchData → Page10)</p>
+        </div>
+
+        <!-- ② 輸出電流 即時對照 (Page0 D10=0x000Ah) -->
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0">
+            <div class="flex items-center justify-between mb-1.5">
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest">輸出電流 對照</p>
+                <button onclick="readProtectionSettings()" class="text-[9px] text-slate-500 bg-slate-700 hover:bg-slate-600 rounded px-1.5 py-0.5 transition">↻ 讀HW設定</button>
+            </div>
+            <div class="flex items-end justify-between mb-1">
+                <div>
+                    <p class="text-[9px] text-slate-500">當前電流 (D10)</p>
+                    <span class="text-xl font-mono font-bold" id="curIdisp" style="color:#22d3ee">--</span>
+                    <span class="text-[10px] text-slate-400"> A</span>
+                </div>
+                <div class="text-right">
+                    <p class="text-[9px] text-slate-500">SW FWOCP (8106h)</p>
+                    <span class="text-sm font-mono text-orange-400" id="fwocpDisp">-- A</span>
+                </div>
+                <div class="text-right">
+                    <p class="text-[9px] text-slate-500">HW OCP (810Bh)</p>
+                    <span class="text-sm font-mono text-red-400" id="hwocpDisp">-- A</span>
+                </div>
+            </div>
+            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden relative">
+                <div id="curIbar" class="h-full rounded-full transition-all duration-300 bg-green-400" style="width:0%"></div>
+                <div id="curIthreshLine" class="absolute top-0 h-full w-0.5 bg-orange-400" style="left:100%"></div>
+            </div>
+        </div>
+
+        <!-- ③ 保護參數 預設值表 (HWInfor + MDI2 Group5) -->
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0">
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5">保護參數 預設值</p>
+            <table class="w-full text-[9px] font-mono">
+                <thead><tr class="text-slate-600 border-b border-slate-700">
+                    <td class="pb-0.5">項目</td><td class="pb-0.5 text-right">來源</td><td class="pb-0.5 text-right">預設值</td><td class="pb-0.5 text-right">讀取值</td>
+                </tr></thead>
+                <tbody class="text-slate-400">
+                    <tr><td class="py-0.5">MosOT Activate</td><td class="text-right text-slate-600">HW 8102h</td><td class="text-right">--</td><td class="text-right text-cyan-400" id="tbl_mosOT">--</td></tr>
+                    <tr><td class="py-0.5">MosOT Recover</td><td class="text-right text-slate-600">HW 8103h</td><td class="text-right">--</td><td class="text-right text-cyan-400" id="tbl_mosRec">--</td></tr>
+                    <tr><td class="py-0.5">FWOCP</td><td class="text-right text-slate-600">HW 8106h</td><td class="text-right">--</td><td class="text-right text-cyan-400" id="tbl_fwocp">--</td></tr>
+                    <tr><td class="py-0.5">HW OCP</td><td class="text-right text-slate-600">HW 810Bh</td><td class="text-right">--</td><td class="text-right text-cyan-400" id="tbl_hwocp">--</td></tr>
+                    <tr class="border-t border-slate-700/50"><td class="pt-0.5">Motor OT Type</td><td class="text-right text-slate-600">05-01</td><td class="text-right text-yellow-600">1=N.C.</td><td class="text-right">--</td></tr>
+                    <tr><td>Over Speed</td><td class="text-right text-slate-600">05-04</td><td class="text-right text-yellow-600">5000 rpm</td><td class="text-right">--</td></tr>
+                    <tr><td>OVP</td><td class="text-right text-slate-600">05-10</td><td class="text-right text-yellow-600">45.00 V</td><td class="text-right">--</td></tr>
+                    <tr><td>UVP</td><td class="text-right text-slate-600">05-12</td><td class="text-right text-yellow-600">7.00 V</td><td class="text-right">--</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ④ 功率輸出累積 -->
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg shrink-0">
+            <div class="flex items-center justify-between mb-1.5">
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest">功率累積 (D07)</p>
+                <button onclick="resetPowerAcc()" class="text-[9px] text-slate-500 bg-slate-700 hover:bg-slate-600 rounded px-1.5 py-0.5 transition">↺ 重置</button>
+            </div>
+            <div class="grid grid-cols-3 gap-1 text-center mb-1.5">
+                <div class="bg-slate-900/60 rounded p-1">
+                    <p class="text-[8px] text-slate-600">累積電能</p>
+                    <p class="text-base font-mono font-bold text-cyan-400" id="pwrWh">0.000</p>
+                    <p class="text-[8px] text-slate-500">Wh</p>
+                </div>
+                <div class="bg-slate-900/60 rounded p-1">
+                    <p class="text-[8px] text-slate-600">運轉時間</p>
+                    <p class="text-base font-mono font-bold text-emerald-400" id="pwrRunTime">00:00</p>
+                    <p class="text-[8px] text-slate-500">mm:ss</p>
+                </div>
+                <div class="bg-slate-900/60 rounded p-1">
+                    <p class="text-[8px] text-slate-600">平均功率</p>
+                    <p class="text-base font-mono font-bold text-yellow-400" id="pwrAvg">0</p>
+                    <p class="text-[8px] text-slate-500">W</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 text-[9px] text-slate-500">
+                <span>當前:</span>
+                <span class="font-mono text-white" id="pwrNow">0 W</span>
+                <span class="ml-auto">啟動次數: <span class="text-slate-300" id="pwrStartCount">0</span></span>
             </div>
         </div>
 
@@ -295,25 +407,25 @@ const MOTOR_STATUS = {
 };
 
 // ===================================================================
-// Dynamic Data 監控 0x0000 ~ 0x000F (說明書 10.3.1)
+// Monitor 暫存器 0x4600 ~ 0x460F（固定地址，不受 0x090A 影響）
 // ===================================================================
 const motorDataConfig = [
-    { id:'D00', addr:0x0000, name:'馬達狀態',   unit:'',    scale:1,    note:'0=STOP 2=RUN 5=FAULT' },
-    { id:'D01', addr:0x0001, name:'指令轉速',   unit:'RPM', scale:1,    note:'' },
-    { id:'D02', addr:0x0002, name:'實際轉速',   unit:'RPM', scale:1,    note:'' },
-    { id:'D03', addr:0x0003, name:'Alarm No.',  unit:'',    scale:1,    note:'' },
-    { id:'D04', addr:0x0004, name:'轉向',       unit:'',    scale:1,    note:'0=CW 1=CCW' },
-    { id:'D05', addr:0x0005, name:'目標轉速',   unit:'RPM', scale:1,    note:'' },
-    { id:'D06', addr:0x0006, name:'保留',       unit:'',    scale:1,    note:'' },
-    { id:'D07', addr:0x0007, name:'輸出功率',   unit:'W',   scale:1,    note:'' },
-    { id:'D08', addr:0x0008, name:'I/O 狀態',  unit:'bit', scale:1,    note:'bit格式' },
-    { id:'D09', addr:0x0009, name:'BUS 電壓',  unit:'V',   scale:0.01, note:'輸入電源電壓' },
-    { id:'D10', addr:0x000A, name:'保留',       unit:'',    scale:1,    note:'' },
-    { id:'D11', addr:0x000B, name:'輸出Duty',  unit:'%',   scale:0.1,  note:'' },
-    { id:'D12', addr:0x000C, name:'輸出電流',  unit:'A',   scale:0.01, note:'' },
-    { id:'D13', addr:0x000D, name:'保留',       unit:'',    scale:1,    note:'' },
-    { id:'D14', addr:0x000E, name:'保留',       unit:'',    scale:1,    note:'' },
-    { id:'D15', addr:0x000F, name:'保留',       unit:'',    scale:1,    note:'' },
+    { id:'M01', addr:0x4600, name:'馬達狀態',   unit:'',    scale:1,    note:'0=Stop 1=Start 2=Run 5=Fault' },
+    { id:'M02', addr:0x4601, name:'報警狀態',   unit:'',    scale:1,    note:'0=正常' },
+    { id:'M03', addr:0x4602, name:'邊轉檢數',   unit:'',    scale:1,    note:'' },
+    { id:'M04', addr:0x4603, name:'目標轉速',   unit:'RPM', scale:1,    note:'' },
+    { id:'M05', addr:0x4604, name:'當前轉速',   unit:'RPM', scale:1,    note:'' },
+    { id:'M06', addr:0x4605, name:'IO狀態',     unit:'bit', scale:1,    note:'bit格式' },
+    { id:'M07', addr:0x4606, name:'輸出功率',   unit:'W',   scale:1,    note:'' },
+    { id:'M08', addr:0x4607, name:'驅動電壓',   unit:'V',   scale:0.01, note:'×0.01V' },
+    { id:'M09', addr:0x4608, name:'輸出Duty',   unit:'%',   scale:0.1,  note:'×0.1%' },
+    { id:'M10', addr:0x4609, name:'電流平均',   unit:'A',   scale:0.01, note:'×0.01A' },
+    { id:'M11', addr:0x460A, name:'扭矩限制',   unit:'A',   scale:0.01, note:'×0.01A' },
+    { id:'M12', addr:0x460B, name:'加速時間',   unit:'s',   scale:0.1,  note:'×0.1s' },
+    { id:'M13', addr:0x460C, name:'減速時間',   unit:'s',   scale:0.1,  note:'×0.1s' },
+    { id:'M14', addr:0x460D, name:'外部AI1',    unit:'V',   scale:0.01, note:'×0.01V' },
+    { id:'M15', addr:0x460E, name:'外部AI2',    unit:'V',   scale:0.01, note:'×0.01V' },
+    { id:'M16', addr:0x460F, name:'Pulse Duty', unit:'%',   scale:0.1,  note:'×0.1%' },
 ];
 
 // ===================================================================
@@ -337,12 +449,35 @@ let connectionType = null;   // 'serial' | 'ble'
 let isConnected = false;
 let keepReading = false;
 let pollTimer   = null;
-let bleSending  = false;   // BLE 發送鎖
-let bleQueue    = [];       // BLE 發送佇列（命令排隊，不掉包）
+let bleQueue       = [];      // BLE ASCII 發送佇列
 let bleQueueRunning = false;
-let asciiBuffer = "";
-let currentValues = new Array(16).fill(0);
-let currentDir = 'CW';   // 目前方向
+let asciiBuffer    = "";      // ASCII 接收緩衝
+let currentValues  = new Array(16).fill(0);
+let currentDir     = 'CW';
+
+// 圖表控制
+let chartPaused = false;
+
+// MOS OT (Page10 via 0x090A WatchData)
+let mosOTAdcRaw      = null;
+let mosTemperature   = null;
+let page10Pending    = false;  // 等待 Page10 FC03 回應
+let tempPollTimer    = null;   // Page10 輪詢計時器
+
+// A_HMI 保護設定（HWInfor 8102h~810Bh）
+let protOTActivate  = null;
+let protOTRecover   = null;
+let protFWOCP       = null;
+let protHWOCP       = null;
+let protReadPending = false;
+
+// 功率累積
+let pwrAccWh       = 0;      // 累積電能 Wh
+let pwrRunSec      = 0;      // 運轉秒數（馬達狀態=RUN時累積）
+let pwrStartCount  = 0;      // 啟動次數
+let pwrLastStatus  = 0;      // 上一個馬達狀態
+let pwrLastTime    = null;   // 上次更新時間
+let pwrRunning     = false;  // 當前是否在運轉
 
 let isRecording = false;
 let logData = [];
@@ -399,8 +534,8 @@ const liveChart = new Chart(ctx, {
         s2.innerHTML += opt;
     });
 
-    s1.value = 2;  // 實際轉速
-    s2.value = 12; // 輸出電流
+    s1.value = 4;  // 當前轉速 (M05 4604h)
+    s2.value = 9;  // 電流平均 (M10 4609h)
 
     [s1, s2].forEach(s => s.addEventListener('change', () => {
         liveChart.data.datasets[0].label = motorDataConfig[s1.value].name;
@@ -409,7 +544,7 @@ const liveChart = new Chart(ctx, {
 })();
 
 // ===================================================================
-// 通訊 (Modbus ASCII, ID=0x11=17, 57600 8N1)
+// 通訊 (Modbus RTU, ID=0x11=17, 57600 8N1)
 // ===================================================================
 
 // ===================================================================
@@ -419,6 +554,7 @@ async function toggleConnect() {
     // ── 斷線 ──
     if (isConnected) {
         clearInterval(pollTimer);
+        stopTempPolling();
         keepReading = false;
         isConnected = false;
 
@@ -519,8 +655,13 @@ async function connectSerial() {
     log("SYS", `Connected via Web Serial @ ${openedBaud} 8N1 Modbus ASCII  ID=0x11(17)`, "text-green-400");
     readLoopSerial();
 
-    // 10Hz 輪詢 Dynamic Data 0x0000~0x000F
-    pollTimer = setInterval(() => { sendRawAscii(":110300000010DC\r\n"); }, 100);
+    // Monitor 暫存器 0x4600 為固定地址，不需要 0x090A 初始化
+    // 但仍送一次避免裝置卡在 Page10（Page10 讀取用 0x0000）
+    await sendRawAscii(asciiFC06(0x090A, 0), false);
+    await new Promise(r => setTimeout(r, 200));
+    pollTimer = setInterval(() => sendRawAscii(":11034600001096\r\n"), 100);
+    startTempPolling();
+    setTimeout(readProtectionSettings, 800);
 }
 
 // ===================================================================
@@ -594,16 +735,20 @@ async function connectBLE() {
     document.getElementById('navSubtitle').innerText =
         `📡 BLE: ${bleDevice.name||'Device'} | Modbus ASCII | 1400h NET-IO`;
 
-    log("SYS", `Connected via Web Bluetooth BLE NUS  ID=0x11(17)`, "text-green-400");
+    log("SYS", `Connected via Web Bluetooth BLE  ID=0x11(17) Modbus ASCII`, "text-green-400");
 
-    // BLE 模式用 2Hz 輪詢（500ms），避免 GATT operation already in progress
-    pollTimer = setInterval(() => { sendRawAscii(":110300000010DC\r\n"); }, 500);
+    await sendRawAscii(asciiFC06(0x090A, 0), false);
+    await new Promise(r => setTimeout(r, 400));
+    pollTimer = setInterval(() => sendRawAscii(":11034600001096\r\n"), 500);
+    startTempPolling();
+    setTimeout(readProtectionSettings, 1200);
 }
 
 // BLE 被動斷線處理
 function onBLEDisconnect() {
     if (!isConnected) return;
     clearInterval(pollTimer);
+    stopTempPolling();
     isConnected = false; keepReading = false; connectionType = null;
     bleDevice = null; bleRxChar = null; bleTxChar = null;
     const btn = document.getElementById('connectBtn');
@@ -613,47 +758,300 @@ function onBLEDisconnect() {
     log("SYS","BLE 裝置已斷線","text-amber-400");
 }
 
-// BLE 接收資料 → 送入 ASCII 緩衝 → 原有解析邏輯
+// BLE 接收資料 → ASCII 緩衝
 function handleBLEData(event) {
     asciiBuffer += new TextDecoder().decode(event.target.value);
     processBuffer();
 }
 
 // ===================================================================
-// FC06 寫入單一暫存器
+// CRC-16/IBM (Modbus RTU 標準多項式 0xA001)
+// ===================================================================
+function calcCRC16(bytes) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i];
+        for (let b = 0; b < 8; b++) {
+            if (crc & 1) { crc = (crc >>> 1) ^ 0xA001; }
+            else         { crc >>>= 1; }
+        }
+    }
+    return crc & 0xFFFF;
+}
+
+// 組 RTU 幀（原始 bytes + CRC 低位/高位）
+function makeRTU(bytes) {
+    const crc = calcCRC16(bytes);
+    const frame = new Uint8Array(bytes.length + 2);
+    frame.set(bytes);
+    frame[bytes.length]     = crc & 0xFF;
+    frame[bytes.length + 1] = (crc >> 8) & 0xFF;
+    return frame;
+}
+
+// 驗證 RTU 幀 CRC（最後兩位 = CRC_lo, CRC_hi）
+function checkRTUCRC(frame) {
+    if (frame.length < 4) return false;
+    const crc = calcCRC16(frame.slice(0, -2));
+    return (crc & 0xFF) === frame[frame.length - 2] && ((crc >> 8) & 0xFF) === frame[frame.length - 1];
+}
+
+// 預建常用幀（在函式定義後立即初始化 let 變數）
+
+// ===================================================================
+// MOS OT 溫度換算 (NTC Beta 方程式)
+// 12-bit ADC, 3.3V ref, 10kΩ pull-up, 10kΩ NTC@25°C, B=3950K
+// ===================================================================
+function adcToTemperature(adc) {
+    if (adc <= 0 || adc >= 4095) return null;
+    const R_PU = 10000;
+    const R0   = 10000;
+    const B    = 3950;
+    const r    = R_PU * adc / (4096 - adc);
+    const tK   = 1 / (1/298.15 + Math.log(r/R0)/B);
+    return (tK - 273.15).toFixed(1);
+}
+
+// ===================================================================
+// MOS OT 溫度輪詢 (每 3 秒切換 Dynamic Page10 讀取 0x0008)
+// ===================================================================
+// A_HMI 保護設定讀取 (HWInfor 8102h, count=10 → 8102~810B)
+// ===================================================================
+// 讀取 HWInfor 保護設定 8102h~810Bh (FC03, 10 registers)
+// LRC: ~(0x11+0x03+0x81+0x02+0x00+0x0A)+1 = 0x5F
+// ===================================================================
+function readProtectionSettings() {
+    if (!isConnected) return;
+    protReadPending = true;
+    sendRawAscii(":11038102000A5F\r\n", true);
+    log("SYS", "📋 讀取 HWInfor 8102h~810Bh…", "text-purple-400");
+}
+
+// ASCII FC06 LRC 輔助
+function asciiFC06(addr, val) {
+    const sum = (0x11+0x06+((addr>>8)&0xFF)+(addr&0xFF)+((val>>8)&0xFF)+(val&0xFF))&0xFF;
+    const lrc = ((~sum)+1)&0xFF;
+    return `:1106${addr.toString(16).toUpperCase().padStart(4,'0')}${val.toString(16).toUpperCase().padStart(4,'0')}${lrc.toString(16).toUpperCase().padStart(2,'0')}\r\n`;
+}
+
+// Page10 MOS OT ADC 讀取：只讀 D08（1個暫存器），回應長度唯一（15字元 vs Monitor 75字元）
+// ★ 不停主輪詢，Monitor 讀 0x4600 與 0x090A 無關，完全不會干擾
+async function doPage10Read() {
+    if (!isConnected || page10Pending) return;
+    page10Pending = true;
+    await sendRawAscii(asciiFC06(0x090A, 10), false);  // 切 Page10 WatchData（靜默）
+    await new Promise(r => setTimeout(r, connectionType==='ble' ? 800 : 150));
+    // 只讀 WatchData D08 (addr=0x0008, count=1) → LRC=E3
+    // 回應: :11 03 02 XXXX YY\r\n → 長度15，與Monitor16-reg(75)完全不同
+    await sendRawAscii(":110300080001E3\r\n", false);
+    // watchdog：2秒內沒收到回應，強制還原
+    setTimeout(async () => {
+        if (page10Pending) {
+            page10Pending = false;
+            log("SYS", "⚠ Page10 讀取逾時，強制還原 Page0", "text-amber-400");
+            await sendRawAscii(asciiFC06(0x090A, 0), false);
+        }
+    }, 2000);
+}
+
+function startTempPolling() {
+    if (tempPollTimer) clearInterval(tempPollTimer);
+    const iv = connectionType==='ble' ? 8000 : 5000; // BLE 8秒，Serial 5秒
+    tempPollTimer = setInterval(doPage10Read, iv);
+}
+function stopTempPolling() {
+    if (tempPollTimer) { clearInterval(tempPollTimer); tempPollTimer = null; }
+    page10Pending = false;
+}
+
+// ===================================================================
+// 圖表控制
+// ===================================================================
+function toggleChartPause() {
+    chartPaused = !chartPaused;
+    const btn = document.getElementById('pauseChartBtn');
+    btn.textContent = chartPaused ? '▶ 繼續' : '⏸ 暫停';
+    btn.classList.toggle('bg-amber-700', chartPaused);
+    btn.classList.toggle('bg-slate-700/80', !chartPaused);
+}
+
+function chartZoom(factor) {
+    const scales = liveChart.options.scales;
+    for (const axisId of ['y', 'y1']) {
+        const ax = scales[axisId];
+        if (ax.min === undefined || ax.max === undefined) continue;
+        const mid   = (ax.max + ax.min) / 2;
+        const half  = (ax.max - ax.min) / 2 * factor;
+        ax.min = mid - half;
+        ax.max = mid + half;
+    }
+    liveChart.update('none');
+}
+
+function chartZoomReset() {
+    const scales = liveChart.options.scales;
+    delete scales.y.min;  delete scales.y.max;
+    delete scales.y1.min; delete scales.y1.max;
+    liveChart.update('none');
+}
+
+// ===================================================================
+// MOS OT 卡更新（Page10 RTU ADC + D03 Alarm=6 判斷）
+// ===================================================================
+function updateMosOTCard() {
+    const alarmOT = (currentValues[1] !== 0);  // 4601h 報警狀態，非零即有警報
+
+    const adcEl   = document.getElementById('mosOTadcDisp');
+    const tempEl  = document.getElementById('mosOTtempDisp');
+    const stEl    = document.getElementById('mosOTstatusDisp');
+    const barEl   = document.getElementById('mosOTbar');
+    const thEl    = document.getElementById('mosOTthreshDisp');
+    const recEl   = document.getElementById('mosOTrecDisp');
+
+    // 閾值
+    if (thEl)  thEl.innerText = protOTActivate !== null ? `${protOTActivate} ADC` : '-- ADC';
+    if (recEl) recEl.innerText = protOTRecover !== null ? `${protOTRecover} ADC` : '-- ADC';
+
+    // ADC 原始值
+    if (adcEl) adcEl.innerText = mosOTAdcRaw !== null ? mosOTAdcRaw : '--';
+
+    // 溫度 + 進度條
+    const t = mosTemperature !== null ? parseFloat(mosTemperature) : null;
+    if (tempEl) {
+        tempEl.innerText = t !== null ? mosTemperature : '--';
+        const color = alarmOT ? '#f87171' : (t === null ? '#94a3b8' : t < 60 ? '#4ade80' : t < 80 ? '#fbbf24' : '#f87171');
+        tempEl.style.color = color;
+    }
+    if (barEl) {
+        const pct = t !== null ? Math.min(100, Math.max(0, t / 120 * 100)).toFixed(1) : 0;
+        barEl.style.width = pct + '%';
+        barEl.style.backgroundColor = alarmOT ? '#f87171' : (t !== null && t >= 80 ? '#f87171' : t !== null && t >= 60 ? '#fbbf24' : '#4ade80');
+    }
+
+    // 狀態
+    if (stEl) {
+        if (alarmOT) { stEl.innerText = 'OT!'; stEl.style.color = '#f87171'; }
+        else         { stEl.innerText = 'OK';  stEl.style.color = '#4ade80'; }
+    }
+
+    // 卡片邊框警示
+    const card = document.getElementById('mosOTCard');
+    if (card) {
+        if (alarmOT) card.classList.add('alarm-active');
+        else         card.classList.remove('alarm-active');
+    }
+}
+
+// ===================================================================
+// 電流對照卡更新
+// ===================================================================
+function updateCurrentCard() {
+    // M10 (index 9) = 電流平均 0x4609h, scale 0.01A
+    const curA = currentValues[9] * 0.01;
+    const fw   = protFWOCP;
+    const hw   = protHWOCP;
+    const maxA = fw ? Math.max(fw * 1.3, hw || 0) : (hw || 50);
+
+    const dEl   = document.getElementById('curIdisp');
+    const fwEl  = document.getElementById('fwocpDisp');
+    const hwEl  = document.getElementById('hwocpDisp');
+    const bar   = document.getElementById('curIbar');
+    const line  = document.getElementById('curIthreshLine');
+
+    if (fwEl) fwEl.innerText = fw ? fw.toFixed(2) + ' A' : '-- A';
+    if (hwEl) hwEl.innerText = hw ? hw.toFixed(2) + ' A' : '-- A';
+    if (dEl)  dEl.innerText  = curA.toFixed(2);
+
+    const ratio    = fw ? curA / fw : 0;
+    const barColor = ratio >= 1 ? '#f87171' : ratio >= 0.85 ? '#fbbf24' : '#22d3ee';
+    if (dEl)  dEl.style.color = barColor;
+    if (bar)  { bar.style.width = Math.min(100, curA / maxA * 100).toFixed(1) + '%'; bar.style.backgroundColor = barColor; }
+    if (line && fw) line.style.left = Math.min(100, fw / maxA * 100).toFixed(1) + '%';
+}
+
+// ===================================================================
+// 保護參數表更新（讀到 HWInfor 後呼叫）
+// ===================================================================
+function updateProtTable() {
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+    s('tbl_mosOT',  protOTActivate !== null ? protOTActivate + ' ADC' : '--');
+    s('tbl_mosRec', protOTRecover  !== null ? protOTRecover  + ' ADC' : '--');
+    s('tbl_fwocp',  protFWOCP      !== null ? protFWOCP.toFixed(2) + ' A'  : '--');
+    s('tbl_hwocp',  protHWOCP      !== null ? protHWOCP.toFixed(2) + ' A'  : '--');
+}
+
+// ===================================================================
+// 功率累積
+// ===================================================================
+function updatePowerAcc() {
+    const status = currentValues[0];
+    const powerW = currentValues[6];   // M07 輸出功率 0x4606h W
+    const now    = Date.now();
+
+    // 偵測啟動次數
+    if (pwrLastStatus !== 2 && status === 2) pwrStartCount++;
+    pwrLastStatus = status;
+
+    if (status === 2 && powerW > 0) {
+        if (pwrLastTime !== null) {
+            const dtSec = (now - pwrLastTime) / 1000;
+            pwrAccWh  += powerW * dtSec / 3600;
+            pwrRunSec += dtSec;
+        }
+        pwrRunning  = true;
+        pwrLastTime = now;
+    } else {
+        pwrRunning  = false;
+        pwrLastTime = null;
+    }
+
+    const mm   = Math.floor(pwrRunSec / 60).toString().padStart(2,'0');
+    const ss   = Math.floor(pwrRunSec % 60).toString().padStart(2,'0');
+    const avgW = pwrRunSec > 0 ? (pwrAccWh * 3600 / pwrRunSec).toFixed(0) : '0';
+
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+    s('pwrWh',         pwrAccWh.toFixed(3));
+    s('pwrRunTime',    `${mm}:${ss}`);
+    s('pwrAvg',        avgW);
+    s('pwrNow',        `${powerW} W`);
+    s('pwrStartCount', pwrStartCount);
+}
+
+function resetPowerAcc() {
+    pwrAccWh = 0; pwrRunSec = 0; pwrStartCount = 0; pwrLastTime = null; pwrRunning = false;
+    log("SYS", "↺ 功率累積已重置", "text-slate-400");
+    updatePowerAcc();
+}
+
+// (舊名稱保留相容)
+function updateProtCard()        { updateMosOTCard(); updateCurrentCard(); }
+function updateTempCardFromAlarm() { updateMosOTCard(); }
+
+
+// ===================================================================
+// FC06 寫入單一暫存器 (ASCII)
 // ===================================================================
 async function sendCmd(addr, val) {
     if (!isConnected) return alert("請先連線");
 
-    const ID   = 0x11;
-    const FC   = 0x06;
-
-    // 處理負數 (signed 16-bit 補碼)
+    const ID = 0x11, FC = 0x06;
     let v = Math.round(Number(val));
     if (v < 0) v = (0xFFFF + v + 1) & 0xFFFF;
     v = v & 0xFFFF;
 
-    // LRC: ~(sum of bytes) + 1
     const sum = (ID + FC + ((addr>>8)&0xFF) + (addr&0xFF) + ((v>>8)&0xFF) + (v&0xFF)) & 0xFF;
     const lrc = ((~sum) + 1) & 0xFF;
-
-    const ID_H  = ID.toString(16).toUpperCase().padStart(2,'0');
-    const FC_H  = FC.toString(16).toUpperCase().padStart(2,'0');
-    const AD_H  = addr.toString(16).toUpperCase().padStart(4,'0');
-    const VL_H  = v.toString(16).toUpperCase().padStart(4,'0');
-    const LR_H  = lrc.toString(16).toUpperCase().padStart(2,'0');
-
-    const cmd = `:${ID_H}${FC_H}${AD_H}${VL_H}${LR_H}\r\n`;
+    const cmd = `:${ID.toString(16).toUpperCase().padStart(2,'0')}${FC.toString(16).toUpperCase().padStart(2,'0')}${addr.toString(16).toUpperCase().padStart(4,'0')}${v.toString(16).toUpperCase().padStart(4,'0')}${lrc.toString(16).toUpperCase().padStart(2,'0')}\r\n`;
 
     clearInterval(pollTimer);
     await sendRawAscii(cmd, true);
-
     log("CMD", `FC06 → 0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}  [${cmd.trim()}]`, "text-yellow-400");
 
-    // 短暫等待設備回應後恢復輪詢
     setTimeout(() => {
-        if (isConnected)
-            pollTimer = setInterval(() => { sendRawAscii(":110300000010DC\r\n"); }, 100);
+        if (isConnected) {
+            const interval = connectionType === 'ble' ? 500 : 100;
+            pollTimer = setInterval(() => sendRawAscii(":11034600001096\r\n"), interval);
+        }
     }, 200);
 
     const s = document.getElementById('cmdStatus');
@@ -731,9 +1129,8 @@ function setRpm(val) {
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ===================================================================
-// 原始串流發送 — 自動路由 Serial / BLE
+// ASCII 發送 — 自動路由 Serial / BLE
 // ===================================================================
-// BLE 佇列處理器：逐筆發送，保證不重疊
 async function processBLEQueue() {
     if (bleQueueRunning) return;
     bleQueueRunning = true;
@@ -752,7 +1149,7 @@ async function processBLEQueue() {
                 log("ERR", `BLE send: ${e.message}`, "text-red-400");
             }
         }
-        await new Promise(r => setTimeout(r, 30)); // 每筆之間稍作間隔
+        await new Promise(r => setTimeout(r, 30));
     }
     bleQueueRunning = false;
 }
@@ -768,11 +1165,9 @@ async function sendRawAscii(str, showLog) {
             if (showLog) log("TX", str.trim(), "text-cyan-300");
         } else if (connectionType === 'ble') {
             if (!bleRxChar) return;
-            // 輪詢封包若佇列已有待傳命令，捨棄此次輪詢（命令優先）
-            const isPoll = str.startsWith(':110300000010');
-            if (isPoll && bleQueue.some(q => !q.str.startsWith(':110300000010'))) return;
-            // 輪詢若佇列已有輪詢，也跳過（不重複堆積）
-            if (isPoll && bleQueue.some(q => q.str.startsWith(':110300000010'))) return;
+            const isPoll = str.startsWith(':110346000010');
+            if (isPoll && bleQueue.some(q => !q.str.startsWith(':110346000010'))) return;
+            if (isPoll && bleQueue.some(q =>  q.str.startsWith(':110346000010'))) return;
             bleQueue.push({ str, showLog });
             processBLEQueue();
         }
@@ -799,64 +1194,91 @@ async function readLoopSerial() {
     }
 }
 
+// BLE 接收資料 → ASCII 緩衝
+function handleBLEData(event) {
+    asciiBuffer += new TextDecoder().decode(event.target.value);
+    processBuffer();
+}
+
 function processBuffer() {
-    let s = asciiBuffer.indexOf(':');
     let e = asciiBuffer.indexOf('\r\n');
-    while (s !== -1 && e !== -1) {
-        if (e > s) {
-            parsePacket(asciiBuffer.substring(s, e));
-            asciiBuffer = asciiBuffer.substring(e + 2);
-        } else {
-            asciiBuffer = asciiBuffer.substring(s + 1);
-        }
-        s = asciiBuffer.indexOf(':');
+    while (e !== -1) {
+        const segment = asciiBuffer.substring(0, e);
+        const s = segment.lastIndexOf(':');
+        if (s !== -1) parsePacket(asciiBuffer.substring(s, e));
+        asciiBuffer = asciiBuffer.substring(e + 2);
         e = asciiBuffer.indexOf('\r\n');
     }
+    const s = asciiBuffer.indexOf(':');
+    if (s > 0) asciiBuffer = asciiBuffer.substring(s);
 }
 
 // ===================================================================
 // LRC 驗證 (Modbus ASCII)
-// pkt: ":XXXXLRC" (不含 CRLF)
-// 返回 true 表示 LRC 正確
 // ===================================================================
 function checkLRC(pkt) {
     if (!pkt || pkt.length < 3) return false;
-    const body    = pkt.slice(1, -2);         // 去掉 ':' 和末尾 LRC 兩字元
+    const body    = pkt.slice(1, -2);
     const lrcByte = parseInt(pkt.slice(-2), 16);
     if (isNaN(lrcByte)) return false;
     let sum = 0;
     for (let i = 0; i < body.length; i += 2) {
         const b = parseInt(body.substr(i, 2), 16);
-        if (isNaN(b)) return false;           // 含非 hex 字元 → 無效
+        if (isNaN(b)) return false;
         sum += b;
     }
     return ((~sum + 1) & 0xFF) === lrcByte;
 }
 
 // ===================================================================
-// 封包解析
+// 封包解析 (Modbus ASCII)
 // ===================================================================
 function parsePacket(pkt) {
     if (!pkt || pkt.length < 5) return;
-
-    // LRC 驗證 — 丟棄錯位/截斷 frame，避免垃圾數據存入 CSV
     if (!checkLRC(pkt)) {
-        log("RX", `LRC驗證失敗→丟棄  ${pkt.substring(0, 24)}`, "text-slate-600");
+        log("RX", `LRC驗證失敗→丟棄  ${pkt.substring(0,24)}`, "text-slate-600");
         return;
     }
 
-    const fc = pkt.substr(3, 2).toUpperCase();
+    const fc    = pkt.substr(3, 2).toUpperCase();
     const fcNum = parseInt(fc, 16);
 
-    // FC03 讀取回應 (Dynamic Data 0x0000~0x000F, 16 registers = 32 bytes = 64 hex chars)
+    // ── FC03 讀取回應 ──
     if (fc === '03') {
+        // HWInfor 保護設定 (10 reg = 20 bytes = 40 hex chars, pkt≈49)
+        if (protReadPending && pkt.length >= 45 && pkt.length < 71) {
+            protReadPending = false;
+            const dh = pkt.substr(7, 40);
+            const r  = i => parseInt(dh.substr(i*4, 4), 16);
+            protOTActivate = r(0);
+            protOTRecover  = r(1);
+            protFWOCP      = r(4) * 0.01;
+            protHWOCP      = r(9) * 0.01;
+            updateProtTable();
+            updateMosOTCard();
+            updateCurrentCard();
+            log("SYS", `🛡 HWInfor: MosOT=${protOTActivate}(rec=${protOTRecover}) ADC  FWOCP=${protFWOCP.toFixed(2)}A  HWOCP=${protHWOCP.toFixed(2)}A`, "text-purple-400");
+            return;
+        }
+        // ★ Page10 D08 單一暫存器回應（1 reg = 4 hex chars，pkt 長度 ~15）
+        // 長度與 Monitor 16-reg(75) 完全不同，不需時序保護，不影響主輪詢
+        if (page10Pending && pkt.length >= 13 && pkt.length < 20) {
+            page10Pending = false;
+            const adc = parseInt(pkt.substr(7, 4), 16);  // :11 03 02 [XXXX] LRC
+            mosOTAdcRaw    = adc;
+            mosTemperature = adcToTemperature(adc);
+            updateMosOTCard();
+            log("SYS", `🌡 Page10 D08 ADC=${adc}  T=${mosTemperature !== null ? mosTemperature+'°C' : 'N/A'}`, "text-orange-400");
+            sendRawAscii(asciiFC06(0x090A, 0), false);  // 還原 WatchData（pollTimer 持續運行）
+            return;
+        }
+        // Page0/1 主輪詢 (16 reg = 32 bytes = 64 hex chars, pkt≈73)
         if (pkt.length >= 71) {
             const dataHex = pkt.substr(7, 64);
             const now = new Date();
             let rowObj = { time: now.toLocaleTimeString(), timestamp: now.getTime() };
-
             for (let i = 0; i < 16; i++) {
-                let v = parseInt(dataHex.substr(i * 4, 4), 16);
+                let v = parseInt(dataHex.substr(i*4, 4), 16);
                 if (v > 32767) v -= 65536;
                 currentValues[i] = v;
                 rowObj[`d${i}`] = (v * motorDataConfig[i].scale).toFixed(2);
@@ -870,26 +1292,29 @@ function parsePacket(pkt) {
         return;
     }
 
-    // FC06 寫入 Echo (成功 = 設備回傳相同封包)
+    // ── FC06 Echo ──
     if (fc === '06' && pkt.length >= 13) {
         const addr = parseInt(pkt.substr(5, 4), 16);
         const val  = parseInt(pkt.substr(9, 4), 16);
-        log("RX", `✓ FC06 Echo  0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}  (寫入成功)`, "text-green-400");
+        log("RX", `✓ FC06  0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`, "text-green-400");
+        // Page10 還原完成 → 重啟主輪詢
+        if (addr === 0x090A && val === 0 && !pollTimer) {
+            const iv = connectionType === 'ble' ? 500 : 100;
+            pollTimer = setInterval(() => sendRawAscii(":11034600001096\r\n"), iv);
+        }
         return;
     }
 
-    // 例外回應 (FCx | 0x80)
+    // ── Exception ──
     if (fcNum & 0x80) {
         const code = parseInt(pkt.substr(5, 2), 16);
         const ERR  = { 1:'Illegal Function', 2:'Illegal Data Address', 3:'Illegal Data Value', 4:'Device Failure',
                        0x8C:'超出範圍', 0x8D:'無法執行(可能運轉中)', 0x84:'LRC錯誤/格式錯誤', 0x85:'通訊逾時', 0x88:'無效指令' };
-        log("ERR", `✗ Exception FC=${(fcNum&0x7F).toString(16).toUpperCase()}  Code=0x${code.toString(16).toUpperCase()}  ${ERR[code]||'Unknown'}  raw=${pkt}`, "text-red-400");
+        log("ERR", `✗ FC=${(fcNum&0x7F).toString(16).toUpperCase()} Code=0x${code.toString(16).toUpperCase()} ${ERR[code]||'Unknown'}`, "text-red-400");
         return;
     }
 
-    // 其他封包
-    if (pkt.length > 5)
-        log("RX", `Frame: ${pkt}`, "text-slate-500");
+    if (pkt.length > 5) log("RX", `Frame: ${pkt}`, "text-slate-500");
 }
 
 // ===================================================================
@@ -914,15 +1339,35 @@ function updateDashboard() {
     });
 
     // 圖表
-    const i1 = parseInt(document.getElementById('selectY1').value);
-    const i2 = parseInt(document.getElementById('selectY2').value);
-    liveChart.data.datasets[0].data.push(currentValues[i1] * motorDataConfig[i1].scale); liveChart.data.datasets[0].data.shift();
-    liveChart.data.datasets[1].data.push(currentValues[i2] * motorDataConfig[i2].scale); liveChart.data.datasets[1].data.shift();
-    liveChart.update('none');
+    if (!chartPaused) {
+        const i1 = parseInt(document.getElementById('selectY1').value);
+        const i2 = parseInt(document.getElementById('selectY2').value);
+        const v1 = currentValues[i1] * motorDataConfig[i1].scale;
+        const v2 = currentValues[i2] * motorDataConfig[i2].scale;
+        liveChart.data.datasets[0].data.push(v1); liveChart.data.datasets[0].data.shift();
+        liveChart.data.datasets[1].data.push(v2); liveChart.data.datasets[1].data.shift();
+        // auto-scale：依資料範圍自動設定 Y 軸，留 10% margin
+        const d1 = liveChart.data.datasets[0].data.filter(v => v !== null);
+        const d2 = liveChart.data.datasets[1].data.filter(v => v !== null);
+        if (d1.length) {
+            const mn = Math.min(...d1), mx = Math.max(...d1), mg = (mx - mn) * 0.1 || 1;
+            liveChart.options.scales.y.min  = mn - mg;
+            liveChart.options.scales.y.max  = mx + mg;
+        }
+        if (d2.length) {
+            const mn = Math.min(...d2), mx = Math.max(...d2), mg = (mx - mn) * 0.1 || 1;
+            liveChart.options.scales.y1.min = mn - mg;
+            liveChart.options.scales.y1.max = mx + mg;
+        }
+        liveChart.update('none');
+    }
+    updateMosOTCard();
+    updateCurrentCard();
+    updatePowerAcc();
 
     // Alarm / 狀態
     const statusCode = currentValues[0];
-    const almCode    = currentValues[3];
+    const almCode    = currentValues[1];  // M02 4601h 報警狀態
     const box        = document.getElementById('alarmBox');
     const icon       = document.getElementById('alarmIcon');
     const statusEl   = document.getElementById('alarmStatus');
@@ -941,7 +1386,7 @@ function updateDashboard() {
     } else {
         box.classList.remove('alarm-active');
         icon.classList.toggle('grayscale', statusCode !== 2);
-        detailEl.innerText = `狀態: ${s.txt}  |  ${currentValues[2]} RPM`;
+        detailEl.innerText = `狀態: ${s.txt}  |  ${currentValues[4]} RPM`;
     }
 }
 
