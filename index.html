@@ -422,6 +422,42 @@ const MOTOR_STATUS = {
 };
 
 // ===================================================================
+// Alarm Code 對照表 (4601h 報警狀態)
+// ===================================================================
+const ALARM_CODE = {
+    0:    { txt: '正常',                  en: 'No Alarm' },
+    1:    { txt: '過電流 (OC)',            en: 'Over Current' },
+    2:    { txt: '過電壓 (OV)',            en: 'Over Voltage' },
+    3:    { txt: '低電壓 (UV)',            en: 'Under Voltage' },
+    4:    { txt: 'MOS 過溫 (MOS OT)',      en: 'MOS Over Temperature' },
+    5:    { txt: '馬達過溫 (Motor OT)',    en: 'Motor Over Temperature' },
+    6:    { txt: '驅動器過溫 (IPM OT)',    en: 'IPM Over Temperature' },
+    7:    { txt: '霍爾感測器異常',          en: 'Hall Sensor Error' },
+    8:    { txt: '超速 (Over Speed)',      en: 'Over Speed' },
+    9:    { txt: '位置偏差過大',            en: 'Position Deviation Error' },
+    10:   { txt: '編碼器異常',             en: 'Encoder Error' },
+    11:   { txt: '通訊逾時 (Comm TO)',     en: 'Communication Timeout' },
+    12:   { txt: 'EEPROM 錯誤',           en: 'EEPROM Error' },
+    13:   { txt: '參數錯誤',              en: 'Parameter Error' },
+    14:   { txt: '硬體 OCP (HW OCP)',     en: 'Hardware Over Current' },
+    15:   { txt: '軟體 OCP (SW OCP)',     en: 'Software Over Current' },
+    16:   { txt: 'U 相斷路',              en: 'Phase U Open' },
+    17:   { txt: 'V 相斷路',              en: 'Phase V Open' },
+    18:   { txt: 'W 相斷路',              en: 'Phase W Open' },
+    19:   { txt: '電流感測器異常',          en: 'Current Sensor Error' },
+    20:   { txt: '制動電阻過熱',            en: 'Brake Resistor OT' },
+    21:   { txt: '接地故障',              en: 'Ground Fault' },
+    22:   { txt: '失速 (Stall)',          en: 'Motor Stall' },
+    2048: { txt: '系統故障 (0x0800)',      en: 'System Fault' },
+    2056: { txt: 'IO 故障 (0x0808)',       en: 'IO Fault' },
+};
+function alarmDesc(code) {
+    const a = ALARM_CODE[code];
+    if (a) return a.txt;
+    return `故障代號 ${code}`;
+}
+
+// ===================================================================
 // Monitor 暫存器 0x4600 ~ 0x460F（固定地址，不受 0x090A 影響）
 // ===================================================================
 const motorDataConfig = [
@@ -1436,8 +1472,8 @@ function updateDashboard() {
     if (almCode !== 0 || statusCode === 5) {
         box.classList.add('alarm-active');
         icon.classList.remove('grayscale');
-        statusEl.innerText = `ALARM (${almCode})`;
-        detailEl.innerText = `Alarm Code: ${almCode}  |  狀態: ${s.txt}`;
+        statusEl.innerText = `ALARM ${almCode}`;
+        detailEl.innerText = `${alarmDesc(almCode)}  (Code ${almCode})`;
     } else {
         box.classList.remove('alarm-active');
         icon.classList.toggle('grayscale', statusCode !== 2);
