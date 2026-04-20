@@ -101,6 +101,45 @@
     </div>
   </div>
 
+  <!-- 功率累積 -->
+  <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+    <div class="flex justify-between items-center mb-3">
+      <div class="text-[10px] text-slate-500 uppercase tracking-widest">功率累積 (D07)</div>
+      <button onclick="resetPowerAcc()" class="text-[10px] text-slate-500 hover:text-cyan-400 btn-press">↺ 重置</button>
+    </div>
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div id="pwrAccWh" class="text-lg font-bold text-cyan-400 font-mono">0.000</div>
+        <div class="text-[9px] text-slate-600">累積電能 Wh</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div id="pwrRunTime" class="text-lg font-bold text-emerald-400 font-mono">00:00</div>
+        <div class="text-[9px] text-slate-600">運轉時間</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div id="pwrAvg" class="text-lg font-bold text-amber-400 font-mono">0</div>
+        <div class="text-[9px] text-slate-600">平均功率 W</div>
+      </div>
+    </div>
+    <div class="mt-2 text-[10px] text-slate-600 text-center" id="pwrStartCount">啟動次數: 0</div>
+  </div>
+
+  <!-- 溫度暫存器選擇 -->
+  <div class="bg-slate-800 rounded-2xl px-4 py-3 border border-slate-700 flex items-center gap-2 flex-wrap">
+    <span class="text-[10px] text-slate-500">溫度來源</span>
+    <select id="tempRegSel" onchange="tempRegIndex=parseInt(this.value)"
+      class="flex-1 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
+      <option value="8">D08 MOS OT</option>
+      <option value="9">D09 BUS V ADC</option>
+      <option value="10" selected>D10 MOTOR OT</option>
+      <option value="11">D11 INT VR</option>
+    </select>
+    <span class="text-[10px] text-slate-500">B=</span>
+    <input id="ntcBInput" type="number" value="3950" min="1000" max="9999" step="50"
+      onchange="ntcB=parseInt(this.value)||3950"
+      class="w-16 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
+  </div>
+
   <!-- 清除故障 -->
   <button id="clearAlarmBtn" onclick="clearAlarm()"
     class="btn-press hidden w-full py-3.5 bg-amber-700/60 border border-amber-500 text-amber-200 font-bold rounded-2xl text-sm transition active:bg-amber-700">
@@ -259,26 +298,89 @@
 
 </div><!-- end tab-notes -->
 
+<!-- ── 紀錄 TAB ── -->
+<div id="tab-log" class="tab-panel px-3 py-3 space-y-3">
+
+  <!-- 系統狀態 Log -->
+  <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+    <div class="flex justify-between items-center mb-3">
+      <div class="text-[10px] text-slate-500 uppercase tracking-widest">系統狀態紀錄</div>
+      <div class="flex gap-2">
+        <button onclick="exportLog()" class="text-[10px] text-cyan-400 btn-press">📥 匯出</button>
+        <button onclick="clearLog()" class="text-[10px] text-red-400 btn-press">🗑 清除</button>
+      </div>
+    </div>
+    <div id="sysLogList" class="space-y-1 max-h-64 overflow-y-auto font-mono text-[10px]">
+      <div class="text-slate-600 text-center py-4">尚無紀錄</div>
+    </div>
+  </div>
+
+  <!-- 資料分析 -->
+  <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-3">本次連線統計</div>
+    <div id="sessionStats" class="grid grid-cols-2 gap-2 text-xs">
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">最高轉速</div>
+        <div id="statMaxRpm" class="font-mono text-cyan-400">-- RPM</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">最大電流</div>
+        <div id="statMaxCur" class="font-mono text-amber-400">-- A</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">警報次數</div>
+        <div id="statAlmCnt" class="font-mono text-red-400">0 次</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">最高溫度</div>
+        <div id="statMaxTemp" class="font-mono text-orange-400">-- °C</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">最高電壓</div>
+        <div id="statMaxVlt" class="font-mono text-emerald-400">-- V</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">累積電能</div>
+        <div id="statWh" class="font-mono text-purple-400">0.000 Wh</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 警報事件紀錄 -->
+  <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-3">警報事件</div>
+    <div id="almEventList" class="space-y-1 max-h-48 overflow-y-auto">
+      <div class="text-slate-600 text-xs text-center py-2">無警報</div>
+    </div>
+  </div>
+
+</div><!-- end tab-log -->
+
 </main>
 
 <!-- ═══════════════════════════════════════════════
      BOTTOM TAB BAR
 ════════════════════════════════════════════════ -->
-<nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-700/50 grid grid-cols-3">
+<nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-700/50 grid grid-cols-4">
   <button onclick="switchTab('monitor')" id="navMonitor"
-    class="py-3 flex flex-col items-center gap-0.5 text-cyan-400 border-t-2 border-cyan-400">
-    <span class="text-xl">📊</span>
-    <span class="text-[10px] font-bold">監控</span>
+    class="py-2.5 flex flex-col items-center gap-0.5 text-cyan-400 border-t-2 border-cyan-400">
+    <span class="text-lg">📊</span>
+    <span class="text-[9px] font-bold">監控</span>
   </button>
   <button onclick="switchTab('control')" id="navControl"
-    class="py-3 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
-    <span class="text-xl">🎮</span>
-    <span class="text-[10px] font-bold">控制</span>
+    class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
+    <span class="text-lg">🎮</span>
+    <span class="text-[9px] font-bold">控制</span>
   </button>
   <button onclick="switchTab('notes')" id="navNotes"
-    class="py-3 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
-    <span class="text-xl">📝</span>
-    <span class="text-[10px] font-bold">備忘</span>
+    class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
+    <span class="text-lg">📝</span>
+    <span class="text-[9px] font-bold">備忘</span>
+  </button>
+  <button onclick="switchTab('log')" id="navLog"
+    class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
+    <span class="text-lg">📋</span>
+    <span class="text-[9px] font-bold">紀錄</span>
   </button>
 </nav>
 
@@ -324,7 +426,19 @@ let currentValues = new Array(16).fill(0);
 let currentDir = 'CW';
 let mosTemperature = null, mosOTAdcRaw = null;
 let page10Pending = false, scanPending = false;
-let tempRegIndex = 8, ntcB = 3950;
+let tempRegIndex = 10, ntcB = 3950;  // 預設 D10 MOTOR OT
+
+// 功率累積
+let pwrAccWh = 0, pwrRunSec = 0, pwrStartCount = 0;
+let pwrLastTime = null, pwrRunning = false;
+
+// 統計
+let statMaxRpm = 0, statMaxCur = 0, statMaxTemp = -999, statMaxVlt = 0;
+let statAlmCnt = 0, lastAlmCode = 0;
+
+// 系統 log
+let sysLog = [];
+let almEvents = [];
 let protOTActivate = null, protOTRecover = null, protFWOCP = null, protHWOCP = null;
 let protReadPending = false;
 
@@ -570,6 +684,41 @@ function updateDashboard() {
         document.getElementById('statusCard').classList.remove('border-red-700');
     }
 
+    // 功率累積
+    const now = Date.now();
+    const isRunning = (st === 2);
+    if (isRunning && !pwrRunning) { pwrStartCount++; pwrRunning = true; addSysLog(`▶ RUN 啟動 #${pwrStartCount}  ${rpm}RPM`); }
+    if (!isRunning && pwrRunning) { pwrRunning = false; addSysLog(`■ STOP  累積 ${pwrAccWh.toFixed(3)}Wh`); }
+    if (isRunning && pwrLastTime) {
+        const dt = (now - pwrLastTime) / 3600000;
+        pwrAccWh += pwr * dt;
+        pwrRunSec += (now - pwrLastTime) / 1000;
+    }
+    pwrLastTime = now;
+    const mm = String(Math.floor(pwrRunSec/60)).padStart(2,'0');
+    const ss = String(Math.floor(pwrRunSec%60)).padStart(2,'0');
+    document.getElementById('pwrAccWh').textContent   = pwrAccWh.toFixed(3);
+    document.getElementById('pwrRunTime').textContent = `${mm}:${ss}`;
+    document.getElementById('pwrAvg').textContent     = pwrRunSec>0 ? Math.round(pwrAccWh/pwrRunSec*3600) : 0;
+    document.getElementById('pwrStartCount').textContent = `啟動次數: ${pwrStartCount}`;
+
+    // 統計
+    if (rpm > statMaxRpm) { statMaxRpm = rpm; document.getElementById('statMaxRpm').textContent = rpm+' RPM'; }
+    if (parseFloat(cur) > statMaxCur) { statMaxCur = parseFloat(cur); document.getElementById('statMaxCur').textContent = cur+' A'; }
+    if (parseFloat(vlt) > statMaxVlt) { statMaxVlt = parseFloat(vlt); document.getElementById('statMaxVlt').textContent = vlt+' V'; }
+    document.getElementById('statWh').textContent = pwrAccWh.toFixed(3)+' Wh';
+
+    // 警報事件
+    if (alm !== 0 && alm !== lastAlmCode) {
+        statAlmCnt++;
+        document.getElementById('statAlmCnt').textContent = statAlmCnt+' 次';
+        const t = new Date().toLocaleTimeString('zh-TW');
+        almEvents.unshift({time:t, code:alm, desc:alarmDesc(alm)});
+        renderAlmEvents();
+        addSysLog(`⚠ ALARM ${alm}: ${alarmDesc(alm)}`,'red');
+    }
+    lastAlmCode = alm;
+
     // 更新備忘快照
     updateNoteSnapshot();
 }
@@ -579,6 +728,53 @@ function updateTempDisp() {
     if (t === null) { el.textContent='--'; return; }
     el.textContent = t+'°C';
     el.className = `text-lg font-bold font-mono ${t>=80?'text-red-400 alarm-blink':t>=60?'text-amber-400':'text-orange-400'}`;
+    if (t > statMaxTemp) { statMaxTemp = t; document.getElementById('statMaxTemp').textContent = t+' °C'; }
+}
+
+function resetPowerAcc() {
+    pwrAccWh=0; pwrRunSec=0; pwrStartCount=0; pwrLastTime=null; pwrRunning=false;
+    document.getElementById('pwrAccWh').textContent='0.000';
+    document.getElementById('pwrRunTime').textContent='00:00';
+    document.getElementById('pwrAvg').textContent='0';
+    document.getElementById('pwrStartCount').textContent='啟動次數: 0';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// System Log
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function addSysLog(msg, color='') {
+    const t = new Date().toLocaleTimeString('zh-TW');
+    sysLog.unshift({t, msg, color});
+    if (sysLog.length > 200) sysLog.pop();
+    renderSysLog();
+}
+function renderSysLog() {
+    const el = document.getElementById('sysLogList');
+    if (!sysLog.length) { el.innerHTML='<div class="text-slate-600 text-center py-4">尚無紀錄</div>'; return; }
+    el.innerHTML = sysLog.map(l => {
+        const clr = l.color==='red'?'text-red-400':l.color==='green'?'text-emerald-400':'text-slate-400';
+        return `<div class="${clr}"><span class="text-slate-600">${l.t}</span> ${l.msg}</div>`;
+    }).join('');
+}
+function renderAlmEvents() {
+    const el = document.getElementById('almEventList');
+    if (!almEvents.length) { el.innerHTML='<div class="text-slate-600 text-xs text-center py-2">無警報</div>'; return; }
+    el.innerHTML = almEvents.map(a =>
+        `<div class="bg-red-900/30 border border-red-800/40 rounded-lg px-3 py-1.5 text-xs">
+          <span class="text-slate-500 font-mono">${a.time}</span>
+          <span class="text-red-400 font-bold ml-2">Code ${a.code}</span>
+          <span class="text-red-300 ml-1">${a.desc}</span>
+        </div>`
+    ).join('');
+}
+function clearLog() { sysLog=[]; almEvents=[]; renderSysLog(); renderAlmEvents(); }
+function exportLog() {
+    if (!sysLog.length) { alert('無紀錄'); return; }
+    const txt = sysLog.map(l=>`${l.t}\t${l.msg}`).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));
+    a.download = `GanLog_${Date.now()}.txt`;
+    a.click();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -759,20 +955,12 @@ function exportNotes() {
 // Tab Navigation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function switchTab(name) {
-    ['monitor','control','notes'].forEach(t => {
+    const tabs = {monitor:'navMonitor', control:'navControl', notes:'navNotes', log:'navLog'};
+    Object.entries(tabs).forEach(([t, navId]) => {
         document.getElementById('tab-'+t).classList.toggle('active', t===name);
-        const nav = document.getElementById('nav-'+t.charAt(0).toUpperCase()+t.slice(1));
-        if (!nav) return;
-        nav.className = `py-3 flex flex-col items-center gap-0.5 border-t-2 ${
+        const el = document.getElementById(navId);
+        if (el) el.className = `py-2.5 flex flex-col items-center gap-0.5 border-t-2 ${
             t===name ? 'text-cyan-400 border-cyan-400' : 'text-slate-500 border-transparent'
-        }`;
-    });
-    // special id names
-    const ids = {monitor:'navMonitor',control:'navControl',notes:'navNotes'};
-    Object.entries(ids).forEach(([t,id])=>{
-        const el = document.getElementById(id);
-        el.className = `py-3 flex flex-col items-center gap-0.5 border-t-2 ${
-            t===name?'text-cyan-400 border-cyan-400':'text-slate-500 border-transparent'
         }`;
     });
 }
