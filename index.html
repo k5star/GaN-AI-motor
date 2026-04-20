@@ -210,6 +210,21 @@
                 <span>0°C</span><span>閾值: <span id="mosOTthreshDisp">-- ADC</span></span><span>回復: <span id="mosOTrecDisp">-- ADC</span></span><span>120°C</span>
             </div>
             <p class="text-[8px] text-slate-600 mt-1">ADC 每 8s 自動更新 (0x090Ah WatchData → Page10)</p>
+            <!-- 掃描 / 暫存器選擇 / NTC B值 -->
+            <div class="flex gap-1 mt-1.5 items-center flex-wrap">
+                <button onclick="scanPage10()" class="bg-cyan-800/70 hover:bg-cyan-700 text-cyan-200 rounded px-2 py-0.5 text-[9px] transition">🔍 掃描</button>
+                <select id="tempRegSel" onchange="tempRegIndex=parseInt(this.value)"
+                    class="bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[9px] text-slate-300 outline-none">
+                    <option value="8">D08 MOS OT</option>
+                    <option value="9">D09 BUS V</option>
+                    <option value="10">D10 MOTOR OT</option>
+                    <option value="11">D11 INT VR</option>
+                </select>
+                <label class="text-[9px] text-slate-500">B=</label>
+                <input id="ntcBInput" type="number" value="3950" min="1000" max="9999" step="50"
+                    onchange="ntcB=parseInt(this.value)||3950"
+                    class="w-14 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[9px] text-slate-300 outline-none">
+            </div>
         </div>
 
         <!-- ② 輸出電流 即時對照 (Page0 D10=0x000Ah) -->
@@ -461,7 +476,10 @@ let chartPaused = false;
 // MOS OT (Page10 via 0x090A WatchData)
 let mosOTAdcRaw      = null;
 let mosTemperature   = null;
-let page10Pending    = false;  // 等待 Page10 FC03 回應
+let page10Pending    = false;  // 等待 Page10 FC03 回應（單一 reg）
+let scanPending      = false;  // 等待 Page10 全暫存器掃描回應（16 reg）
+let tempRegIndex     = 8;      // Page10 溫度 D-register index（預設 D08 MOS OT）
+let ntcB             = 3950;   // NTC Beta 值（可由 UI 調整）
 let tempPollTimer    = null;   // Page10 輪詢計時器
 
 // A_HMI 保護設定（HWInfor 8102h~810Bh）
@@ -804,12 +822,10 @@ function checkRTUCRC(frame) {
 // ===================================================================
 function adcToTemperature(adc) {
     if (adc <= 0 || adc >= 4095) return null;
-    const R_PU = 10000;
-    const R0   = 10000;
-    const B    = 3950;
-    const r    = R_PU * adc / (4096 - adc);
-    const tK   = 1 / (1/298.15 + Math.log(r/R0)/B);
-    return (tK - 273.15).toFixed(1);
+    const R_PU = 10000, R0 = 10000, ADC_MAX = 4096;
+    const r  = R_PU * adc / (ADC_MAX - adc);
+    const tK = 1 / (1/298.15 + Math.log(r/R0)/ntcB);
+    return parseFloat((tK - 273.15).toFixed(1));
 }
 
 // ===================================================================
@@ -835,16 +851,20 @@ function asciiFC06(addr, val) {
 }
 
 // Page10 MOS OT ADC 讀取：只讀 D08（1個暫存器），回應長度唯一（15字元 vs Monitor 75字元）
-// ★ 不停主輪詢，Monitor 讀 0x4600 與 0x090A 無關，完全不會干擾
+// 動態計算 Page10 單一 reg 讀取 frame（依 tempRegIndex）
+function makePage10Frame(regIdx) {
+    const sum = (0x11+0x03+((regIdx>>8)&0xFF)+(regIdx&0xFF)+0x00+0x01) & 0xFF;
+    const lrc = ((~sum)+1) & 0xFF;
+    return `:1103${regIdx.toString(16).padStart(4,'0').toUpperCase()}0001${lrc.toString(16).padStart(2,'0').toUpperCase()}\r\n`;
+}
+
+// 正常溫度輪詢：只讀 1 個 reg（長度~15，與 Monitor 75 不衝突）
 async function doPage10Read() {
-    if (!isConnected || page10Pending) return;
+    if (!isConnected || page10Pending || scanPending) return;
     page10Pending = true;
-    await sendRawAscii(asciiFC06(0x090A, 10), false);  // 切 Page10 WatchData（靜默）
+    await sendRawAscii(asciiFC06(0x090A, 10), false);
     await new Promise(r => setTimeout(r, connectionType==='ble' ? 800 : 150));
-    // 只讀 WatchData D08 (addr=0x0008, count=1) → LRC=E3
-    // 回應: :11 03 02 XXXX YY\r\n → 長度15，與Monitor16-reg(75)完全不同
-    await sendRawAscii(":110300080001E3\r\n", false);
-    // watchdog：2秒內沒收到回應，強制還原
+    await sendRawAscii(makePage10Frame(tempRegIndex), false);
     setTimeout(async () => {
         if (page10Pending) {
             page10Pending = false;
@@ -854,14 +874,34 @@ async function doPage10Read() {
     }, 2000);
 }
 
+// 一次性掃描：讀 Page10 全部 16 reg，顯示於 log
+async function scanPage10() {
+    if (!isConnected || page10Pending || scanPending) return;
+    scanPending = true;
+    clearInterval(pollTimer); pollTimer = null;
+    bleQueue.length = 0;
+    log("SYS", "🔍 掃描 Page10 中...", "text-cyan-400");
+    await sendRawAscii(asciiFC06(0x090A, 10), false);
+    await new Promise(r => setTimeout(r, connectionType==='ble' ? 800 : 150));
+    await sendRawAscii(":110300000010DC\r\n", false);  // 讀 16 reg from 0x0000
+    setTimeout(async () => {
+        if (scanPending) {
+            scanPending = false;
+            log("SYS", "⚠ Page10 掃描逾時", "text-amber-400");
+            await sendRawAscii(asciiFC06(0x090A, 0), false);
+        }
+    }, 3000);
+}
+
 function startTempPolling() {
     if (tempPollTimer) clearInterval(tempPollTimer);
-    const iv = connectionType==='ble' ? 8000 : 5000; // BLE 8秒，Serial 5秒
+    const iv = connectionType==='ble' ? 8000 : 5000;
     tempPollTimer = setInterval(doPage10Read, iv);
 }
 function stopTempPolling() {
     if (tempPollTimer) { clearInterval(tempPollTimer); tempPollTimer = null; }
     page10Pending = false;
+    scanPending = false;
 }
 
 // ===================================================================
@@ -1260,19 +1300,34 @@ function parsePacket(pkt) {
             log("SYS", `🛡 HWInfor: MosOT=${protOTActivate}(rec=${protOTRecover}) ADC  FWOCP=${protFWOCP.toFixed(2)}A  HWOCP=${protHWOCP.toFixed(2)}A`, "text-purple-400");
             return;
         }
-        // ★ Page10 D08 單一暫存器回應（1 reg = 4 hex chars，pkt 長度 ~15）
-        // 長度與 Monitor 16-reg(75) 完全不同，不需時序保護，不影響主輪詢
+        // ★ Page10 掃描回應（16 reg，長度~75，靠 scanPending 區分 Monitor）
+        if (scanPending && pkt.length >= 71) {
+            scanPending = false;
+            const dh = pkt.substr(7, 64);
+            const lines = ['📊 Page10 掃描結果：'];
+            for (let i = 0; i < 16; i++) {
+                const adc = parseInt(dh.substr(i*4, 4), 16);
+                const t   = adcToTemperature(adc);
+                const tStr = t !== null ? ` → ${t}°C` : '';
+                lines.push(`  D${String(i).padStart(2,'0')} (${('000'+i.toString(16).toUpperCase()).slice(-4)}h) = ${adc}${tStr}`);
+            }
+            log("SYS", lines.join('\n'), "text-cyan-300");
+            sendRawAscii(asciiFC06(0x090A, 0), false);  // 還原，FC06 echo 重啟 pollTimer
+            return;
+        }
+        // ★ Page10 單一暫存器回應（1 reg，pkt 長度~15，與 Monitor 75 天然區分）
         if (page10Pending && pkt.length >= 13 && pkt.length < 20) {
             page10Pending = false;
-            const adc = parseInt(pkt.substr(7, 4), 16);  // :11 03 02 [XXXX] LRC
+            const adc = parseInt(pkt.substr(7, 4), 16);
             mosOTAdcRaw    = adc;
             mosTemperature = adcToTemperature(adc);
             updateMosOTCard();
-            log("SYS", `🌡 Page10 D08 ADC=${adc}  T=${mosTemperature !== null ? mosTemperature+'°C' : 'N/A'}`, "text-orange-400");
-            sendRawAscii(asciiFC06(0x090A, 0), false);  // 還原 WatchData（pollTimer 持續運行）
+            const regName = ['D08 MOS OT','D09 BUS V','D10 MOTOR OT','D11 INT VR'][tempRegIndex-8] || `D${tempRegIndex.toString().padStart(2,'0')}`;
+            log("SYS", `🌡 Page10 ${regName} ADC=${adc}  T=${mosTemperature !== null ? mosTemperature+'°C' : 'N/A'}`, "text-orange-400");
+            sendRawAscii(asciiFC06(0x090A, 0), false);
             return;
         }
-        // Page0/1 主輪詢 (16 reg = 32 bytes = 64 hex chars, pkt≈73)
+        // Monitor 主輪詢 (16 reg = 64 hex chars, pkt≈75)
         if (pkt.length >= 71) {
             const dataHex = pkt.substr(7, 64);
             const now = new Date();
