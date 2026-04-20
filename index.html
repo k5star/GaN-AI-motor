@@ -1616,6 +1616,46 @@ function renderAnaStats(validRows, headers) {
             <td class="p-1 text-right text-slate-500">±${std.toFixed(2)}</td>`;
         tbody.appendChild(tr);
     });
+
+    // ── Alarm 事件摘要 ──
+    const almCol = headers.find(h => h.includes('報警狀態') || h.includes('Alarm'));
+    if (almCol) {
+        const almVals = validRows.map(r => parseInt(r[almCol])).filter(v => !isNaN(v));
+        // 統計各代號出現次數（排除 0）
+        const counts = {};
+        almVals.forEach(v => { if (v !== 0) counts[v] = (counts[v] || 0) + 1; });
+        const alarmRows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+        // 找第一次發生的時間
+        const firstTime = {};
+        validRows.forEach(r => {
+            const code = parseInt(r[almCol]);
+            if (code !== 0 && !firstTime[code]) firstTime[code] = r['Time'] || '--';
+        });
+
+        // 插入分隔 + alarm 摘要
+        const sep = document.createElement('tr');
+        sep.innerHTML = `<td colspan="5" class="pt-3 pb-1 text-[9px] text-slate-500 uppercase tracking-widest border-t border-slate-700">
+            報警事件紀錄 ${alarmRows.length === 0 ? '— 無警報' : `(${alarmRows.length} 種)`}</td>`;
+        tbody.appendChild(sep);
+
+        if (alarmRows.length === 0) {
+            const ok = document.createElement('tr');
+            ok.innerHTML = `<td colspan="5" class="p-1 text-emerald-400 text-[10px]">✓ 整段記錄無警報發生</td>`;
+            tbody.appendChild(ok);
+        } else {
+            alarmRows.forEach(([code, cnt]) => {
+                const desc = alarmDesc(parseInt(code));
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-800 hover:bg-slate-700/30';
+                tr.innerHTML = `
+                    <td class="p-1 text-red-400 font-mono">Code ${code}</td>
+                    <td class="p-1 text-amber-300" colspan="3">${desc}</td>
+                    <td class="p-1 text-right text-slate-400 text-[9px]">${cnt} 筆<br><span class="text-slate-600">${firstTime[code]}</span></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+    }
 }
 
 function renderAnaChart(validRows, headers) {
@@ -1661,7 +1701,28 @@ function drawAnaChart(rows, col) {
         },
         options: {
             responsive: true, maintainAspectRatio: false, animation: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label(ctx) {
+                            const v = ctx.parsed.y;
+                            const label = ctx.dataset.label || '';
+                            // 若是報警狀態欄，附加文字說明
+                            if (label.includes('報警狀態') || label.includes('Alarm')) {
+                                const code = Math.round(v);
+                                return `${label}: ${code}  (${alarmDesc(code)})`;
+                            }
+                            // 若是馬達狀態欄，附加文字說明
+                            if (label.includes('馬達狀態')) {
+                                const s = MOTOR_STATUS[Math.round(v)];
+                                return `${label}: ${Math.round(v)}  (${s ? s.txt : '?'})`;
+                            }
+                            return `${label}: ${v}`;
+                        }
+                    }
+                }
+            },
             scales: {
                 x: { display: false },
                 y: { grid: { color: '#1e293b' }, ticks: { color: '#22d3ee', font: { size: 9 } }, border: { display: false } }
