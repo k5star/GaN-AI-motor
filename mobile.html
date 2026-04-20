@@ -54,7 +54,7 @@
 <main class="overflow-y-auto" style="height:calc(100vh - 106px)">
 
 <!-- ── 監控 TAB ── -->
-<div id="tab-monitor" class="tab-panel active px-3 py-3 space-y-3">
+<div id="tab-monitor" class="tab-panel px-3 py-3 space-y-3">
 
   <!-- 馬達狀態主卡 -->
   <div id="statusCard" class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
@@ -181,7 +181,7 @@
 </div><!-- end tab-monitor -->
 
 <!-- ── 控制 TAB ── -->
-<div id="tab-control" class="tab-panel px-3 py-3 space-y-3">
+<div id="tab-control" class="tab-panel active px-3 py-3 space-y-3">
 
   <!-- RUN / STOP -->
   <div class="grid grid-cols-2 gap-3">
@@ -260,28 +260,18 @@
 <!-- ── 備忘 / 系統紀錄 TAB ── -->
 <div id="tab-notes" class="tab-panel px-3 py-3 space-y-3">
 
-  <!-- ─── 語音 + 備忘輸入 ─── -->
-  <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
-    <div class="flex items-center gap-3 mb-3">
-      <button id="micBtn" onclick="toggleMic()"
-        class="btn-press w-16 h-16 rounded-full bg-slate-700 border-2 border-slate-600 text-3xl transition flex items-center justify-center shrink-0">
-        🎤
-      </button>
-      <div class="flex-1">
-        <div id="micStatus" class="text-xs text-slate-500 mb-1">點擊麥克風語音輸入</div>
-        <div id="noteSnapshot" class="px-2 py-1 bg-slate-900/60 rounded-lg text-[10px] text-slate-500 font-mono">快照：未連線</div>
-      </div>
-    </div>
-    <textarea id="noteInput" rows="2" placeholder="語音輸入結果 / 手動輸入備註..."
-      class="w-full bg-slate-900/60 border border-slate-600 rounded-xl px-3 py-2 text-sm text-white outline-none resize-none focus:border-cyan-500 transition"
-      style="-webkit-user-select:text;user-select:text"></textarea>
-    <button onclick="saveNote()" class="btn-press mt-2 w-full py-3 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition">
-      💾 儲存備忘（附當前快照）
-    </button>
-  </div>
-
   <!-- ─── LOG 控制列 ─── -->
   <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+    <!-- 設定欄（記錄前填寫） -->
+    <div id="logSettings" class="space-y-2 mb-3">
+      <input id="logFilename" type="text" placeholder="檔名（留空自動產生）"
+        class="w-full bg-slate-900/60 border border-slate-600 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500 transition"
+        style="-webkit-user-select:text;user-select:text">
+      <textarea id="logDesc" rows="2" placeholder="記錄說明：調教參數、測試條件…"
+        class="w-full bg-slate-900/60 border border-slate-600 rounded-xl px-3 py-2 text-xs text-white outline-none resize-none focus:border-cyan-500 transition"
+        style="-webkit-user-select:text;user-select:text"></textarea>
+    </div>
+    <!-- 按鈕列 -->
     <div class="flex items-center gap-2 mb-2">
       <button id="logStartBtn" onclick="toggleLog()"
         class="btn-press flex-1 py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition">
@@ -294,6 +284,10 @@
       <button onclick="exportLog()"
         class="btn-press px-4 py-3 bg-cyan-800 hover:bg-cyan-700 text-cyan-200 font-bold rounded-xl text-sm transition">
         📥
+      </button>
+      <button onclick="shareLog()"
+        class="btn-press px-4 py-3 bg-green-700 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition">
+        LINE
       </button>
     </div>
     <div id="logStatusBar" class="px-3 py-2 bg-slate-900/60 rounded-xl text-[10px] text-slate-500 font-mono text-center">
@@ -375,20 +369,20 @@
      BOTTOM TAB BAR
 ════════════════════════════════════════════════ -->
 <nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-700/50 grid grid-cols-3">
-  <button onclick="switchTab('monitor')" id="navMonitor"
-    class="py-2.5 flex flex-col items-center gap-0.5 text-cyan-400 border-t-2 border-cyan-400">
-    <span class="text-lg">📊</span>
-    <span class="text-[9px] font-bold">監控</span>
-  </button>
   <button onclick="switchTab('control')" id="navControl"
-    class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
+    class="py-2.5 flex flex-col items-center gap-0.5 text-cyan-400 border-t-2 border-cyan-400">
     <span class="text-lg">🎮</span>
     <span class="text-[9px] font-bold">控制</span>
   </button>
+  <button onclick="switchTab('monitor')" id="navMonitor"
+    class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
+    <span class="text-lg">📊</span>
+    <span class="text-[9px] font-bold">監控</span>
+  </button>
   <button onclick="switchTab('notes')" id="navNotes"
     class="py-2.5 flex flex-col items-center gap-0.5 text-slate-500 border-t-2 border-transparent">
-    <span class="text-lg">📝</span>
-    <span class="text-[9px] font-bold">備忘/紀錄</span>
+    <span class="text-lg">📋</span>
+    <span class="text-[9px] font-bold">紀錄</span>
   </button>
 </nav>
 
@@ -994,6 +988,7 @@ function toggleLog() {
         const btn = document.getElementById('logStartBtn');
         btn.textContent = '▶ 開始記錄';
         btn.className = 'btn-press flex-1 py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition';
+        document.getElementById('logSettings').style.display = '';
         const sec = Math.round((Date.now()-logStartTime)/1000);
         document.getElementById('logStatusBar').textContent = `已停止 · 共 ${logData.length} 筆 · ${sec}秒`;
         addSysLog(`■ LOG 停止  ${logData.length} 筆`, 'green');
@@ -1004,7 +999,8 @@ function toggleLog() {
         const btn = document.getElementById('logStartBtn');
         btn.textContent = '⏹ 停止記錄';
         btn.className = 'btn-press flex-1 py-3 bg-red-700 hover:bg-red-600 text-white font-bold rounded-xl text-sm transition';
-        addSysLog('▶ LOG 開始記錄', 'green');
+        document.getElementById('logSettings').style.display = 'none';
+        addSysLog('▶ LOG 開始記錄' + (document.getElementById('logDesc').value.trim() ? `：${document.getElementById('logDesc').value.trim()}` : ''), 'green');
         logInterval = setInterval(() => {
             if (!isConnected) return;
             logData.push({
@@ -1045,9 +1041,10 @@ function resetStats() {
     addSysLog('↺ 統計已重置');
 }
 
-function exportLog() {
-    if (!logData.length && !sysLog.length) { alert('無資料可匯出'); return; }
+function buildLogCSV() {
+    const desc = (document.getElementById('logDesc').value || '').trim();
     let out = '';
+    if (desc) out += `# ${desc}\n`;
     if (logData.length) {
         out += 'Time,RPM,Current(A),Voltage(V),Power(W),Duty(%),Temp(°C),AlarmCode,AlarmDesc\n';
         logData.forEach(r => {
@@ -1059,10 +1056,43 @@ function exportLog() {
         out += '--- 事件紀錄 ---\n';
         sysLog.slice().reverse().forEach(l => { out += `${l.t}\t${l.msg}\n`; });
     }
+    return out;
+}
+
+function getLogFilename() {
+    const name = (document.getElementById('logFilename').value || '').trim();
+    if (name) return name.endsWith('.csv') ? name : name + '.csv';
+    const d = new Date();
+    const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+    return `GanLog_${ts}.csv`;
+}
+
+function exportLog() {
+    const out = buildLogCSV();
+    if (!out) { alert('無資料可匯出'); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\uFEFF'+out],{type:'text/csv;charset=utf-8'}));
-    a.download = `GanLog_${Date.now()}.csv`;
+    a.download = getLogFilename();
     a.click();
+}
+
+async function shareLog() {
+    const out = buildLogCSV();
+    if (!out) { alert('無資料可分享'); return; }
+    const filename = getLogFilename();
+    const file = new File(['\uFEFF'+out], filename, {type:'text/csv;charset=utf-8'});
+    if (navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+        try {
+            await navigator.share({ files:[file], title: filename });
+        } catch(e) { if (e.name !== 'AbortError') alert('分享失敗：'+e.message); }
+    } else {
+        // fallback: 下載後提示用LINE傳
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['\uFEFF'+out],{type:'text/csv;charset=utf-8'}));
+        a.download = filename;
+        a.click();
+        setTimeout(()=>alert('已下載 '+filename+'\n請至LINE選擇檔案傳送'), 800);
+    }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
