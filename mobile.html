@@ -615,9 +615,10 @@ function parsePacket(pkt) {
 async function doPage10Read() {
     if (!isConnected || page10Pending || scanPending) return;
     page10Pending = true;
+    // 固定寫 0x090A=10 啟用 WatchData，再交替讀 D09(addr=9) / D10(addr=10)
     page10ReadingReg = page10Step === 0 ? 9 : 10;
     page10Step = 1 - page10Step;
-    await sendRawAscii(asciiFC06(0x090A, page10ReadingReg));
+    await sendRawAscii(asciiFC06(0x090A, 10));
     await new Promise(r=>setTimeout(r, 800));
     await sendRawAscii(makePage10Frame(page10ReadingReg));
     setTimeout(async()=>{
@@ -636,9 +637,14 @@ async function readProt() {
     protReadPending = true;
     await sendRawAscii(':11038102000A5F\r\n');
 }
+function adcToTempStr(adc) {
+    if (adc === null) return '--';
+    const t = adcToTemperature(adc);
+    return t !== null ? t + ' °C' : adc + ' ADC';
+}
 function updateProtCard() {
-    document.getElementById('protMosAct').textContent = protOTActivate !== null ? protOTActivate+' ADC' : '--';
-    document.getElementById('protMosRec').textContent = protOTRecover !== null ? protOTRecover+' ADC' : '--';
+    document.getElementById('protMosAct').textContent = adcToTempStr(protOTActivate);
+    document.getElementById('protMosRec').textContent = adcToTempStr(protOTRecover);
     document.getElementById('protFwOcp').textContent  = protFWOCP !== null ? protFWOCP.toFixed(2)+' A' : '--';
     document.getElementById('protHwOcp').textContent  = protHWOCP !== null ? protHWOCP.toFixed(2)+' A' : '--';
 }
