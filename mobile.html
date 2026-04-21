@@ -130,8 +130,8 @@
     <select id="tempRegSel" onchange="tempRegIndex=parseInt(this.value)"
       class="flex-1 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
       <option value="8">D08 MOS OT</option>
-      <option value="9">D09 BUS V ADC</option>
-      <option value="10" selected>D10 MOTOR OT</option>
+      <option value="9">D09 BUS VDC</option>
+      <option value="10" selected>D10 MOS OT</option>
       <option value="11">D11 INT VR</option>
     </select>
     <span class="text-[10px] text-slate-500">B=</span>
@@ -993,7 +993,11 @@ function toggleLog() {
         document.getElementById('logStatusBar').textContent = `已停止 · 共 ${logData.length} 筆 · ${sec}秒`;
         addSysLog(`■ LOG 停止  ${logData.length} 筆`, 'green');
     } else {
-        // 開始
+        // 開始：若檔名是預設格式則刷新時間戳
+        const fnEl = document.getElementById('logFilename');
+        if (/^GanLog_\d{8}_\d{4}$/.test((fnEl.value||'').trim())) {
+            fnEl.value = genDefaultFilename();
+        }
         logActive = true;
         logStartTime = Date.now();
         const btn = document.getElementById('logStartBtn');
@@ -1062,9 +1066,7 @@ function buildLogCSV() {
 function getLogFilename() {
     const name = (document.getElementById('logFilename').value || '').trim();
     if (name) return name.endsWith('.csv') ? name : name + '.csv';
-    const d = new Date();
-    const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-    return `GanLog_${ts}.csv`;
+    return genDefaultFilename() + '.csv';
 }
 
 function exportLog() {
@@ -1111,7 +1113,13 @@ function showToast(msg) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Init
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function genDefaultFilename() {
+    const d = new Date();
+    return `GanLog_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
 window.addEventListener('load', () => {
+    document.getElementById('logFilename').value = genDefaultFilename();
     renderNotes();
     updateNoteSnapshot();
     if (!navigator.bluetooth) {
