@@ -85,18 +85,22 @@
       </div>
     </div>
     <!-- 次要數值 -->
-    <div class="grid grid-cols-3 gap-2 mt-2">
+    <div class="grid grid-cols-4 gap-1.5 mt-2">
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispPwr" class="text-lg font-bold text-purple-400 font-mono">--</div>
+        <div id="dispPwr" class="text-base font-bold text-purple-400 font-mono leading-tight">--</div>
         <div class="text-[9px] text-slate-600">功率 W</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispDuty" class="text-lg font-bold text-slate-300 font-mono">--</div>
+        <div id="dispDuty" class="text-base font-bold text-slate-300 font-mono leading-tight">--</div>
         <div class="text-[9px] text-slate-600">Duty %</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispTemp" class="text-lg font-bold text-orange-400 font-mono">--</div>
-        <div class="text-[9px] text-slate-600">MOS °C</div>
+        <div id="dispTempD09" class="text-base font-bold text-sky-400 font-mono leading-tight">--</div>
+        <div class="text-[9px] text-slate-600">D09 °C</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2 text-center">
+        <div id="dispTemp" class="text-base font-bold text-orange-400 font-mono leading-tight">--</div>
+        <div class="text-[9px] text-slate-600">MOS OT°C</div>
       </div>
     </div>
   </div>
@@ -124,20 +128,12 @@
     <div class="mt-2 text-[10px] text-slate-600 text-center" id="pwrStartCount">啟動次數: 0</div>
   </div>
 
-  <!-- 溫度暫存器選擇 -->
-  <div class="bg-slate-800 rounded-2xl px-4 py-3 border border-slate-700 flex items-center gap-2 flex-wrap">
-    <span class="text-[10px] text-slate-500">溫度來源</span>
-    <select id="tempRegSel" onchange="tempRegIndex=parseInt(this.value)"
-      class="flex-1 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
-      <option value="8">D08 MOS OT</option>
-      <option value="9">D09 BUS VDC</option>
-      <option value="10" selected>D10 MOS OT</option>
-      <option value="11">D11 INT VR</option>
-    </select>
-    <span class="text-[10px] text-slate-500">B=</span>
+  <!-- NTC B值設定 -->
+  <div class="bg-slate-800 rounded-2xl px-4 py-3 border border-slate-700 flex items-center gap-2">
+    <span class="text-[10px] text-slate-500">固定：D09 BUS VDC｜D10 MOS OT　　NTC B=</span>
     <input id="ntcBInput" type="number" value="3950" min="1000" max="9999" step="50"
       onchange="ntcB=parseInt(this.value)||3950"
-      class="w-16 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
+      class="w-20 bg-slate-900 border border-slate-600 rounded-xl px-2 py-1.5 text-xs text-slate-300 outline-none">
   </div>
 
   <!-- 異常狀態操作列 -->
@@ -426,9 +422,10 @@ let asciiBuffer = '';
 let bleQueue = [], bleQueueRunning = false;
 let currentValues = new Array(16).fill(0);
 let currentDir = 'CW';
-let mosTemperature = null, mosOTAdcRaw = null;
+let tempD09 = null, tempD10 = null;
 let page10Pending = false, scanPending = false;
-let tempRegIndex = 10, ntcB = 3950;  // 預設 D10 MOTOR OT
+let page10Step = 0, page10ReadingReg = 9; // 0→D09, 1→D10 交替
+let ntcB = 3950;
 
 // 功率累積
 let pwrAccWh = 0, pwrRunSec = 0, pwrStartCount = 0;
@@ -584,8 +581,8 @@ function parsePacket(pkt) {
         if (page10Pending && pkt.length>=13 && pkt.length<20) {
             page10Pending = false;
             const adc = parseInt(pkt.substr(7,4),16);
-            mosOTAdcRaw = adc;
-            mosTemperature = adcToTemperature(adc);
+            if (page10ReadingReg === 9) tempD09 = adcToTemperature(adc);
+            else                        tempD10 = adcToTemperature(adc);
             sendRawAscii(asciiFC06(0x090A, 0));
             updateTempDisp();
             return;
@@ -618,9 +615,11 @@ function parsePacket(pkt) {
 async function doPage10Read() {
     if (!isConnected || page10Pending || scanPending) return;
     page10Pending = true;
-    await sendRawAscii(asciiFC06(0x090A, 10));
+    page10ReadingReg = page10Step === 0 ? 9 : 10;
+    page10Step = 1 - page10Step;
+    await sendRawAscii(asciiFC06(0x090A, page10ReadingReg));
     await new Promise(r=>setTimeout(r, 800));
-    await sendRawAscii(makePage10Frame(tempRegIndex));
+    await sendRawAscii(makePage10Frame(page10ReadingReg));
     setTimeout(async()=>{
         if (page10Pending) {
             page10Pending = false;
@@ -725,12 +724,19 @@ function updateDashboard() {
     updateNoteSnapshot();
 }
 function updateTempDisp() {
-    const t = mosTemperature;
-    const el = document.getElementById('dispTemp');
-    if (t === null) { el.textContent='--'; return; }
-    el.textContent = t+'°C';
-    el.className = `text-lg font-bold font-mono ${t>=80?'text-red-400 alarm-blink':t>=60?'text-amber-400':'text-orange-400'}`;
-    if (t > statMaxTemp) { statMaxTemp = t; document.getElementById('statMaxTemp').textContent = t+' °C'; }
+    // D09
+    const e9 = document.getElementById('dispTempD09');
+    if (tempD09 !== null) {
+        e9.textContent = tempD09 + '°C';
+        e9.className = `text-base font-bold font-mono leading-tight ${tempD09>=80?'text-red-400 alarm-blink':tempD09>=60?'text-amber-400':'text-sky-400'}`;
+    }
+    // D10 MOS OT
+    const e10 = document.getElementById('dispTemp');
+    if (tempD10 !== null) {
+        e10.textContent = tempD10 + '°C';
+        e10.className = `text-base font-bold font-mono leading-tight ${tempD10>=80?'text-red-400 alarm-blink':tempD10>=60?'text-amber-400':'text-orange-400'}`;
+        if (tempD10 > statMaxTemp) { statMaxTemp = tempD10; document.getElementById('statMaxTemp').textContent = tempD10+' °C'; }
+    }
 }
 
 function resetPowerAcc() {
@@ -865,7 +871,7 @@ function updateNoteSnapshot() {
     const vlt = (currentValues[7]*0.01).toFixed(1);
     const alm = currentValues[1];
     const st  = MOTOR_STATUS[currentValues[0]] || {txt:'?'};
-    const tmp = mosTemperature !== null ? mosTemperature+'°C' : '--';
+    const tmp = tempD10 !== null ? tempD10+'°C' : (tempD09 !== null ? tempD09+'°C' : '--');
     document.getElementById('noteSnapshot').textContent =
         `狀態:${st.txt} RPM:${rpm} 電流:${cur}A 電壓:${vlt}V 溫度:${tmp}${alm?` ⚠警報:${alarmDesc(alm)}`:''}`;
 }
@@ -887,7 +893,7 @@ function saveNote() {
             st:   (MOTOR_STATUS[currentValues[0]]||{txt:'?'}).txt,
             alm:  currentValues[1],
             almDesc: alarmDesc(currentValues[1]),
-            temp: mosTemperature
+            temp: tempD10
         }
     });
     setNotes(notes.slice(0,200));
@@ -995,7 +1001,7 @@ function toggleLog() {
     } else {
         // 開始：若檔名是預設格式則刷新時間戳
         const fnEl = document.getElementById('logFilename');
-        if (/^GanLog_\d{8}_\d{4}$/.test((fnEl.value||'').trim())) {
+        if (/^測試紀錄_\d{8}_\d{4}$/.test((fnEl.value||'').trim())) {
             fnEl.value = genDefaultFilename();
         }
         logActive = true;
@@ -1014,7 +1020,8 @@ function toggleLog() {
                 vlt:  (currentValues[7]*0.01).toFixed(1),
                 pwr:  currentValues[6],
                 dty:  (currentValues[8]*0.1).toFixed(1),
-                temp: mosTemperature !== null ? mosTemperature : '--',
+                d09:  tempD09 !== null ? tempD09 : '--',
+                temp: tempD10 !== null ? tempD10 : '--',
                 alm:  currentValues[1],
                 almDesc: currentValues[1] ? alarmDesc(currentValues[1]) : ''
             });
@@ -1050,9 +1057,9 @@ function buildLogCSV() {
     let out = '';
     if (desc) out += `# ${desc}\n`;
     if (logData.length) {
-        out += 'Time,RPM,Current(A),Voltage(V),Power(W),Duty(%),Temp(°C),AlarmCode,AlarmDesc\n';
+        out += 'Time,RPM,Current(A),Voltage(V),Power(W),Duty(%),D09_BUS(°C),D10_MOSOT(°C),AlarmCode,AlarmDesc\n';
         logData.forEach(r => {
-            out += `${r.time},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.temp},${r.alm},"${r.almDesc}"\n`;
+            out += `${r.time},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.d09},${r.temp},${r.alm},"${r.almDesc}"\n`;
         });
         out += '\n';
     }
@@ -1115,7 +1122,7 @@ function showToast(msg) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function genDefaultFilename() {
     const d = new Date();
-    return `GanLog_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+    return `測試紀錄_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
 window.addEventListener('load', () => {
