@@ -1076,23 +1076,36 @@ function exportLog() {
     a.click();
 }
 
-async function shareLog() {
+function shareLog() {
     const out = buildLogCSV();
     if (!out) { alert('無資料可分享'); return; }
     const filename = getLogFilename();
-    const file = new File(['\uFEFF'+out], filename, {type:'text/csv;charset=utf-8'});
-    if (navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
-        try {
-            await navigator.share({ files:[file], title: filename });
-        } catch(e) { if (e.name !== 'AbortError') alert('分享失敗：'+e.message); }
-    } else {
-        // fallback: 下載後提示用LINE傳
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob(['\uFEFF'+out],{type:'text/csv;charset=utf-8'}));
-        a.download = filename;
-        a.click();
-        setTimeout(()=>alert('已下載 '+filename+'\n請至LINE選擇檔案傳送'), 800);
+
+    // 下載 CSV 後跳開 LINE（Android 從通知列長按→分享→LINE）
+    const blob = new Blob(['\uFEFF'+out], {type:'text/csv;charset=utf-8'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    // 顯示提示 toast
+    showToast('📥 已下載 ' + filename + '\n長按通知 → 分享 → LINE');
+
+    // 1.5 秒後嘗試開啟 LINE（讓下載先觸發）
+    setTimeout(() => { window.location.href = 'line://'; }, 1500);
+}
+
+function showToast(msg) {
+    let t = document.getElementById('_toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = '_toast';
+        t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:#e2e8f0;padding:10px 18px;border-radius:14px;font-size:12px;z-index:9999;text-align:center;white-space:pre-line;border:1px solid #334155;box-shadow:0 4px 20px #0008;pointer-events:none;transition:opacity .3s';
+        document.body.appendChild(t);
     }
+    t.textContent = msg; t.style.opacity = '1';
+    clearTimeout(t._hide);
+    t._hide = setTimeout(() => { t.style.opacity = '0'; }, 4000);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
