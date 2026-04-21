@@ -96,11 +96,22 @@
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
         <div id="dispTempD09" class="text-base font-bold text-sky-400 font-mono leading-tight">--</div>
-        <div class="text-[9px] text-slate-600">D09 °C</div>
+        <div class="text-[9px] text-slate-600">系統°C</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
         <div id="dispTemp" class="text-base font-bold text-orange-400 font-mono leading-tight">--</div>
         <div class="text-[9px] text-slate-600">MOS OT°C</div>
+      </div>
+    </div>
+    <!-- 過溫保護門檻（從保護設定讀取） -->
+    <div class="grid grid-cols-2 gap-1.5 mt-1.5">
+      <div class="bg-slate-900/20 rounded-xl px-3 py-1 flex items-center justify-between">
+        <span class="text-[9px] text-slate-600">OT 觸發</span>
+        <span id="inlineOTAct" class="text-[11px] font-mono text-red-400">--</span>
+      </div>
+      <div class="bg-slate-900/20 rounded-xl px-3 py-1 flex items-center justify-between">
+        <span class="text-[9px] text-slate-600">OT 回復</span>
+        <span id="inlineOTRec" class="text-[11px] font-mono text-amber-400">--</span>
       </div>
     </div>
   </div>
@@ -615,10 +626,10 @@ function parsePacket(pkt) {
 async function doPage10Read() {
     if (!isConnected || page10Pending || scanPending) return;
     page10Pending = true;
-    // 固定寫 0x090A=10 啟用 WatchData，再交替讀 D09(addr=9) / D10(addr=10)
+    // 寫對應 index 選擇 WatchData，D09↔D10 交替
     page10ReadingReg = page10Step === 0 ? 9 : 10;
     page10Step = 1 - page10Step;
-    await sendRawAscii(asciiFC06(0x090A, 10));
+    await sendRawAscii(asciiFC06(0x090A, page10ReadingReg));
     await new Promise(r=>setTimeout(r, 800));
     await sendRawAscii(makePage10Frame(page10ReadingReg));
     setTimeout(async()=>{
@@ -639,14 +650,20 @@ async function readProt() {
 }
 function adcToTempStr(adc) {
     if (adc === null) return '--';
+    if (adc > 4095) return (adc * 0.01).toFixed(1) + ' °C'; // 保護門檻以 0.01°C 單位儲存
     const t = adcToTemperature(adc);
     return t !== null ? t + ' °C' : adc + ' ADC';
 }
 function updateProtCard() {
-    document.getElementById('protMosAct').textContent = adcToTempStr(protOTActivate);
-    document.getElementById('protMosRec').textContent = adcToTempStr(protOTRecover);
+    const actStr = adcToTempStr(protOTActivate);
+    const recStr = adcToTempStr(protOTRecover);
+    document.getElementById('protMosAct').textContent = actStr;
+    document.getElementById('protMosRec').textContent = recStr;
     document.getElementById('protFwOcp').textContent  = protFWOCP !== null ? protFWOCP.toFixed(2)+' A' : '--';
     document.getElementById('protHwOcp').textContent  = protHWOCP !== null ? protHWOCP.toFixed(2)+' A' : '--';
+    // 同步監控卡下方門檻列
+    document.getElementById('inlineOTAct').textContent = actStr;
+    document.getElementById('inlineOTRec').textContent = recStr;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
