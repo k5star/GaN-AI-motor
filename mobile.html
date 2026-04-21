@@ -85,22 +85,18 @@
       </div>
     </div>
     <!-- 次要數值 -->
-    <div class="grid grid-cols-4 gap-1.5 mt-2">
+    <div class="grid grid-cols-3 gap-2 mt-2">
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispPwr" class="text-base font-bold text-purple-400 font-mono leading-tight">--</div>
+        <div id="dispPwr" class="text-lg font-bold text-purple-400 font-mono">--</div>
         <div class="text-[9px] text-slate-600">功率 W</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispDuty" class="text-base font-bold text-slate-300 font-mono leading-tight">--</div>
+        <div id="dispDuty" class="text-lg font-bold text-slate-300 font-mono">--</div>
         <div class="text-[9px] text-slate-600">Duty %</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispTempD09" class="text-base font-bold text-sky-400 font-mono leading-tight">--</div>
+        <div id="dispTempD09" class="text-lg font-bold text-sky-400 font-mono">--</div>
         <div class="text-[9px] text-slate-600">系統°C</div>
-      </div>
-      <div class="bg-slate-900/40 rounded-xl p-2 text-center">
-        <div id="dispTemp" class="text-base font-bold text-orange-400 font-mono leading-tight">--</div>
-        <div class="text-[9px] text-slate-600">MOS OT°C</div>
       </div>
     </div>
     <!-- 過溫保護門檻（從保護設定讀取） -->
@@ -753,19 +749,14 @@ function updateDashboard() {
     updateNoteSnapshot();
 }
 function updateTempDisp() {
-    // D09
+    // D09 系統溫度（唯一顯示）
     const e9 = document.getElementById('dispTempD09');
     if (tempD09 !== null) {
         e9.textContent = tempD09 + '°C';
-        e9.className = `text-base font-bold font-mono leading-tight ${tempD09>=80?'text-red-400 alarm-blink':tempD09>=60?'text-amber-400':'text-sky-400'}`;
+        e9.className = `text-lg font-bold font-mono ${tempD09>=60?'text-red-400 alarm-blink':tempD09>=45?'text-amber-400':'text-sky-400'}`;
+        if (tempD09 > statMaxTemp) { statMaxTemp = tempD09; document.getElementById('statMaxTemp').textContent = tempD09+' °C'; }
     }
-    // D10 MOS OT
-    const e10 = document.getElementById('dispTemp');
-    if (tempD10 !== null) {
-        e10.textContent = tempD10 + '°C';
-        e10.className = `text-base font-bold font-mono leading-tight ${tempD10>=80?'text-red-400 alarm-blink':tempD10>=60?'text-amber-400':'text-orange-400'}`;
-        if (tempD10 > statMaxTemp) { statMaxTemp = tempD10; document.getElementById('statMaxTemp').textContent = tempD10+' °C'; }
-    }
+    // D10 仍背景記錄供 LOG 使用，不顯示
 }
 
 function resetPowerAcc() {
