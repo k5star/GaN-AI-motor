@@ -460,10 +460,11 @@ function asciiFC06(addr, val) {
     const lrc = ((~sum)+1)&0xFF;
     return `:1106${addr.toString(16).toUpperCase().padStart(4,'0')}${val.toString(16).toUpperCase().padStart(4,'0')}${lrc.toString(16).toUpperCase().padStart(2,'0')}\r\n`;
 }
-function makePage10Frame(idx) {
-    const sum = (0x11+0x03+((idx>>8)&0xFF)+(idx&0xFF)+0x00+0x01)&0xFF;
+// 一次讀 D08~D11（addr=8, count=4）
+function makePage10Frame() {
+    const sum = (0x11+0x03+0x00+0x08+0x00+0x04)&0xFF;
     const lrc = ((~sum)+1)&0xFF;
-    return `:1103${idx.toString(16).padStart(4,'0').toUpperCase()}0001${lrc.toString(16).padStart(2,'0').toUpperCase()}\r\n`;
+    return `:110300080004${lrc.toString(16).padStart(2,'0').toUpperCase()}\r\n`;
 }
 function adcToTemperature(adc) {
     if (adc<=0||adc>=4095) return null;
@@ -588,12 +589,16 @@ function parsePacket(pkt) {
             updateProtCard();
             return;
         }
-        // Page10 單一 reg（長度~15）
-        if (page10Pending && pkt.length>=13 && pkt.length<20) {
+        // Page10 4-reg D08~D11（長度~25）
+        if (page10Pending && pkt.length>=23 && pkt.length<32) {
             page10Pending = false;
-            const adc = parseInt(pkt.substr(7,4),16);
-            if (page10ReadingReg === 9) tempD09 = adcToTemperature(adc);
-            else                        tempD10 = adcToTemperature(adc);
+            const dh = pkt.substr(7, 16); // 4 regs × 4 hex chars
+            const d08 = parseInt(dh.substr(0,4),16);
+            const d09 = parseInt(dh.substr(4,4),16);
+            const d10 = parseInt(dh.substr(8,4),16);
+            // const d11 = parseInt(dh.substr(12,4),16);
+            tempD09 = adcToTemperature(d09);
+            tempD10 = adcToTemperature(d10);
             sendRawAscii(asciiFC06(0x090A, 0));
             updateTempDisp();
             return;
@@ -626,12 +631,9 @@ function parsePacket(pkt) {
 async function doPage10Read() {
     if (!isConnected || page10Pending || scanPending) return;
     page10Pending = true;
-    // 寫對應 index 選擇 WatchData，D09↔D10 交替
-    page10ReadingReg = page10Step === 0 ? 9 : 10;
-    page10Step = 1 - page10Step;
-    await sendRawAscii(asciiFC06(0x090A, page10ReadingReg));
+    await sendRawAscii(asciiFC06(0x090A, 10)); // 啟用 WatchData page10
     await new Promise(r=>setTimeout(r, 800));
-    await sendRawAscii(makePage10Frame(page10ReadingReg));
+    await sendRawAscii(makePage10Frame());      // 一次讀 D08~D11
     setTimeout(async()=>{
         if (page10Pending) {
             page10Pending = false;
