@@ -330,6 +330,10 @@
         <div id="statMaxVlt" class="font-mono text-emerald-400">-- V</div>
       </div>
       <div class="bg-slate-900/40 rounded-xl p-2">
+        <div class="text-slate-500 text-[9px]">最大功率</div>
+        <div id="statMaxPwr" class="font-mono text-purple-400">-- W</div>
+      </div>
+      <div class="bg-slate-900/40 rounded-xl p-2 col-span-2">
         <div class="text-slate-500 text-[9px]">累積電能</div>
         <div id="statWh" class="font-mono text-purple-400">0.000 Wh</div>
       </div>
@@ -443,7 +447,7 @@ let pwrAccWh = 0, pwrRunSec = 0, pwrStartCount = 0;
 let pwrLastTime = null, pwrRunning = false;
 
 // 統計
-let statMaxRpm = 0, statMaxCur = 0, statMaxTemp = -999, statMaxVlt = 0;
+let statMaxRpm = 0, statMaxCur = 0, statMaxTemp = -999, statMaxVlt = 0, statMaxPwr = 0;
 let statAlmCnt = 0, lastAlmCode = 0;
 
 // 系統 log
@@ -732,6 +736,7 @@ function updateDashboard() {
     if (rpm > statMaxRpm) { statMaxRpm = rpm; document.getElementById('statMaxRpm').textContent = rpm+' RPM'; }
     if (parseFloat(cur) > statMaxCur) { statMaxCur = parseFloat(cur); document.getElementById('statMaxCur').textContent = cur+' A'; }
     if (parseFloat(vlt) > statMaxVlt) { statMaxVlt = parseFloat(vlt); document.getElementById('statMaxVlt').textContent = vlt+' V'; }
+    if (pwr > statMaxPwr) { statMaxPwr = pwr; document.getElementById('statMaxPwr').textContent = pwr+' W'; }
     document.getElementById('statWh').textContent = pwrAccWh.toFixed(3)+' Wh';
 
     // 警報事件
@@ -1065,13 +1070,14 @@ function resetLog() {
 }
 
 function resetStats() {
-    statMaxRpm = 0; statMaxCur = 0; statMaxTemp = -999; statMaxVlt = 0;
+    statMaxRpm = 0; statMaxCur = 0; statMaxTemp = -999; statMaxVlt = 0; statMaxPwr = 0;
     statAlmCnt = 0; lastAlmCode = 0; almEvents = [];
     document.getElementById('statMaxRpm').textContent = '-- RPM';
     document.getElementById('statMaxCur').textContent = '-- A';
     document.getElementById('statAlmCnt').textContent = '0 次';
     document.getElementById('statMaxTemp').textContent = '-- °C';
     document.getElementById('statMaxVlt').textContent = '-- V';
+    document.getElementById('statMaxPwr').textContent = '-- W';
     document.getElementById('statWh').textContent = pwrAccWh.toFixed(3) + ' Wh';
     renderAlmEvents();
     addSysLog('↺ 統計已重置');
