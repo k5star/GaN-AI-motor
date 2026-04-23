@@ -407,6 +407,19 @@
                 取消
             </button>
         </div>
+
+        <!-- 訓練資料匯出 -->
+        <div class="border-t border-slate-700 pt-3 flex flex-col gap-1">
+            <div class="text-[9px] text-slate-500 font-mono">訓練資料收集 — 自動記錄驗證失敗的指令</div>
+            <button onclick="exportFailedCases(); document.getElementById('aiSettingsModal').classList.add('hidden');"
+                    class="w-full bg-amber-700/40 hover:bg-amber-600/60 text-amber-200 border border-amber-600/40 py-1.5 rounded-lg text-xs font-bold transition">
+                📦 匯出失敗案例 JSONL（LoRA 訓練用）
+            </button>
+            <button onclick="failedCases=[]; sessionStorage.removeItem('ai_failedCases'); aiLog('系統','已清除失敗案例記錄','#94a3b8'); document.getElementById('aiSettingsModal').classList.add('hidden');"
+                    class="w-full bg-slate-700/40 hover:bg-slate-600/60 text-slate-400 py-1 rounded-lg text-[10px] transition">
+                🗑 清除失敗案例記錄
+            </button>
+        </div>
     </div>
 </div>
 
@@ -422,6 +435,28 @@ const REG = {
     DEC_RAM0: 0x4008, ALM_RST:  0x0A00, CFG_CMD:  0x0A27,
 };
 const BIT = { START_STOP: 0x01, CCW_CW: 0x02, ALM_RST: 0x04, STOP_MODE: 0x08 };
+
+// ===================================================================
+// 標準指令 Schema（v1.0）
+// 這份 schema 是 validator、system prompt、訓練資料的唯一來源
+// 邊緣部署時 rule engine 同樣以此為基準
+// ===================================================================
+const MOTOR_CMD_SCHEMA = {
+    version: '1.0',
+    actions: {
+        run:        { required: ['rpm','dir'],  rpm:[0,3000],  dir:['CW','CCW'] },
+        stop:       { required: [] },
+        setSpeed:   { required: ['rpm'],        rpm:[0,3000] },
+        setDir:     { required: ['dir'],                       dir:['CW','CCW'] },
+        setAcc:     { required: ['ms'],         ms:[1,60000] },
+        setDec:     { required: ['ms'],         ms:[1,60000] },
+        alarmReset: { required: [] },
+        query:      { required: ['question'] },   // 資訊不足時的唯一安全回退
+        sequence:   { required: ['steps'] },
+        none:       { required: [] }
+    }
+};
+const ACTION_WHITELIST = new Set(Object.keys(MOTOR_CMD_SCHEMA.actions));
 const MOTOR_STATUS = {
     0: { txt:'STOP',     icon:'⬛', clr:'text-slate-400' },
     2: { txt:'RUN',      icon:'🟢', clr:'text-emerald-400' },
@@ -870,25 +905,80 @@ let aiConfig = {
     model:   localStorage.getItem('aiModel')   || 'qwen2.5:14b'
 };
 
-const AI_SYSTEM_PROMPT = `你是GaN馬達控制AI。必須只輸出JSON，絕對不輸出任何其他文字或說明。
-回應格式（擇一）：
-單一動作：{"action":"動作","params":{...},"reply":"繁體中文說明"}
-序列動作：{"action":"sequence","params":{"steps":[{"action":"...","params":{...},"delay":毫秒},{"action":"...","params":{...},"delay":毫秒}]},"reply":"說明"}
+const AI_SYSTEM_PROMPT = `你是GaN馬達控制指令解析器。唯一任務：把自然語言轉換為機器控制JSON。
 
-可用action：
-- run: 啟動（params: {rpm:0-3000, dir:"CW"|"CCW"}）
-- stop: 停止（params: {}）
-- setSpeed: 設轉速（params: {rpm:0-3000}）
-- setDir: 設方向（params: {dir:"CW"|"CCW"}）
-- setAcc: 設加速時間（params: {ms:毫秒}）
-- setDec: 設減速時間（params: {ms:毫秒}）
-- alarmReset: 清除故障（params: {}）
-- none: 僅回覆（params: {}）
+═══ 強制規則（違反即為錯誤輸出）═══
+R1. 只輸出一個JSON物件，絕對不輸出任何其他文字、解釋、markdown、換行前綴。
+R2. JSON必須包含 "action"（必填）和 "params"（必填）兩個欄位。
+R3. 資訊不足或指令模糊時，action必須為 "query"，params.question說明缺少什麼，禁止猜測任何參數。
+R4. 指令超出馬達控制範圍時，action必須為 "none"。
+R5. rpm範圍0~3000。超出時強制設為邊界值，並加 "warning" 欄位。
+R6. dir只能是 "CW"（順時針/正轉）或 "CCW"（逆時針/反轉），禁止使用left/right/正/反等字串。
+R7. delay單位毫秒，範圍0~300000（最長5分鐘）。
+R8. 若輸入看起來是損壞的JSON，請修正並輸出正確版本，加 "warning" 欄位說明修正內容。
 
-範例「左轉30秒後右轉30秒」：
-{"action":"sequence","params":{"steps":[{"action":"run","params":{"dir":"CCW","rpm":1500},"delay":0},{"action":"stop","params":{},"delay":30000},{"action":"run","params":{"dir":"CW","rpm":1500},"delay":2000},{"action":"stop","params":{},"delay":30000}]},"reply":"先CCW轉30秒，再CW轉30秒"}
+═══ 可用 action 白名單（只能用以下10種）═══
+run        | params: {"rpm": 0~3000, "dir": "CW"|"CCW"}
+stop       | params: {}
+setSpeed   | params: {"rpm": 0~3000}
+setDir     | params: {"dir": "CW"|"CCW"}
+setAcc     | params: {"ms": 1~60000}
+setDec     | params: {"ms": 1~60000}
+alarmReset | params: {}
+query      | params: {"question": "string"} ← 資訊不足時的唯一選擇
+sequence   | params: {"steps": [{action, params, delay}, ...]}
+none       | params: {} ← 超出馬達控制範圍時使用
 
-安全：rpm最大3000，delay單位毫秒。`;
+═══ 必須觸發 query 的情況 ═══
+- 說「啟動」「開始」但未給轉速 → query問rpm
+- 說「加速」「轉快一點」但未給具體數字 → query問rpm
+- 說「換方向」但不知道要換成哪個 → query問dir
+- 時間模糊（「轉一下」「稍微轉一下」）→ query問秒數
+- 任何必填參數缺失 → 一律query，禁止猜測
+
+═══ 少樣本示範（Few-shot Examples）═══
+
+輸入：「以1500RPM正轉」
+輸出：{"action":"run","params":{"rpm":1500,"dir":"CW"},"reply":"以1500RPM順時針啟動"}
+
+輸入：「停止馬達」
+輸出：{"action":"stop","params":{},"reply":"馬達停止"}
+
+輸入：「設轉速800」
+輸出：{"action":"setSpeed","params":{"rpm":800},"reply":"設定轉速800RPM"}
+
+輸入：「先正轉1000轉持續30秒，再停止」
+輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1000,"dir":"CW"},"delay":0},{"action":"stop","params":{},"delay":30000}]},"reply":"正轉1000RPM持續30秒後停止"}
+
+輸入：「左轉20秒後右轉20秒」
+輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1500,"dir":"CCW"},"delay":0},{"action":"stop","params":{},"delay":20000},{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":2000},{"action":"stop","params":{},"delay":20000}]},"reply":"CCW轉20秒，再CW轉20秒"}
+
+輸入：「啟動」（未提供轉速）
+輸出：{"action":"query","params":{"question":"請問要以多少RPM啟動？（範圍0~3000）"},"reply":"需要確認轉速"}
+
+輸入：「轉快一點」（未提供數字）
+輸出：{"action":"query","params":{"question":"請問要設定多少RPM？目前範圍0~3000。"},"reply":"需要確認目標轉速"}
+
+輸入：「5000轉正轉」（超出範圍）
+輸出：{"action":"run","params":{"rpm":3000,"dir":"CW"},"warning":"rpm 5000超出最大值，已限制為3000","reply":"rpm已限制為3000，順時針啟動"}
+
+輸入：{"action":"run","params":{"rpm":1200,"dir":"left"}}（錯誤JSON修正）
+輸出：{"action":"run","params":{"rpm":1200,"dir":"CW"},"warning":"direction修正：left→CW","reply":"已修正方向參數，1200RPM順時針"}
+
+輸入：「加速時間設為3秒」
+輸出：{"action":"setAcc","params":{"ms":3000},"reply":"加速時間設定為3000ms"}
+
+輸入：「清除故障」
+輸出：{"action":"alarmReset","params":{},"reply":"執行故障清除"}
+
+輸入：「今天天氣怎麼樣」
+輸出：{"action":"none","params":{},"reply":"此系統僅處理馬達控制指令"}
+
+═══ 輸出欄位定義 ═══
+action  : string  必填，必須在白名單內
+params  : object  必填，根據action對應結構填寫
+reply   : string  可選，繁體中文操作說明（僅供顯示，不影響控制）
+warning : string  可選，僅在參數被修正或有安全提示時填寫`;
 
 function showAISettings() {
     document.getElementById('aiBaseUrlInput').value = aiConfig.baseUrl;
@@ -1046,13 +1136,160 @@ async function sendAIMessage() {
             catch { aiLog('AI', `⚠️ 模型未返回JSON：${content.slice(0,120)}`, '#f87171'); return; }
         }
 
-        aiLog('AI', parsed.reply || '執行中...', '#c4b5fd');
-        await executeAIAction(parsed);
+        // ── Validator ──────────────────────────────────────────────
+        const validation = validateAICommand(parsed, msg);
+        if (validation.errors.length > 0) {
+            validation.errors.forEach(e => aiLog('驗證', `⚠ ${e}`, '#fbbf24'));
+        }
+        if (validation.fixed.warning) {
+            aiLog('警告', validation.fixed.warning, '#f59e0b');
+        }
+        aiLog('AI', validation.fixed.reply || '執行中...', '#c4b5fd');
+        await executeAIAction(validation.fixed);
 
     } catch(e) {
         loadingDiv.remove();
         aiLog('錯誤', e.message, '#f87171');
     }
+}
+
+// ===================================================================
+// 失敗案例收集（供 LoRA 訓練資料回灌）
+// validator 拒絕的指令自動記錄到 sessionStorage，可匯出為 JSONL
+// ===================================================================
+let failedCases = JSON.parse(sessionStorage.getItem('ai_failedCases') || '[]');
+
+function recordFailedCase(userInput, rawCmd, errors) {
+    failedCases.push({ ts: Date.now(), input: userInput, raw: rawCmd, errors });
+    try { sessionStorage.setItem('ai_failedCases', JSON.stringify(failedCases)); } catch(_) {}
+}
+
+function exportFailedCases() {
+    if (!failedCases.length) { aiLog('系統', '目前沒有失敗案例可匯出', '#94a3b8'); return; }
+    const lines = failedCases.map(c => JSON.stringify({
+        messages: [
+            { role: 'system',    content: AI_SYSTEM_PROMPT },
+            { role: 'user',      content: c.input || '' },
+            { role: 'assistant', content: '[NEEDS_CORRECTION] ' + JSON.stringify(c.raw) }
+        ],
+        errors: c.errors
+    }));
+    const blob = new Blob([lines.join('\n')], { type: 'application/jsonl' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `failed_cases_${Date.now()}.jsonl`;
+    a.click();
+    aiLog('系統', `✅ 已匯出 ${failedCases.length} 筆失敗案例`, '#34d399');
+}
+
+// ===================================================================
+// Command Validator
+// 輸入: 模型原始輸出 cmd 物件 + 使用者原始輸入 userInput
+// 輸出: { ok: bool, fixed: cmd, errors: string[] }
+// 規則: 能自動修正的修正 + 加 warning；無法修正的退化為 query
+// ===================================================================
+function deepClone(obj) {
+    try { return structuredClone(obj); } catch(_) { return JSON.parse(JSON.stringify(obj)); }
+}
+
+function validateAICommand(cmd, userInput) {
+    const errors = [];
+
+    // 1. Must be a plain object
+    if (!cmd || typeof cmd !== 'object' || Array.isArray(cmd)) {
+        return { ok: false, fixed: { action:'query', params:{ question:'指令格式錯誤，請重新輸入' }, reply:'格式錯誤' }, errors:['not an object'] };
+    }
+
+    const fixed = deepClone(cmd);
+    if (!fixed.params || typeof fixed.params !== 'object') fixed.params = {};
+    const p = fixed.params;
+
+    // 2. action must be in whitelist
+    if (!ACTION_WHITELIST.has(fixed.action)) {
+        errors.push(`unknown action: ${fixed.action}`);
+        if (userInput) recordFailedCase(userInput, cmd, errors);
+        return { ok: false, fixed: { action:'query', params:{ question:`無法識別的指令「${fixed.action}」，請重新描述` }, reply:'未知指令' }, errors };
+    }
+
+    // 3. Normalize direction aliases before required-field check
+    const DIR_MAP = { left:'CCW', right:'CW', '正':'CW', '反':'CCW', '順':'CW', '逆':'CCW', cw:'CW', ccw:'CCW' };
+    if (p.dir !== undefined && p.dir !== 'CW' && p.dir !== 'CCW') {
+        const mapped = DIR_MAP[String(p.dir).toLowerCase()] || DIR_MAP[p.dir];
+        if (mapped) {
+            fixed.warning = (fixed.warning ? fixed.warning + '；' : '') + `dir「${p.dir}」已修正為${mapped}`;
+            p.dir = mapped;
+        } else {
+            errors.push(`invalid dir value: ${p.dir}`);
+        }
+    }
+
+    // 4. rpm clamp [0, 3000]
+    if (p.rpm !== undefined) {
+        const rpm = Number(p.rpm);
+        if (isNaN(rpm)) {
+            errors.push('rpm is not a number');
+        } else if (rpm < 0) {
+            p.rpm = 0;
+            fixed.warning = (fixed.warning ? fixed.warning + '；' : '') + 'rpm不可為負數，已設為0';
+        } else if (rpm > 3000) {
+            p.rpm = 3000;
+            fixed.warning = (fixed.warning ? fixed.warning + '；' : '') + `rpm ${rpm}超出最大值3000，已限制為3000`;
+        } else {
+            p.rpm = Math.round(rpm);
+        }
+    }
+
+    // 5. ms clamp [1, 60000]
+    if (p.ms !== undefined) {
+        const ms = Number(p.ms);
+        if (isNaN(ms) || ms < 1) {
+            p.ms = 1;
+            fixed.warning = (fixed.warning ? fixed.warning + '；' : '') + 'ms已修正為最小值1';
+        } else if (ms > 60000) {
+            p.ms = 60000;
+            fixed.warning = (fixed.warning ? fixed.warning + '；' : '') + `ms ${ms}已限制為60000`;
+        } else {
+            p.ms = Math.round(ms);
+        }
+    }
+
+    // 6. sequence: validate each step recursively
+    if (fixed.action === 'sequence') {
+        const steps = p.steps;
+        if (!Array.isArray(steps) || steps.length === 0) {
+            errors.push('sequence.steps is empty or not array');
+            if (userInput) recordFailedCase(userInput, cmd, errors);
+            return { ok: false, fixed: { action:'query', params:{ question:'序列指令格式錯誤，請重新描述每個步驟' }, reply:'序列格式錯誤' }, errors };
+        }
+        p.steps = steps.map((step, i) => {
+            const sv = validateAICommand(step, null); // no nested failure logging
+            if (!sv.ok) errors.push(`step[${i}]: ${sv.errors.join(', ')}`);
+            const s = sv.fixed;
+            // clamp step delay [0, 300000]
+            const d = Number(step.delay);
+            s.delay = (isNaN(d) || d < 0) ? 0 : Math.min(Math.round(d), 300000);
+            return s;
+        });
+    }
+
+    // 7. Per-action required params check (after normalization)
+    const schema = MOTOR_CMD_SCHEMA.actions[fixed.action];
+    if (schema) {
+        for (const req of (schema.required || [])) {
+            if (p[req] === undefined || p[req] === null || p[req] === '') {
+                errors.push(`missing required param: ${req} for action: ${fixed.action}`);
+                if (userInput) recordFailedCase(userInput, cmd, errors);
+                return {
+                    ok: false,
+                    fixed: { action:'query', params:{ question:`指令「${fixed.action}」缺少必要參數「${req}」，請補充` }, reply:`缺少 ${req}` },
+                    errors
+                };
+            }
+        }
+    }
+
+    if (errors.length > 0 && userInput) recordFailedCase(userInput, cmd, errors);
+    return { ok: errors.length === 0, fixed, errors };
 }
 
 async function executeAIAction(cmd) {
@@ -1105,6 +1342,11 @@ async function executeAIAction(cmd) {
             aiLog('系統', '✅ 序列完成', '#34d399');
             break;
         }
+        case 'query':
+            // 資訊不足 — 顯示問題，不執行任何硬體動作
+            aiLog('AI問題', params.question || '請補充指令細節', '#fbbf24');
+            document.getElementById('aiInput').focus();
+            break;
         case 'none':
         default:
             break;
@@ -1165,6 +1407,88 @@ function startVoiceInput() {
 document.getElementById('aiInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') sendAIMessage();
 });
+
+/*
+ * ═══════════════════════════════════════════════════════════════════
+ * PART 1 — LOCAL AI 架構風險分析
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * 1. Prompt 設計問題
+ *    原始 prompt 過於寬鬆，未明確列出禁止行為，模型容易自由發揮。
+ *    → 修正：加入強制規則 R1~R8，禁止輸出 prose，明確 query 觸發條件。
+ *
+ * 2. Schema 不固定
+ *    模型輸出的欄位名稱、巢狀結構每次可能不同（direction/dir/Direction）。
+ *    → 修正：MOTOR_CMD_SCHEMA 定義唯一欄位名稱與型別，validator 做正規化。
+ *
+ * 3. 缺少 Validator
+ *    壞 JSON 直接進 executeAIAction，rpm=9999 或 dir="left" 都會被執行。
+ *    → 修正：validateAICommand 在執行前強制攔截，能修正就修正+warning，
+ *            不能修正就退化為 query，絕不讓非法值進 sendCmd。
+ *
+ * 4. 缺少 Query / Fallback
+ *    指令模糊時模型猜測，造成非預期動作（例如「啟動」被猜測為 1500RPM）。
+ *    → 修正：新增 query action，validator 也會在缺必填欄位時強制退化為 query。
+ *
+ * 5. 缺少錯誤樣本回灌
+ *    失敗指令沒有記錄，無法改進模型。
+ *    → 修正：recordFailedCase + sessionStorage，AI 設定頁可一鍵匯出 JSONL。
+ *
+ * 6. AI 過度猜測
+ *    模型在 temperature>0 時容易幻覺補全缺失欄位。
+ *    → 修正：temperature 固定 0.1（已有），prompt 加強「禁止猜測」規則，
+ *            validator 雙重保護，query fallback 強制詢問。
+ *
+ * 7. 訓練資料不足
+ *    無正式訓練集，模型依賴 zero-shot 能力。
+ *    → 修正：提供 ai-training-nl2cmd.jsonl（NL→JSON）、
+ *            ai-training-err2fix.jsonl（錯誤JSON→修正），共 40 筆種子資料。
+ *
+ * 8. 自然語言與機器語言映射不一致
+ *    「左轉」「反轉」「逆時針」在不同用戶口語不同，但機器只認 CCW。
+ *    → 修正：validator DIR_MAP 做別名正規化，training data 涵蓋所有變體。
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * PART 8 — 邊緣 / NPU 部署架構（四層分離原則）
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │  Layer 1: MODEL（NL → JSON）                                    │
+ * │  負責：自然語言理解，輸出符合 schema 的 JSON 字串              │
+ * │  不負責：任何硬體暫存器位址、Modbus 協定、安全範圍判斷          │
+ * │  部署：量化後（GGUF Q4/Q8）可跑 NPU / CPU-only 邊緣裝置        │
+ * │                                                                 │
+ * │  Layer 2: RULE ENGINE（MOTOR_CMD_SCHEMA）                       │
+ * │  負責：action 白名單過濾、params 型別與格式正規化               │
+ * │  純 JavaScript/TypeScript，無需模型，NPU 部署直接帶入           │
+ * │                                                                 │
+ * │  Layer 3: VALIDATOR（validateAICommand）                        │
+ * │  負責：數值安全範圍（rpm ≤ 3000）、缺欄位退化為 query          │
+ * │         自動修正可修正的錯誤並記錄 warning                     │
+ * │  純 JS，可在 MCU 韌體層用 C 重寫，確保邊緣端安全               │
+ * │                                                                 │
+ * │  Layer 4: DEVICE CONTROLLER（executeAIAction + sendCmd）        │
+ * │  負責：Modbus RTU 封包、CRC16、Web Serial / BLE 傳輸           │
+ * │  絕對不接受來自 Layer 1 的未驗證原始輸出                       │
+ * │  硬體安全邏輯（STO、overcurrent）絕對不放進 Layer 1            │
+ * └─────────────────────────────────────────────────────────────────┘
+ *
+ * LoRA 微調建議（務實版）：
+ * - 模型大小：Qwen2.5-1.5B 或 3B（邊緣）/ 7B（雲端）
+ * - 起始資料量：300~500 筆（NL→JSON 各 200 + 錯誤修正 100）
+ * - 先驗證 few-shot 效果再決定是否 LoRA
+ * - LoRA rank=16, alpha=32, target: q_proj/v_proj
+ * - 訓練格式：ChatML（messages 陣列），見 ai-training-nl2cmd.jsonl
+ * - 驗證：保留 10% 做 validation set，loss < 0.3 才上線
+ * - 量化：訓練完用 llama.cpp 轉 GGUF Q4_K_M，約 1~2 GB，可跑 NPU
+ * - 過擬合防範：data augmentation（語句變體擴增）+ early stopping
+ *
+ * 資料擴增策略：
+ * - 自動生成：RPM 數值組合（50~3000，step 50）× 方向 × 動作 = 大量變體
+ * - 人工確認：安全邊界案例（rpm=0, rpm=3000）、複合指令、模糊指令
+ * - Hard cases：「先加速再減速」、「定時運轉後自動停止」、「超範圍+方向模糊」
+ * - 失敗回灌：本頁 sessionStorage failedCases → 匯出 → 人工標注正確答案 → 加回訓練集
+ */
 </script>
 </body>
 </html>
