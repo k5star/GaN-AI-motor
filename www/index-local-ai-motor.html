@@ -508,7 +508,7 @@
                     class="w-full bg-amber-700/40 hover:bg-amber-600/60 text-amber-200 border border-amber-600/40 py-1.5 rounded-lg text-xs font-bold transition">
                 📦 匯出失敗案例 JSONL（LoRA 訓練用）
             </button>
-            <button onclick="failedCases=[]; sessionStorage.removeItem('ai_failedCases'); aiLog('系統','已清除失敗案例記錄','#94a3b8'); document.getElementById('aiSettingsModal').classList.add('hidden');"
+            <button onclick="failedCases=[]; localStorage.removeItem('ai_failedCases'); aiLog('系統','已清除失敗案例記錄','#94a3b8'); document.getElementById('aiSettingsModal').classList.add('hidden');"
                     class="w-full bg-slate-700/40 hover:bg-slate-600/60 text-slate-400 py-1 rounded-lg text-[10px] transition">
                 🗑 清除失敗案例記錄
             </button>
@@ -1331,11 +1331,11 @@ async function sendAIMessage() {
 // 失敗案例收集（供 LoRA 訓練資料回灌）
 // validator 拒絕的指令自動記錄到 sessionStorage，可匯出為 JSONL
 // ===================================================================
-let failedCases = JSON.parse(sessionStorage.getItem('ai_failedCases') || '[]');
+let failedCases = JSON.parse(localStorage.getItem('ai_failedCases') || '[]');
 
 function recordFailedCase(userInput, rawCmd, errors) {
     failedCases.push({ ts: Date.now(), input: userInput, raw: rawCmd, errors });
-    try { sessionStorage.setItem('ai_failedCases', JSON.stringify(failedCases)); } catch(_) {}
+    try { localStorage.setItem('ai_failedCases', JSON.stringify(failedCases)); } catch(_) {}
 }
 
 function exportFailedCases() {
@@ -1637,7 +1637,7 @@ document.getElementById('aiInput').addEventListener('keydown', e => {
 // ===================================================================
 // 對話修正系統（邊用邊標注，產出 LoRA 訓練資料）
 // ===================================================================
-let corrDataset = JSON.parse(sessionStorage.getItem('ai_corrDataset') || '[]');
+let corrDataset = JSON.parse(localStorage.getItem('ai_corrDataset') || '[]');
 let corrTarget = null; // { userInput, aiRaw, aiReply, msgEl }
 
 function updateCorrBadge() {
@@ -1736,7 +1736,7 @@ function saveCorrection() {
         corrJSON
     };
     corrDataset.push(entry);
-    try { sessionStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset)); } catch(_) {}
+    try { localStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset)); } catch(_) {}
 
     // 標記按鈕為已修正
     if (corrTarget.btnEl) {
@@ -1810,7 +1810,7 @@ function exportCorrDataset() {
 
 function clearCorrDataset() {
     corrDataset = [];
-    sessionStorage.removeItem('ai_corrDataset');
+    localStorage.removeItem('ai_corrDataset');
     updateCorrBadge();
     aiLog('系統', '已清除修正記錄', '#94a3b8');
 }
