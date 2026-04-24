@@ -485,6 +485,30 @@
             </button>
         </div>
 
+        <!-- GitHub Gist 跨裝置同步 -->
+        <div class="border-t border-slate-700 pt-3 flex flex-col gap-1">
+            <div class="text-[9px] text-slate-500 font-mono flex items-center gap-1">
+                ☁️ GitHub Gist 跨裝置同步
+                <span id="gistSyncStatus" class="ml-auto text-[9px] font-mono text-slate-500"></span>
+            </div>
+            <input id="gistToken" type="password" placeholder="GitHub Personal Access Token (gist scope)"
+                   class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
+                   value="" oninput="localStorage.setItem('gistToken',this.value)">
+            <input id="gistId" type="text" placeholder="Gist ID（留空自動建立）"
+                   class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
+                   value="" oninput="localStorage.setItem('gistId',this.value)">
+            <div class="flex gap-1">
+                <button onclick="pushCorrToGist()" id="gistPushBtn"
+                        class="flex-1 bg-blue-700/40 hover:bg-blue-600/60 text-blue-200 border border-blue-600/40 py-1.5 rounded-lg text-[10px] font-bold transition">
+                    ⬆️ 上傳修正
+                </button>
+                <button onclick="pullCorrFromGist()" id="gistPullBtn"
+                        class="flex-1 bg-green-700/40 hover:bg-green-600/60 text-green-200 border border-green-600/40 py-1.5 rounded-lg text-[10px] font-bold transition">
+                    ⬇️ 下載修正
+                </button>
+            </div>
+        </div>
+
         <!-- 對話修正資料集匯出 -->
         <div class="border-t border-slate-700 pt-3 flex flex-col gap-1">
             <div class="text-[9px] text-slate-500 font-mono flex items-center gap-1">
@@ -1093,6 +1117,7 @@ function showAISettings() {
     document.getElementById('aiBaseUrlInput').value = aiConfig.baseUrl;
     document.getElementById('aiApiKeyInput').value  = aiConfig.apiKey;
     document.getElementById('aiModelInput').value   = aiConfig.model;
+    initGistFields();
     document.getElementById('aiSettingsModal').classList.remove('hidden');
 }
 
@@ -1813,6 +1838,117 @@ function clearCorrDataset() {
     localStorage.removeItem('ai_corrDataset');
     updateCorrBadge();
     aiLog('系統', '已清除修正記錄', '#94a3b8');
+}
+
+// ===================================================================
+// GitHub Gist 跨裝置同步
+// ===================================================================
+function gistSetStatus(msg, color='#94a3b8') {
+    const el = document.getElementById('gistSyncStatus');
+    if (el) { el.textContent = msg; el.style.color = color; }
+}
+
+async function pushCorrToGist() {
+    const token  = (document.getElementById('gistToken')?.value || '').trim()
+                || localStorage.getItem('gistToken') || '';
+    let   gistId = (document.getElementById('gistId')?.value || '').trim()
+                || localStorage.getItem('gistId') || '';
+    if (!token) { aiLog('系統', '❌ 請先填寫 GitHub Token', '#f87171'); return; }
+
+    gistSetStatus('上傳中…', '#fbbf24');
+    const payload = {
+        description: 'GaN Motor AI Corrections',
+        public: false,
+        files: {
+            'ai_corrDataset.json': { content: JSON.stringify(corrDataset, null, 2) },
+            'ai_failedCases.json': { content: JSON.stringify(failedCases,  null, 2) }
+        }
+    };
+
+    try {
+        let res;
+        if (gistId) {
+            res = await fetch(`https://api.github.com/gists/${gistId}`, {
+                method: 'PATCH',
+                headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } else {
+            res = await fetch('https://api.github.com/gists', {
+                method: 'POST',
+                headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        gistId = data.id;
+        localStorage.setItem('gistId', gistId);
+        const el = document.getElementById('gistId');
+        if (el) el.value = gistId;
+        gistSetStatus(`✅ ${new Date().toLocaleTimeString()}`, '#34d399');
+        aiLog('系統', `☁️ 已上傳 ${corrDataset.length} 筆修正 → Gist ${gistId.slice(0,8)}…`, '#34d399');
+    } catch(e) {
+        gistSetStatus('❌ 上傳失敗', '#f87171');
+        aiLog('系統', `❌ Gist 上傳失敗：${e.message}`, '#f87171');
+    }
+}
+
+async function pullCorrFromGist() {
+    const token  = (document.getElementById('gistToken')?.value || '').trim()
+                || localStorage.getItem('gistToken') || '';
+    const gistId = (document.getElementById('gistId')?.value || '').trim()
+                || localStorage.getItem('gistId') || '';
+    if (!token || !gistId) { aiLog('系統', '❌ 請填寫 Token 及 Gist ID', '#f87171'); return; }
+
+    gistSetStatus('下載中…', '#fbbf24');
+    try {
+        const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+            headers: { Authorization: `token ${token}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const corrFile = data.files['ai_corrDataset.json'];
+        if (corrFile?.content) {
+            const remote = JSON.parse(corrFile.content);
+            // 合併：以 ts 去重，保留本地 + 遠端
+            const existing = new Set(corrDataset.map(c => c.ts));
+            const merged = [...corrDataset];
+            for (const r of remote) {
+                if (!existing.has(r.ts)) merged.push(r);
+            }
+            merged.sort((a,b) => a.ts - b.ts);
+            corrDataset = merged;
+            localStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset));
+        }
+
+        const failFile = data.files['ai_failedCases.json'];
+        if (failFile?.content) {
+            const remoteF = JSON.parse(failFile.content);
+            const existF  = new Set(failedCases.map(c => c.ts));
+            for (const r of remoteF) {
+                if (!existF.has(r.ts)) failedCases.push(r);
+            }
+            failedCases.sort((a,b) => a.ts - b.ts);
+            localStorage.setItem('ai_failedCases', JSON.stringify(failedCases));
+        }
+
+        updateCorrBadge();
+        gistSetStatus(`✅ ${new Date().toLocaleTimeString()}`, '#34d399');
+        aiLog('系統', `☁️ 已合併 Gist 修正，共 ${corrDataset.length} 筆`, '#34d399');
+    } catch(e) {
+        gistSetStatus('❌ 下載失敗', '#f87171');
+        aiLog('系統', `❌ Gist 下載失敗：${e.message}`, '#f87171');
+    }
+}
+
+// 開啟設定 modal 時載入 Gist 欄位值
+function initGistFields() {
+    const t = document.getElementById('gistToken');
+    const g = document.getElementById('gistId');
+    if (t) t.value = localStorage.getItem('gistToken') || '';
+    if (g) g.value = localStorage.getItem('gistId')   || '';
 }
 
 // 攔截 sendAIMessage 紀錄最後一次輸入與解析結果
