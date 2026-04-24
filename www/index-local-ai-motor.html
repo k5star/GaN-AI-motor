@@ -1171,6 +1171,25 @@ function aiLog(role, msg, color='#e2e8f0') {
     el.scrollTop = el.scrollHeight;
 }
 
+// ===================================================================
+// 對話記憶（含即時修正 few-shot）
+// 最多保留 MAX_HISTORY 輪，避免 token 過長
+// ===================================================================
+const MAX_HISTORY = 10; // 每輪 = 1 user + 1 assistant
+let conversationHistory = []; // [{ role:'user'|'assistant', content:string }, ...]
+
+function buildMessages(userMsg) {
+    // system prompt 固定在最前
+    // 再接 conversationHistory（含修正後的 assistant 回覆）
+    // 最後放本次 user 訊息
+    const trimmed = conversationHistory.slice(-(MAX_HISTORY * 2));
+    return [
+        { role: 'system', content: AI_SYSTEM_PROMPT },
+        ...trimmed,
+        { role: 'user', content: userMsg }
+    ];
+}
+
 async function sendAIMessage() {
     const input = document.getElementById('aiInput');
     const msg = input.value.trim();
@@ -1190,6 +1209,11 @@ async function sendAIMessage() {
     const motorState = `[馬達狀態] ${status.txt} | 轉速:${currentValues[2]}RPM | 電流:${(currentValues[12]*0.01).toFixed(2)}A | BUS:${(currentValues[9]*0.01).toFixed(1)}V | 功率:${currentValues[7]}W | 轉向:${currentValues[4]===0?'CW':'CCW'}`;
     const fullMsg = `${motorState}\n\n${msg}`;
 
+    // 記錄本次 user 輸入（供修正系統使用）
+    document.getElementById('aiInput')._lastSent = msg;
+    window._lastAIParsed = null;
+    window._lastFullMsg  = fullMsg; // 含狀態的完整訊息
+
     try {
         const res = await fetch(`${aiConfig.baseUrl}/api/v1/chat/completions`, {
             method: 'POST',
@@ -1199,10 +1223,7 @@ async function sendAIMessage() {
             },
             body: JSON.stringify({
                 model: aiConfig.model,
-                messages: [
-                    { role: 'system', content: AI_SYSTEM_PROMPT },
-                    { role: 'user',   content: fullMsg }
-                ],
+                messages: buildMessages(fullMsg),
                 max_tokens: 1024,
                 temperature: 0.1,
                 response_format: { type: 'json_object' }
@@ -1217,10 +1238,8 @@ async function sendAIMessage() {
 
         let parsed;
         try {
-            // response_format:json_object 保證純JSON，直接解析
             parsed = JSON.parse(content);
         } catch {
-            // fallback：從文字中擷取最長的 {...}
             const candidates = [];
             let depth = 0, start = -1;
             for (let i = 0; i < content.length; i++) {
@@ -1234,6 +1253,7 @@ async function sendAIMessage() {
 
         // 記錄給修正系統使用
         window._lastAIParsed = parsed;
+        window._lastRawContent = content; // 原始字串，修正時存入 history
 
         // ── Validator ──────────────────────────────────────────────
         const validation = validateAICommand(parsed, msg);
@@ -1244,6 +1264,13 @@ async function sendAIMessage() {
             aiLog('警告', validation.fixed.warning, '#f59e0b');
         }
         aiLog('AI', validation.fixed.reply || '執行中...', '#c4b5fd');
+
+        // ── 寫入對話記憶（暫存 AI 原始輸出，修正時會覆蓋）──────────
+        conversationHistory.push({ role: 'user',      content: fullMsg });
+        conversationHistory.push({ role: 'assistant', content: content });
+        // 保留指標，修正時用於定位
+        window._lastHistoryAssistantIdx = conversationHistory.length - 1;
+
         await executeAIAction(validation.fixed);
 
     } catch(e) {
@@ -1624,12 +1651,34 @@ function saveCorrection() {
     if (!corrText) return;
     if (!corrTarget) return;
 
+    // 嘗試把修正內容解析為合法 JSON
+    let corrJSON = null;
+    try { corrJSON = JSON.parse(corrText); } catch(_) {}
+
+    // ── 即時對話記憶修正 ──────────────────────────────────────────
+    // 用正確答案覆蓋 history 中的 assistant 回覆
+    // 下次送出時 AI 會把這筆當作 few-shot，不再犯同樣錯誤
+    const idx = window._lastHistoryAssistantIdx;
+    if (idx !== undefined && idx >= 0 && idx < conversationHistory.length) {
+        const correctContent = corrJSON
+            ? JSON.stringify(corrJSON)           // 使用者給了正確 JSON
+            : JSON.stringify({                   // 使用者給了文字說明，包成 note
+                action: 'none', params: {},
+                reply: corrText,
+                _correction_note: corrText
+              });
+        conversationHistory[idx] = { role: 'assistant', content: correctContent };
+        aiLog('系統', '🧠 對話記憶已更新 — AI 下次會參考修正結果', '#a78bfa');
+    }
+
+    // ── 持久化記錄（JSONL 匯出用）────────────────────────────────
     const entry = {
         ts:         Date.now(),
         userInput:  corrTarget.userInput,
         aiRaw:      corrTarget.aiRaw,
         aiReply:    corrTarget.aiReply,
-        correction: corrText
+        correction: corrText,
+        corrJSON
     };
     corrDataset.push(entry);
     try { sessionStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset)); } catch(_) {}
