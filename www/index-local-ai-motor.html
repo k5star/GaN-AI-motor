@@ -1010,7 +1010,10 @@ R3b. 若使用者說「以現有轉速」「維持轉速」「用目前速度」
 R4. 指令超出馬達控制範圍時，action必須為 "none"。
 R5. rpm範圍0~3000。超出時強制設為邊界值，並加 "warning" 欄位。
 R6. dir只能是 "CW"（順時針/正轉）或 "CCW"（逆時針/反轉），禁止使用left/right/正/反等字串。
-R7. delay單位毫秒，範圍0~300000（最長5分鐘）。
+R7. delay單位毫秒，範圍0~300000（最長5分鐘）。delay的意思是「執行完這個action之後，等待多少毫秒再執行下一步」。
+R7a. 若要讓馬達「轉動N秒後停止」，delay必須放在run步驟上（run delay:N*1000），stop的delay為0。
+R7b. 錯誤示範：run(delay:0)→stop(delay:30000) ← 這樣馬達立刻停，等30秒才結束，完全錯誤。
+R7c. 正確示範：run(delay:30000)→stop(delay:0) ← 馬達轉30秒，然後停止。
 R8. 若輸入看起來是損壞的JSON，請修正並輸出正確版本，加 "warning" 欄位說明修正內容。
 
 ═══ 可用 action 白名單（只能用以下10種）═══
@@ -1044,13 +1047,13 @@ none       | params: {} ← 超出馬達控制範圍時使用
 輸入：「設轉速800」
 輸出：{"action":"setSpeed","params":{"rpm":800},"reply":"設定轉速800RPM"}
 
-輸入：「先正轉1000轉持續30秒，再停止」
-輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1000,"dir":"CW"},"delay":0},{"action":"stop","params":{},"delay":30000}]},"reply":"正轉1000RPM持續30秒後停止"}
+輸入：「以1000RPM正轉30秒後停止」
+輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1000,"dir":"CW"},"delay":30000},{"action":"stop","params":{},"delay":0}]},"reply":"正轉1000RPM持續30秒後停止"}
 
-輸入：「左轉20秒後右轉20秒」
-輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1500,"dir":"CCW"},"delay":0},{"action":"stop","params":{},"delay":20000},{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":2000},{"action":"stop","params":{},"delay":20000}]},"reply":"CCW轉20秒，再CW轉20秒"}
+輸入：「CCW轉20秒後停止，再CW轉20秒後停止」
+輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1500,"dir":"CCW"},"delay":20000},{"action":"stop","params":{},"delay":2000},{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":20000},{"action":"stop","params":{},"delay":0}]},"reply":"CCW轉20秒停止，再CW轉20秒停止"}
 
-輸入：「啟動」（未提供轉速）
+輸入：「啟動」（未提供轉速，且目標轉速=0）
 輸出：{"action":"query","params":{"question":"請問要以多少RPM啟動？（範圍0~3000）"},"reply":"需要確認轉速"}
 
 輸入：「轉快一點」（未提供數字）
@@ -1068,11 +1071,14 @@ none       | params: {} ← 超出馬達控制範圍時使用
 輸入：「清除故障」
 輸出：{"action":"alarmReset","params":{},"reply":"執行故障清除"}
 
-輸入：「順時針轉動1秒，停止1秒，逆時針轉動1秒，重複10次」
-輸出：{"action":"repeat","params":{"count":10,"steps":[{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":0},{"action":"stop","params":{},"delay":1000},{"action":"run","params":{"rpm":1500,"dir":"CCW"},"delay":1000},{"action":"stop","params":{},"delay":1000}]},"reply":"CW轉1秒→停1秒→CCW轉1秒→停1秒，重複10次"}
+輸入：「順時針轉1秒，停止1秒，逆時針轉1秒，重複10次」
+輸出：{"action":"repeat","params":{"count":10,"steps":[{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":1000},{"action":"stop","params":{},"delay":1000},{"action":"run","params":{"rpm":1500,"dir":"CCW"},"delay":1000},{"action":"stop","params":{},"delay":1000}]},"reply":"CW轉1秒→停1秒→CCW轉1秒→停1秒，重複10次"}
 
 輸入：「正轉500毫秒停500毫秒重複5次」
-輸出：{"action":"repeat","params":{"count":5,"steps":[{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":0},{"action":"stop","params":{},"delay":500}]},"reply":"正轉500ms停500ms，重複5次"}
+輸出：{"action":"repeat","params":{"count":5,"steps":[{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":500},{"action":"stop","params":{},"delay":500}]},"reply":"正轉500ms→停500ms，重複5次"}
+
+輸入：「CW轉30秒後停止」
+輸出：{"action":"sequence","params":{"steps":[{"action":"run","params":{"rpm":1500,"dir":"CW"},"delay":30000},{"action":"stop","params":{},"delay":0}]},"reply":"CW轉30秒後停止"}
 
 輸入：「今天天氣怎麼樣」
 輸出：{"action":"none","params":{},"reply":"此系統僅處理馬達控制指令"}
