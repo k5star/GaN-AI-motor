@@ -105,6 +105,18 @@
     .gauge-unit{font-size:.65rem;color:var(--muted);}
     .gauge-dir{font-size:.68rem;padding:1px 7px;border-radius:8px;background:#1a3040;color:var(--muted);}
 
+    /* ── 系統狀態 ── */
+    .status-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1e2d40;}
+    .status-row:last-child{border-bottom:none;}
+    .status-side{font-size:.72rem;color:var(--muted);width:30px;flex-shrink:0;}
+    .status-icon{font-size:1.1rem;width:24px;text-align:center;}
+    .status-txt{font-size:.82rem;font-weight:700;flex:1;}
+    .status-alm{font-size:.68rem;padding:2px 8px;border-radius:8px;
+                background:#3a1a1a;color:#ef5350;border:1px solid #6a2020;}
+    .status-rst{width:auto!important;padding:5px 12px!important;font-size:.72rem!important;}
+    @keyframes almblink{0%,100%{opacity:1}50%{opacity:.35}}
+    .alm-blink{animation:almblink .8s infinite;}
+
     /* ── 電力儀表 ── */
     .power-row{display:flex;gap:10px;width:100%;max-width:520px;margin-bottom:10px;}
     .power-card{
@@ -329,6 +341,25 @@
   </div>
 </div>
 
+<!-- ═══ 系統狀態 ═══ -->
+<div class="card">
+  <div class="card-title">系統狀態</div>
+  <div class="status-row">
+    <span class="status-side">左輪</span>
+    <span class="status-icon" id="stIconL">—</span>
+    <span class="status-txt" id="stTxtL" style="color:var(--muted)">未連線</span>
+    <span class="status-alm alm-blink" id="stAlmL" style="display:none"></span>
+    <button class="btn btn-red status-rst" id="stRstL" onclick="clearAlarm('L')" disabled>重置異常</button>
+  </div>
+  <div class="status-row">
+    <span class="status-side">右輪</span>
+    <span class="status-icon" id="stIconR">—</span>
+    <span class="status-txt" id="stTxtR" style="color:var(--muted)">未連線</span>
+    <span class="status-alm alm-blink" id="stAlmR" style="display:none"></span>
+    <button class="btn btn-red status-rst" id="stRstR" onclick="clearAlarm('R')" disabled>重置異常</button>
+  </div>
+</div>
+
 <!-- ═══ 電力監測 ═══ -->
 <div class="power-row">
   <div class="power-card">
@@ -442,6 +473,26 @@ function mbFC03(nodeId, startAddr, count) {
 
 const CMD_STOP = 0, CMD_CW = 1, CMD_CCW = 3;
 
+const MOTOR_STATUS = {
+  0:{txt:'STOP',   icon:'⬛',clr:'#8ba0b8'},
+  2:{txt:'RUN',    icon:'🟢',clr:'#43a047'},
+  3:{txt:'EBRAKE', icon:'🟠',clr:'#fb8c00'},
+  4:{txt:'FREE',   icon:'⚪',clr:'#8ba0b8'},
+  5:{txt:'FAULT',  icon:'🔴',clr:'#e53935'},
+  6:{txt:'INHIBIT',icon:'🟡',clr:'#fdd835'},
+  7:{txt:'SERVO',  icon:'🟣',clr:'#ab47bc'},
+  8:{txt:'POS-KEEP',icon:'🔵',clr:'#1e88e5'},
+};
+const ALARM_CODE = {
+  0:'正常',1:'過電流(OC)',2:'過電壓(OV)',3:'低電壓(UV)',
+  4:'MOS過溫',5:'馬達過溫',6:'IPM過溫',7:'霍爾感測器異常',
+  8:'超速',9:'位置偏差',10:'編碼器異常',11:'通訊逾時',
+  12:'EEPROM錯誤',13:'參數錯誤',14:'硬體OCP',15:'軟體OCP',
+  16:'U相斷路',17:'V相斷路',18:'W相斷路',19:'電流感測器異常',
+  20:'制動電阻過熱',21:'接地故障',22:'失速',
+};
+const almDesc = c => ALARM_CODE[c] || `故障代號 ${c}`;
+
 // ═══════════════════════════════════════════════════
 //  BLE 狀態
 // ═══════════════════════════════════════════════════
@@ -449,8 +500,8 @@ const HM10_SVC  = () => document.getElementById('svcUUID').value.trim().toLowerC
 const HM10_CHAR = () => document.getElementById('charUUID').value.trim().toLowerCase();
 
 const W = {
-  L: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false, lastRpm:null, lastDir:null },
-  R: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false, lastRpm:null, lastDir:null }
+  L: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false, lastRpm:null, lastDir:null, status:null },
+  R: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false, lastRpm:null, lastDir:null, status:null }
 };
 
 let running = false;
@@ -553,7 +604,9 @@ function onDisconnect(side) {
   setBtns(side, false);
   log(`[${side}] 中斷連線`);
   pwrData[side] = null;
+  W[side].status = null;
   updatePwrDisplay();
+  updateStatusDisplay(side);
   if (!W.L.txChar && !W.R.txChar) { clearInterval(pwrTimer); pwrTimer = null; }
 }
 
@@ -580,8 +633,45 @@ function parseReply(side, pkt) {
     const dh = pkt.substr(7, 64);
     const v = i => { let x = parseInt(dh.substr(i*4,4),16); return x>32767?x-65536:x; };
     pwrData[side] = { volt: v(7)*0.01, curr: v(9)*0.01, pwr: v(6) };
+    W[side].status = { st: v(0), alm: v(1) };
     updatePwrDisplay();
+    updateStatusDisplay(side);
   }
+}
+
+function updateStatusDisplay(side) {
+  const d = W[side].status;
+  const iconEl = document.getElementById(`stIcon${side}`);
+  const txtEl  = document.getElementById(`stTxt${side}`);
+  const almEl  = document.getElementById(`stAlm${side}`);
+  const rstEl  = document.getElementById(`stRst${side}`);
+  if (!d) {
+    iconEl.textContent = '—';
+    txtEl.textContent  = '未連線';
+    txtEl.style.color  = 'var(--muted)';
+    almEl.style.display = 'none';
+    rstEl.disabled = true;
+    return;
+  }
+  const s = MOTOR_STATUS[d.st] || {txt:`狀態${d.st}`,icon:'❓',clr:'#8ba0b8'};
+  iconEl.textContent = s.icon;
+  txtEl.textContent  = s.txt;
+  txtEl.style.color  = s.clr;
+  if (d.alm !== 0 || d.st === 5) {
+    almEl.textContent   = `ALM ${d.alm}: ${almDesc(d.alm)}`;
+    almEl.style.display = '';
+    rstEl.disabled = false;
+    if (d.alm !== 0) log(`[${side}] ⚠ 警報 ${d.alm}: ${almDesc(d.alm)}`, 'err');
+  } else {
+    almEl.style.display = 'none';
+    rstEl.disabled = true;
+  }
+}
+
+async function clearAlarm(side) {
+  if (!W[side].txChar) return;
+  await enqueueTx(side, mbFC06(getNodeId(side), 0x0A00, 1));
+  log(`[${side}] 發送警報重置`, 'tx');
 }
 
 function pollPwr() {
