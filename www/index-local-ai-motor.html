@@ -51,6 +51,63 @@
             25%{ transform:translateX(-6px); }
             75%{ transform:translateX(6px); }
         }
+        /* ── 修正模式 ── */
+        .ai-msg-wrap { position: relative; }
+        .corr-btn {
+            display: inline-block; margin-left: 6px; cursor: pointer;
+            font-size: 10px; color: #475569; padding: 1px 5px;
+            border: 1px solid #334155; border-radius: 4px;
+            vertical-align: middle; transition: all 0.15s;
+            background: transparent; line-height: 1.6;
+        }
+        .corr-btn:hover { color: #f59e0b; border-color: #f59e0b; }
+        .corr-btn.done  { color: #34d399; border-color: #34d399; cursor: default; }
+        #corrPanel {
+            display: none; position: fixed; bottom: 0; left: 0; right: 0;
+            background: #1e293b; border-top: 2px solid #f59e0b;
+            padding: 10px 14px 14px; z-index: 200;
+            box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+        }
+        #corrPanel.open { display: block; }
+        #corrPanel .corr-header {
+            font-size: 11px; color: #f59e0b; font-weight: bold;
+            margin-bottom: 6px; display: flex; justify-content: space-between;
+        }
+        #corrPanel .corr-orig {
+            font-size: 10px; color: #475569; font-mono: true;
+            background: #0f172a; border-radius: 6px; padding: 6px 8px;
+            margin-bottom: 8px; max-height: 52px; overflow-y: auto;
+            font-family: monospace; white-space: pre-wrap; word-break: break-all;
+        }
+        #corrPanel .corr-row {
+            display: flex; gap: 8px; align-items: center;
+        }
+        #corrInput {
+            flex: 1; background: #0f172a; border: 1px solid #475569;
+            border-radius: 8px; padding: 8px 10px; color: white;
+            font-size: 12px; outline: none; transition: border-color 0.2s;
+        }
+        #corrInput:focus { border-color: #f59e0b; }
+        #corrVoiceBtn {
+            background: #334155; border: none; border-radius: 8px;
+            padding: 8px 10px; color: white; font-size: 16px; cursor: pointer;
+            transition: background 0.15s;
+        }
+        #corrVoiceBtn.rec { background: #7f1d1d; animation: pulse-rec 0.8s infinite alternate; }
+        @keyframes pulse-rec {
+            from { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+            to   { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+        }
+        #corrSaveBtn {
+            background: #f59e0b; border: none; border-radius: 8px;
+            padding: 8px 14px; color: #0f172a; font-size: 12px;
+            font-weight: bold; cursor: pointer; white-space: nowrap;
+        }
+        #corrBadge {
+            display: none; background: #78350f; color: #fde68a;
+            border-radius: 8px; padding: 1px 6px; font-size: 10px;
+            font-weight: bold; margin-left: 4px;
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans flex flex-col md:h-screen md:overflow-hidden overflow-y-auto">
@@ -364,6 +421,21 @@
     </div>
 </div>
 
+<!-- ── 修正面板（固定在底部） ── -->
+<div id="corrPanel">
+    <div class="corr-header">
+        <span>✏️ 修正此回覆 — 說明正確指令應該是什麼</span>
+        <span style="cursor:pointer;color:#475569;" onclick="closeCorrPanel()">✕</span>
+    </div>
+    <div class="corr-orig" id="corrOrig">—</div>
+    <div class="corr-row">
+        <input id="corrInput" type="text" placeholder="例如：應該是停止，不是1500轉前進"
+               onkeydown="if(event.key==='Enter')saveCorrection()">
+        <button id="corrVoiceBtn" onclick="startCorrVoice()" title="語音修正">🎙️</button>
+        <button id="corrSaveBtn" onclick="saveCorrection()">儲存修正</button>
+    </div>
+</div>
+
 <!-- ── AI SETTINGS MODAL ── -->
 <div id="aiSettingsModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
     <div class="bg-slate-800 rounded-xl border border-purple-500/40 shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
@@ -405,6 +477,22 @@
             <button onclick="document.getElementById('aiSettingsModal').classList.add('hidden')"
                     class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded-lg text-xs font-bold transition">
                 取消
+            </button>
+        </div>
+
+        <!-- 對話修正資料集匯出 -->
+        <div class="border-t border-slate-700 pt-3 flex flex-col gap-1">
+            <div class="text-[9px] text-slate-500 font-mono flex items-center gap-1">
+                ✏️ 對話修正記錄
+                <span id="corrBadge" class="hidden bg-amber-900/60 text-amber-300 rounded px-1.5 text-[9px] font-bold"></span>
+            </div>
+            <button onclick="exportCorrDataset(); document.getElementById('aiSettingsModal').classList.add('hidden');"
+                    class="w-full bg-amber-700/40 hover:bg-amber-600/60 text-amber-200 border border-amber-600/40 py-1.5 rounded-lg text-xs font-bold transition">
+                📝 匯出修正資料集 JSONL（LoRA 訓練用）
+            </button>
+            <button onclick="clearCorrDataset(); document.getElementById('aiSettingsModal').classList.add('hidden');"
+                    class="w-full bg-slate-700/40 text-slate-400 py-1 rounded-lg text-[10px] transition hover:bg-slate-600/40">
+                🗑 清除修正記錄
             </button>
         </div>
 
@@ -1136,6 +1224,9 @@ async function sendAIMessage() {
             catch { aiLog('AI', `⚠️ 模型未返回JSON：${content.slice(0,120)}`, '#f87171'); return; }
         }
 
+        // 記錄給修正系統使用
+        window._lastAIParsed = parsed;
+
         // ── Validator ──────────────────────────────────────────────
         const validation = validateAICommand(parsed, msg);
         if (validation.errors.length > 0) {
@@ -1407,6 +1498,176 @@ function startVoiceInput() {
 document.getElementById('aiInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') sendAIMessage();
 });
+
+// ===================================================================
+// 對話修正系統（邊用邊標注，產出 LoRA 訓練資料）
+// ===================================================================
+let corrDataset = JSON.parse(sessionStorage.getItem('ai_corrDataset') || '[]');
+let corrTarget = null; // { userInput, aiRaw, aiReply, msgEl }
+
+function updateCorrBadge() {
+    const badge = document.getElementById('corrBadge');
+    if (!badge) return;
+    if (corrDataset.length > 0) {
+        badge.style.display = 'inline';
+        badge.textContent = corrDataset.length;
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// aiLog 覆寫版：AI 訊息加上 ✏️ 修正按鈕
+const _origAiLog = aiLog;
+function aiLog(role, msg, color='#e2e8f0') {
+    const el = document.getElementById('aiChatLog');
+    const hint = el.querySelector('div.text-slate-600');
+    if (hint) hint.remove();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-msg-wrap leading-relaxed';
+
+    const span = document.createElement('span');
+    span.innerHTML = `<span style="color:${color};font-weight:bold">${role}：</span><span style="color:#cbd5e1">${msg}</span>`;
+    wrap.appendChild(span);
+
+    // 只有 AI 回覆加修正按鈕
+    if (role === 'AI') {
+        const btn = document.createElement('button');
+        btn.className = 'corr-btn';
+        btn.textContent = '✏️ 修正';
+        btn.onclick = () => openCorrPanel(msg, wrap, btn);
+        wrap.appendChild(btn);
+    }
+
+    el.appendChild(wrap);
+    el.scrollTop = el.scrollHeight;
+}
+
+// 開啟修正面板
+function openCorrPanel(aiReply, msgEl, btnEl) {
+    corrTarget = {
+        userInput: document.getElementById('aiInput')._lastSent || '',
+        aiRaw:     window._lastAIParsed || null,
+        aiReply,
+        msgEl,
+        btnEl
+    };
+    // 顯示 AI 原本說了什麼
+    const raw = corrTarget.aiRaw ? JSON.stringify(corrTarget.aiRaw, null, 2) : aiReply;
+    document.getElementById('corrOrig').textContent =
+        `使用者輸入：${corrTarget.userInput || '（不明）'}\nAI 輸出：${raw}`;
+    document.getElementById('corrInput').value = '';
+    document.getElementById('corrPanel').classList.add('open');
+    setTimeout(() => document.getElementById('corrInput').focus(), 100);
+}
+
+function closeCorrPanel() {
+    document.getElementById('corrPanel').classList.remove('open');
+    corrTarget = null;
+}
+
+function saveCorrection() {
+    const corrText = document.getElementById('corrInput').value.trim();
+    if (!corrText) return;
+    if (!corrTarget) return;
+
+    const entry = {
+        ts:         Date.now(),
+        userInput:  corrTarget.userInput,
+        aiRaw:      corrTarget.aiRaw,
+        aiReply:    corrTarget.aiReply,
+        correction: corrText
+    };
+    corrDataset.push(entry);
+    try { sessionStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset)); } catch(_) {}
+
+    // 標記按鈕為已修正
+    if (corrTarget.btnEl) {
+        corrTarget.btnEl.textContent = '✅ 已修正';
+        corrTarget.btnEl.className = 'corr-btn done';
+        corrTarget.btnEl.onclick = null;
+    }
+
+    updateCorrBadge();
+    aiLog('系統', `✅ 修正已記錄（共 ${corrDataset.length} 筆）`, '#34d399');
+    closeCorrPanel();
+}
+
+// 語音輸入修正內容
+let corrVoiceRec = null;
+function startCorrVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('請使用 Chrome 瀏覽器'); return; }
+    if (corrVoiceRec) { corrVoiceRec.stop(); return; }
+
+    corrVoiceRec = new SR();
+    corrVoiceRec.lang = 'zh-TW';
+    corrVoiceRec.interimResults = false;
+
+    const btn = document.getElementById('corrVoiceBtn');
+    btn.textContent = '🔴'; btn.classList.add('rec');
+
+    corrVoiceRec.onresult = e => {
+        document.getElementById('corrInput').value = e.results[0][0].transcript;
+    };
+    corrVoiceRec.onerror = e => { aiLog('系統', `語音錯誤：${e.error}`, '#f87171'); };
+    corrVoiceRec.onend = () => {
+        btn.textContent = '🎙️'; btn.classList.remove('rec');
+        corrVoiceRec = null;
+    };
+    corrVoiceRec.start();
+}
+
+// 匯出修正資料集（ChatML JSONL，可直接用於 LoRA）
+function exportCorrDataset() {
+    if (!corrDataset.length) {
+        aiLog('系統', '目前沒有修正記錄', '#94a3b8');
+        return;
+    }
+    const lines = corrDataset.map(c => {
+        // 嘗試把 correction 解析為正確 JSON，否則當作文字說明
+        let correctOutput;
+        try { correctOutput = JSON.parse(c.correction); }
+        catch(_) { correctOutput = { action:'none', params:{}, reply: c.correction, _note:'需人工補標正確JSON' }; }
+
+        return JSON.stringify({
+            messages: [
+                { role: 'system',    content: AI_SYSTEM_PROMPT },
+                { role: 'user',      content: c.userInput || '' },
+                { role: 'assistant', content: JSON.stringify(correctOutput) }
+            ],
+            meta: {
+                ts:        c.ts,
+                ai_wrong:  c.aiRaw,
+                human_note: c.correction
+            }
+        });
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'application/jsonl' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `corrections_${Date.now()}.jsonl`;
+    a.click();
+    aiLog('系統', `✅ 已匯出 ${corrDataset.length} 筆修正資料`, '#34d399');
+}
+
+function clearCorrDataset() {
+    corrDataset = [];
+    sessionStorage.removeItem('ai_corrDataset');
+    updateCorrBadge();
+    aiLog('系統', '已清除修正記錄', '#94a3b8');
+}
+
+// 攔截 sendAIMessage 紀錄最後一次輸入與解析結果
+const _origSendAI = sendAIMessage;
+sendAIMessage = async function() {
+    const msg = document.getElementById('aiInput').value.trim();
+    document.getElementById('aiInput')._lastSent = msg;
+    window._lastAIParsed = null;
+    await _origSendAI.apply(this, arguments);
+};
+
+updateCorrBadge();
 
 /*
  * ═══════════════════════════════════════════════════════════════════
