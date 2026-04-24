@@ -1005,6 +1005,8 @@ const AI_SYSTEM_PROMPT = `你是GaN馬達控制指令解析器。唯一任務：
 R1. 只輸出一個JSON物件，絕對不輸出任何其他文字、解釋、markdown、換行前綴。
 R2. JSON必須包含 "action"（必填）和 "params"（必填）兩個欄位。
 R3. 資訊不足或指令模糊時，action必須為 "query"，params.question說明缺少什麼，禁止猜測任何參數。
+R3a. 若使用者未指定rpm，但 [馬達狀態] 中「目標轉速(可直接使用)」> 0，直接使用該值，不得詢問轉速。
+R3b. 若使用者說「以現有轉速」「維持轉速」「用目前速度」等，同樣直接使用「目標轉速(可直接使用)」。
 R4. 指令超出馬達控制範圍時，action必須為 "none"。
 R5. rpm範圍0~3000。超出時強制設為邊界值，並加 "warning" 欄位。
 R6. dir只能是 "CW"（順時針/正轉）或 "CCW"（逆時針/反轉），禁止使用left/right/正/反等字串。
@@ -1243,9 +1245,10 @@ async function sendAIMessage() {
     loadingDiv.innerText = 'AI 思考中...';
     document.getElementById('aiChatLog').appendChild(loadingDiv);
 
-    // 加入馬達當前狀態至 user 訊息
+    // 加入馬達當前狀態至 user 訊息（含目標轉速滑桿值，STOP 時仍可用）
     const status = MOTOR_STATUS[currentValues[0]] || { txt:'UNKNOWN' };
-    const motorState = `[馬達狀態] ${status.txt} | 轉速:${currentValues[2]}RPM | 電流:${(currentValues[12]*0.01).toFixed(2)}A | BUS:${(currentValues[9]*0.01).toFixed(1)}V | 功率:${currentValues[7]}W | 轉向:${currentValues[4]===0?'CW':'CCW'}`;
+    const targetRpm = parseInt(document.getElementById('rpmSlider').value) || 0;
+    const motorState = `[馬達狀態] ${status.txt} | 實際轉速:${currentValues[2]}RPM | 目標轉速(可直接使用):${targetRpm}RPM | 方向:${currentValues[4]===0?'CW':'CCW'} | 電流:${(currentValues[12]*0.01).toFixed(2)}A | BUS:${(currentValues[9]*0.01).toFixed(1)}V | 功率:${currentValues[7]}W`;
     const fullMsg = `${motorState}\n\n${msg}`;
 
     // 記錄本次 user 輸入（供修正系統使用）
