@@ -105,6 +105,16 @@
     .gauge-unit{font-size:.65rem;color:var(--muted);}
     .gauge-dir{font-size:.68rem;padding:1px 7px;border-radius:8px;background:#1a3040;color:var(--muted);}
 
+    /* ── 電力儀表 ── */
+    .power-row{display:flex;gap:10px;width:100%;max-width:520px;margin-bottom:10px;}
+    .power-card{
+      flex:1;background:var(--card);border-radius:12px;padding:12px 6px;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+    }
+    .power-label{font-size:.72rem;color:var(--muted);}
+    .power-val{font-size:1.4rem;font-weight:700;color:#ffd740;}
+    .power-unit{font-size:.65rem;color:var(--muted);}
+
     /* ── 日誌 ── */
     #log{
       width:100%;max-width:520px;background:#111c28;
@@ -319,6 +329,25 @@
   </div>
 </div>
 
+<!-- ═══ 電力監測 ═══ -->
+<div class="power-row">
+  <div class="power-card">
+    <div class="power-label">電壓</div>
+    <div class="power-val" id="pwrVolt">--</div>
+    <div class="power-unit">V</div>
+  </div>
+  <div class="power-card">
+    <div class="power-label">電流</div>
+    <div class="power-val" id="pwrCurr">--</div>
+    <div class="power-unit">A</div>
+  </div>
+  <div class="power-card">
+    <div class="power-label">功率</div>
+    <div class="power-val" id="pwrPow">--</div>
+    <div class="power-unit">W</div>
+  </div>
+</div>
+
 <!-- ═══ AI 語音控制 ═══ -->
 <div class="card">
   <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -401,6 +430,16 @@ function mbFC06(nodeId, addr, val) {
   return `:${h(nn)}06${h(aH)}${h(aL)}${h(vH)}${h(vL)}${h(lrc)}\r\n`;
 }
 
+function mbFC03(nodeId, startAddr, count) {
+  const h = v => v.toString(16).toUpperCase().padStart(2,'0');
+  const nn = nodeId & 0xFF;
+  const aH = (startAddr >> 8) & 0xFF, aL = startAddr & 0xFF;
+  const cH = (count >> 8) & 0xFF,     cL = count & 0xFF;
+  const sum = (nn + 0x03 + aH + aL + cH + cL) & 0xFF;
+  const lrc = ((~sum) + 1) & 0xFF;
+  return `:${h(nn)}03${h(aH)}${h(aL)}${h(cH)}${h(cL)}${h(lrc)}\r\n`;
+}
+
 const CMD_STOP = 0, CMD_CW = 1, CMD_CCW = 3;
 
 // ═══════════════════════════════════════════════════
@@ -417,6 +456,8 @@ const W = {
 let running = false;
 let sendTimer = null;
 let joyX = 0, joyY = 0;
+let pwrTimer = null;
+const pwrData = { L: null, R: null };
 
 // ═══════════════════════════════════════════════════
 //  Log
@@ -495,6 +536,7 @@ async function connectWheel(side) {
     setBadge(side, '已連線', 'on');
     setBtns(side, true);
     log(`[${side}] 連線成功`, 'ok');
+    if (!pwrTimer) pwrTimer = setInterval(pollPwr, 2000);
   } catch(e) {
     setBadge(side, '失敗', 'err');
     log(`[${side}] ${e.message}`, 'err');
@@ -510,6 +552,9 @@ function onDisconnect(side) {
   setBadge(side, '未連線', '');
   setBtns(side, false);
   log(`[${side}] 中斷連線`);
+  pwrData[side] = null;
+  updatePwrDisplay();
+  if (!W.L.txChar && !W.R.txChar) { clearInterval(pwrTimer); pwrTimer = null; }
 }
 
 // ═══════════════════════════════════════════════════
@@ -525,12 +570,35 @@ function onRx(side, event) {
   }
 }
 function parseReply(side, pkt) {
-  if (pkt.length >= 13 && pkt.substr(3, 2) === '06') {
+  const fc = pkt.substr(3, 2);
+  if (fc === '06' && pkt.length >= 13) {
     const addr = parseInt(pkt.substr(5, 4), 16);
     const val  = parseInt(pkt.substr(9, 4), 16);
     const addrName = addr === 0x1400 ? '1400h(CMD)' : addr === 0x3F08 ? '3F08h(RPM)' : `${addr.toString(16).toUpperCase()}h`;
     log(`[${side}] ✓ ${addrName} = ${val}`, 'ok');
+  } else if (fc === '03' && pkt.length >= 71) {
+    const dh = pkt.substr(7, 64);
+    const v = i => { let x = parseInt(dh.substr(i*4,4),16); return x>32767?x-65536:x; };
+    pwrData[side] = { volt: v(7)*0.01, curr: v(9)*0.01, pwr: v(6) };
+    updatePwrDisplay();
   }
+}
+
+function pollPwr() {
+  for (const side of ['L','R']) {
+    if (W[side].txChar) enqueueTx(side, mbFC03(getNodeId(side), 0x4600, 16));
+  }
+}
+
+function updatePwrDisplay() {
+  const L = pwrData.L, R = pwrData.R;
+  const src  = L ?? R;
+  const volt = src?.volt ?? null;
+  const curr = (L?.curr ?? 0) + (R?.curr ?? 0);
+  const pwr  = (L?.pwr  ?? 0) + (R?.pwr  ?? 0);
+  document.getElementById('pwrVolt').textContent = volt !== null ? volt.toFixed(1) : '--';
+  document.getElementById('pwrCurr').textContent = src ? curr.toFixed(2) : '--';
+  document.getElementById('pwrPow').textContent  = src ? pwr : '--';
 }
 
 // ═══════════════════════════════════════════════════
