@@ -568,8 +568,8 @@ function calcTargets() {
   const turnPct = joyX * sens;
   const spd = fwdPct >= 0 ? fwd : rev;
 
-  let L =  fwdPct * spd + turnPct * fwd;
-  let R = -fwdPct * spd + turnPct * fwd;
+  let L = -(fwdPct * spd + turnPct * fwd);
+  let R =  fwdPct * spd - turnPct * fwd;
 
   const limit = Math.max(fwd, rev);
   return {
