@@ -343,6 +343,11 @@
                         class="bg-purple-600 hover:bg-purple-500 text-white px-3 h-11 rounded-xl text-xs font-bold transition">
                     送出
                 </button>
+                <!-- 執行中才顯示的中止按鈕 -->
+                <button id="aiAbortBtn" onclick="abortAISequence()"
+                        style="display:none;"
+                        class="bg-red-600 hover:bg-red-500 active:bg-red-700 text-white w-11 h-11 rounded-xl text-lg font-bold transition flex items-center justify-center shadow animate-pulse"
+                        title="中止執行">⏹</button>
             </div>
         </div>
 
@@ -1172,6 +1177,40 @@ function aiLog(role, msg, color='#e2e8f0') {
 }
 
 // ===================================================================
+// AI 序列執行中止控制
+// ===================================================================
+let aiAborted = false;
+let _abortResolvers = []; // 收集所有 pending sleep 的 resolve
+
+function abortableSleep(ms) {
+    return new Promise(resolve => {
+        if (aiAborted) { resolve(); return; }
+        const tid = setTimeout(resolve, ms);
+        _abortResolvers.push(() => { clearTimeout(tid); resolve(); });
+    });
+}
+
+function abortAISequence() {
+    aiAborted = true;
+    // 立刻喚醒所有 pending sleep
+    _abortResolvers.forEach(fn => fn());
+    _abortResolvers = [];
+    // 馬達立刻停止
+    stopMotor().catch(() => {});
+    aiLog('系統', '⏹ 執行已中止，馬達停止', '#f87171');
+    setAIRunning(false);
+}
+
+function setAIRunning(on) {
+    aiAborted = !on; // 開始時清除 abort flag
+    if (on) _abortResolvers = [];
+    const btn = document.getElementById('aiAbortBtn');
+    const sendBtn = document.querySelector('button[onclick="sendAIMessage()"]');
+    if (btn) btn.style.display = on ? 'flex' : 'none';
+    if (sendBtn) sendBtn.disabled = on;
+}
+
+// ===================================================================
 // 對話記憶（含即時修正 few-shot）
 // 最多保留 MAX_HISTORY 輪，避免 token 過長
 // ===================================================================
@@ -1484,33 +1523,40 @@ async function executeAIAction(cmd) {
         case 'sequence': {
             const steps = params.steps || [];
             aiLog('系統', `▶ 序列執行：共 ${steps.length} 步`, '#a78bfa');
+            setAIRunning(true);
             for (let i = 0; i < steps.length; i++) {
+                if (aiAborted) { aiLog('系統', '⏹ 序列已中止', '#f87171'); break; }
                 const step = steps[i];
                 aiLog('系統', `步驟 ${i+1}/${steps.length}：${step.action} ${JSON.stringify(step.params||{})}`, '#94a3b8');
                 await executeAIAction(step);
                 if (step.delay && step.delay > 0) {
                     aiLog('系統', `⏱ 等待 ${step.delay/1000} 秒...`, '#64748b');
-                    await new Promise(r => setTimeout(r, step.delay));
+                    await abortableSleep(step.delay);
                 }
             }
-            aiLog('系統', '✅ 序列完成', '#34d399');
+            if (!aiAborted) aiLog('系統', '✅ 序列完成', '#34d399');
+            setAIRunning(false);
             break;
         }
         case 'repeat': {
             const count = params.count || 1;
             const steps = params.steps || [];
             aiLog('系統', `🔁 重複執行：${count} 次 × ${steps.length} 步`, '#a78bfa');
+            setAIRunning(true);
             for (let r = 0; r < count; r++) {
+                if (aiAborted) { aiLog('系統', `⏹ 已中止（第 ${r+1}/${count} 次前）`, '#f87171'); break; }
                 aiLog('系統', `第 ${r+1}/${count} 次`, '#64748b');
                 for (let i = 0; i < steps.length; i++) {
+                    if (aiAborted) break;
                     const step = steps[i];
                     await executeAIAction(step);
                     if (step.delay && step.delay > 0) {
-                        await new Promise(res => setTimeout(res, step.delay));
+                        await abortableSleep(step.delay);
                     }
                 }
             }
-            aiLog('系統', `✅ 重複完成（共 ${count} 次）`, '#34d399');
+            if (!aiAborted) aiLog('系統', `✅ 重複完成（共 ${count} 次）`, '#34d399');
+            setAIRunning(false);
             break;
         }
         case 'query':
