@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GaN Motor V2 — Modular AI Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; }
+        input[type=range] { accent-color: #34d399; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col h-screen overflow-hidden">
+
+    <!-- NavBar -->
+    <div id="navbar"></div>
+
+    <!-- Main Layout -->
+    <main class="flex-1 overflow-hidden grid grid-cols-12 gap-2 p-2">
+
+        <!-- Left column: chart + control + log -->
+        <div class="col-span-12 lg:col-span-8 flex flex-col gap-2 overflow-hidden">
+
+            <!-- Chart -->
+            <div class="bg-slate-800 rounded-lg p-2 shrink-0">
+                <div class="text-[10px] text-slate-500 mb-1">即時監控</div>
+                <div id="chart-area"></div>
+            </div>
+
+            <!-- Status cards -->
+            <div class="bg-slate-800 rounded-lg p-2 shrink-0">
+                <div class="text-[10px] text-slate-500 mb-1">馬達資料</div>
+                <div id="status-cards"></div>
+            </div>
+
+            <!-- Control panel -->
+            <div id="control-panel" class="shrink-0"></div>
+
+            <!-- Log -->
+            <div id="log-panel" class="shrink-0"></div>
+        </div>
+
+        <!-- Right column: param viewer + AI chat -->
+        <div class="col-span-12 lg:col-span-4 flex flex-col gap-2 overflow-hidden">
+
+            <!-- Motor ID + param scanner -->
+            <div class="shrink-0">
+                <div id="param-viewer"></div>
+            </div>
+
+            <!-- AI Chat -->
+            <div id="ai-chat" class="flex-1 min-h-0"></div>
+        </div>
+    </main>
+
+    <!-- Modal container (AI settings, etc.) -->
+    <div id="modal-container"></div>
+
+    <!-- Boot -->
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
