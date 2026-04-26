@@ -583,7 +583,8 @@
 // 暫存器位址定義
 // ===================================================================
 const SLAVE_ID = 1;
-const DEFAULT_GIST_ID = '';  // 管理者建立 Gist 後填入 ID，所有人免 Token 即可 pull
+const DEFAULT_GIST_ID    = '';  // 共用 Gist ID（填入後全員免設定）
+const DEFAULT_GIST_TOKEN = '';  // 專用 Gist-only Token，填入後全員可 push 修正回共用池
 const REG = {
     NET_IO:   0x1400, SPD_RAM0: 0x0300, SPD_RAM1: 0x0301,
     SPD_RAM2: 0x0302, SPD_RAM3: 0x0303, ACC_RAM0: 0x0400,
@@ -1376,6 +1377,11 @@ function saveAISettings() {
 // 頁面載入後顯示 model badge
 window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
+    // 自動填入 Gist 欄位（優先 localStorage，其次 DEFAULT 常數）
+    const _gt = document.getElementById('gistToken');
+    const _gi = document.getElementById('gistId');
+    if (_gt) _gt.value = localStorage.getItem('gistToken') || DEFAULT_GIST_TOKEN || '';
+    if (_gi) _gi.value = localStorage.getItem('gistId')    || DEFAULT_GIST_ID    || '';
     // 檢查登入：localStorage（記住我）或 sessionStorage（本次）
     if (localStorage.getItem('auth') === 'ok' || sessionStorage.getItem('auth') === 'ok') {
         document.getElementById('loginOverlay').classList.add('hidden');
@@ -2099,15 +2105,15 @@ function gistSetStatus(msg, color='#94a3b8') {
 
 async function pushCorrToGist() {
     const token  = (document.getElementById('gistToken')?.value || '').trim()
-                || localStorage.getItem('gistToken') || '';
+                || localStorage.getItem('gistToken') || DEFAULT_GIST_TOKEN || '';
     let   gistId = (document.getElementById('gistId')?.value || '').trim()
-                || localStorage.getItem('gistId') || '';
+                || localStorage.getItem('gistId') || DEFAULT_GIST_ID || '';
     if (!token) { aiLog('系統', '❌ 請先填寫 GitHub Token', '#f87171'); return; }
 
     gistSetStatus('上傳中…', '#fbbf24');
     const payload = {
         description: 'GaN Motor AI Corrections',
-        public: false,
+        public: true,
         files: {
             'ai_corrDataset.json': { content: JSON.stringify(corrDataset, null, 2) },
             'ai_failedCases.json': { content: JSON.stringify(failedCases,  null, 2) }
@@ -2152,7 +2158,8 @@ async function pullCorrFromGist() {
 
     gistSetStatus('下載中…', '#fbbf24');
     // 公開 Gist 不需 Token；有 Token 時一併帶上（可讀私有 Gist）
-    const headers = token ? { Authorization: `token ${token}` } : {};
+    const _pullToken = token || DEFAULT_GIST_TOKEN || '';
+    const headers = _pullToken ? { Authorization: `token ${_pullToken}` } : {};
     try {
         const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
