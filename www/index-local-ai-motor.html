@@ -528,10 +528,10 @@
                 ☁️ GitHub Gist 跨裝置同步
                 <span id="gistSyncStatus" class="ml-auto text-[9px] font-mono text-slate-500"></span>
             </div>
-            <input id="gistToken" type="password" placeholder="GitHub Personal Access Token (gist scope)"
+            <input id="gistToken" type="password" placeholder="GitHub Token（僅管理者需填，一般用戶留空）"
                    class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
                    value="" oninput="localStorage.setItem('gistToken',this.value)">
-            <input id="gistId" type="text" placeholder="Gist ID（留空自動建立）"
+            <input id="gistId" type="text" placeholder="Gist ID（填入後所有人免 Token 可 pull）"
                    class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
                    value="" oninput="localStorage.setItem('gistId',this.value)">
             <div class="flex gap-1">
@@ -583,6 +583,7 @@
 // 暫存器位址定義
 // ===================================================================
 const SLAVE_ID = 1;
+const DEFAULT_GIST_ID = '';  // 管理者建立 Gist 後填入 ID，所有人免 Token 即可 pull
 const REG = {
     NET_IO:   0x1400, SPD_RAM0: 0x0300, SPD_RAM1: 0x0301,
     SPD_RAM2: 0x0302, SPD_RAM3: 0x0303, ACC_RAM0: 0x0400,
@@ -2146,14 +2147,14 @@ async function pullCorrFromGist() {
     const token  = (document.getElementById('gistToken')?.value || '').trim()
                 || localStorage.getItem('gistToken') || '';
     const gistId = (document.getElementById('gistId')?.value || '').trim()
-                || localStorage.getItem('gistId') || '';
-    if (!token || !gistId) { aiLog('系統', '❌ 請填寫 Token 及 Gist ID', '#f87171'); return; }
+                || localStorage.getItem('gistId') || DEFAULT_GIST_ID || '';
+    if (!gistId) { aiLog('系統', '❌ 請填寫 Gist ID', '#f87171'); return; }
 
     gistSetStatus('下載中…', '#fbbf24');
+    // 公開 Gist 不需 Token；有 Token 時一併帶上（可讀私有 Gist）
+    const headers = token ? { Authorization: `token ${token}` } : {};
     try {
-        const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-            headers: { Authorization: `token ${token}` }
-        });
+        const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
