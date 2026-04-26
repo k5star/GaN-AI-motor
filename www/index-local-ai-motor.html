@@ -528,10 +528,13 @@
                 ☁️ GitHub Gist 跨裝置同步
                 <span id="gistSyncStatus" class="ml-auto text-[9px] font-mono text-slate-500"></span>
             </div>
-            <input id="gistToken" type="password" placeholder="GitHub Token（僅管理者需填，一般用戶留空）"
+            <div id="gistDefaultBadge" class="hidden text-[9px] bg-emerald-900/40 border border-emerald-700/40 text-emerald-400 rounded px-2 py-1 font-mono">
+                ✓ 共用 Token 已內嵌，直接按上傳/下載即可
+            </div>
+            <input id="gistToken" type="password" placeholder="GitHub Token（已內嵌，留空即用預設）"
                    class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
                    value="" oninput="localStorage.setItem('gistToken',this.value)">
-            <input id="gistId" type="text" placeholder="Gist ID（填入後所有人免 Token 可 pull）"
+            <input id="gistId" type="text" placeholder="Gist ID（已內嵌，留空即用預設）"
                    class="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono"
                    value="" oninput="localStorage.setItem('gistId',this.value)">
             <div class="flex gap-1">
@@ -1382,6 +1385,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const _gi = document.getElementById('gistId');
     if (_gt) _gt.value = localStorage.getItem('gistToken') || DEFAULT_GIST_TOKEN || '';
     if (_gi) _gi.value = localStorage.getItem('gistId')    || DEFAULT_GIST_ID    || '';
+    // 顯示內嵌 badge
+    if (DEFAULT_GIST_TOKEN) {
+        const badge = document.getElementById('gistDefaultBadge');
+        if (badge) badge.classList.remove('hidden');
+    }
     // 檢查登入：localStorage（記住我）或 sessionStorage（本次）
     if (localStorage.getItem('auth') === 'ok' || sessionStorage.getItem('auth') === 'ok') {
         document.getElementById('loginOverlay').classList.add('hidden');
