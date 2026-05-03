@@ -334,9 +334,9 @@
 const SLAVE_ID = 1;
 const REG = {
     NET_IO:   0x1400,
-    SPD_RAM0: 0x3F08,
-    ACC_RAM0: 0x4000,
-    DEC_RAM0: 0x4008,
+    SPD_RAM0: 0x0300,   // 03-01 數位轉速第0段
+    ACC_RAM0: 0x0400,   // 04-01 加速度時間
+    DEC_RAM0: 0x0408,   // 04-09 減速度時間
 };
 const BIT = { START_STOP:0x01, CCW_CW:0x02, ALM_RST:0x04 };
 
