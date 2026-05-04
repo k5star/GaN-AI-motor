@@ -320,9 +320,9 @@ function renderDeviceCard(dev) {
       <button onclick="toggleStats(${dev.id})"
         class="w-full flex items-center justify-between text-[10px] text-slate-600 hover:text-slate-400 py-1 transition-colors">
         <span class="uppercase tracking-widest font-semibold">本次連線統計</span>
-        <span id="statsarrow-${dev.id}" class="text-xs">▸</span>
+        <span id="statsarrow-${dev.id}" class="text-xs">▾</span>
       </button>
-      <div id="statsbox-${dev.id}" class="hidden mt-1.5 grid grid-cols-2 gap-1.5">
+      <div id="statsbox-${dev.id}" class="mt-1.5 grid grid-cols-2 gap-1.5">
         <div class="bg-black/25 rounded-xl px-3 py-2">
           <div id="smaxrpm-${dev.id}" class="text-sm font-black font-mono text-cyan-400">-- RPM</div>
           <div class="text-[9px] text-slate-600 mt-0.5">最高轉速</div>
