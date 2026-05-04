@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GaN 馬達監控 V2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+  body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;
+       overscroll-behavior:none;-webkit-user-select:none;user-select:none;}
+  @keyframes almblink{0%,100%{opacity:1}50%{opacity:.3}}
+  .alarm-blink{animation:almblink .8s infinite}
+  @keyframes pulse2{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  .run-pulse{animation:pulse2 1.4s ease-in-out infinite}
+  @keyframes slideup{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .slide-up{animation:slideup .2s ease}
+  .btn-press:active{transform:scale(.93);transition:transform .07s}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+  .card{background:rgba(22,27,34,.95);border:1px solid rgba(255,255,255,.07);border-radius:16px}
+  .glass{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px}
+  .badge-warn{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+  .badge-crit{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+  .badge-emer{background:rgba(239,68,68,.25);color:#fca5a5;border:1px solid rgba(239,68,68,.4);animation:almblink 1s infinite}
+  .badge-ok  {background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25)}
+  .status-run  {color:#34d399}
+  .status-stop {color:#64748b}
+  .status-fault{color:#f87171}
+  .status-warn {color:#fbbf24}
+  .dev-card-run {border-color:rgba(52,211,153,.3)!important}
+  .dev-card-fault{border-color:rgba(239,68,68,.4)!important}
+</style>
+</head>
+<body class="min-h-screen pb-6">
+
+<!-- ══════════════════════ 標題列 ══════════════════════ -->
+<header class="sticky top-0 z-40 bg-slate-900/97 backdrop-blur border-b border-slate-700/40 px-4 py-2.5 flex items-center justify-between">
+  <div>
+    <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V2</div>
+    <div class="text-[9px] text-slate-500 font-mono">多裝置 BLE · <span id="activeCount">0</span> 台連線中</div>
+  </div>
+  <div class="flex items-center gap-2">
+    <button onclick="addDevice()"
+      class="btn-press flex items-center gap-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold px-3 py-1.5 rounded-xl text-sm transition-all">
+      <span class="text-base leading-none">+</span> 新增裝置
+    </button>
+  </div>
+</header>
+
+<!-- ══════════════════════ 裝置卡片區 ══════════════════════ -->
+<main class="px-3 py-3 space-y-3">
+
+<div id="emptyHint" class="card px-5 py-10 text-center">
+  <div class="text-4xl mb-3">📡</div>
+  <div class="text-slate-400 font-bold mb-1">尚無裝置</div>
+  <div class="text-slate-600 text-sm">點右上角「+ 新增裝置」開始連線</div>
+</div>
+
+<!-- 裝置卡片動態插入此處 -->
+<div id="deviceList" class="space-y-3"></div>
+
+<!-- ══ 共享趨勢圖 ══ -->
+<div id="combinedChartWrap" class="hidden card p-4">
+  <div class="flex items-center justify-between mb-2">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">轉速比較 (最近 3 分鐘)</div>
+    <button id="trendPauseBtn" onclick="toggleTrendPause()"
+      class="btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 border border-slate-600 transition-colors">
+      ⏸ 暫停
+    </button>
+  </div>
+  <div style="position:relative;height:160px">
+    <canvas id="combinedChart"></canvas>
+  </div>
+  <div id="trendPausedBar" class="hidden mt-2 text-center text-[10px] text-amber-400 font-semibold">⏸ 已暫停 — 點按鈕繼續</div>
+</div>
+
+<!-- ══ 共享警報事件 ══ -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">警報事件</div>
+    <span id="almCntBadge" class="text-[10px] text-slate-500">0 次</span>
+  </div>
+  <div id="almEventList">
+    <div class="text-slate-600 text-xs text-center py-3">無警報記錄</div>
+  </div>
+</div>
+
+<!-- ══ 共享事件紀錄 ══ -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">事件紀錄</div>
+    <button onclick="clearLog()" class="text-[10px] text-slate-600 hover:text-red-400 btn-press transition-colors">清除</button>
+  </div>
+  <div id="sysLogList" class="font-mono text-[11px] leading-relaxed space-y-0.5 max-h-52 overflow-y-auto">
+    <div class="text-slate-600 text-center py-3">尚無紀錄</div>
+  </div>
+</div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 text-slate-200 text-sm px-5 py-2.5 rounded-2xl shadow-xl transition-opacity"></div>
+
+<script>
+// ══════════════════════════════════════
+// 馬達狀態碼 / 警報碼
+// ══════════════════════════════════════
+const MOTOR_STATUS = {
+  0:{txt:'停止',     icon:'⬛',clr:'status-stop'},
+  2:{txt:'運轉中',   icon:'🟢',clr:'status-run'},
+  3:{txt:'電子煞車', icon:'🟠',clr:'status-warn'},
+  4:{txt:'自由運轉', icon:'⚪',clr:'status-stop'},
+  5:{txt:'故障',     icon:'🔴',clr:'status-fault'},
+  6:{txt:'禁止輸入', icon:'🟡',clr:'status-warn'},
+  7:{txt:'伺服啟動', icon:'🟣',clr:'status-run'},
+  8:{txt:'位置保持', icon:'🔵',clr:'status-run'},
+};
+const ALARM_CODE = {
+  0:{txt:'正常',         sev:'ok'},
+  1:{txt:'過電流 (OC)',  sev:'crit', hint:'⚡ 負載過重或馬達堵轉，檢查機械負載'},
+  2:{txt:'過電壓 (OV)',  sev:'crit', hint:'🔋 電源電壓過高或制動能量回充'},
+  3:{txt:'低電壓 (UV)',  sev:'warn', hint:'🔋 電源不穩或電池電量不足'},
+  4:{txt:'MOS 過溫',    sev:'crit', hint:'🌡 散熱不足，降低負載或改善散熱'},
+  5:{txt:'馬達過溫',    sev:'crit', hint:'🌡 馬達持續高負荷，需冷卻或降速'},
+  6:{txt:'IPM 過溫',    sev:'crit', hint:'🌡 驅動模組溫度過高，減少佔空比'},
+  7:{txt:'霍爾感測異常', sev:'crit', hint:'🔌 感測器接線問題或磁場干擾'},
+  8:{txt:'超速',         sev:'crit', hint:'⚠ 轉速超過額定上限，降低目標轉速'},
+  9:{txt:'位置偏差',     sev:'warn', hint:'📐 位置誤差過大，檢查機械阻力'},
+ 10:{txt:'編碼器異常',  sev:'crit', hint:'🔌 編碼器接線或訊號異常'},
+ 11:{txt:'通訊逾時',    sev:'warn', hint:'📡 BLE 訊號不穩定，靠近設備'},
+ 12:{txt:'EEPROM 錯誤', sev:'crit', hint:'💾 設定儲存失敗，重新上電'},
+ 13:{txt:'參數錯誤',    sev:'warn', hint:'⚙ 參數超出範圍，重設驅動器'},
+ 14:{txt:'硬體過流',    sev:'crit', hint:'⚡ 硬體層級過流，立即停機'},
+ 15:{txt:'軟體過流',    sev:'warn', hint:'⚡ 電流超過軟體限制值'},
+ 16:{txt:'U 相斷路',    sev:'crit', hint:'🔌 U 相接線或 MOS 開路'},
+ 17:{txt:'V 相斷路',    sev:'crit', hint:'🔌 V 相接線或 MOS 開路'},
+ 18:{txt:'W 相斷路',    sev:'crit', hint:'🔌 W 相接線或 MOS 開路'},
+ 19:{txt:'電流感測異常',sev:'crit', hint:'🔌 電流感測器接線或損壞'},
+ 20:{txt:'制動電阻過熱',sev:'warn', hint:'🌡 制動過於頻繁，加大制動電阻'},
+ 21:{txt:'接地故障',    sev:'crit', hint:'⚡ 馬達或線路接地，立即停機'},
+ 22:{txt:'失速',         sev:'warn', hint:'⚙ 無法達到目標轉速，檢查負載'},
+ 2048:{txt:'系統故障',  sev:'crit', hint:'🔧 驅動器內部錯誤，重新上電'},
+ 2056:{txt:'IO 故障',   sev:'warn', hint:'🔌 數位 IO 異常'},
+};
+const alarmDesc = c => (ALARM_CODE[c]||{txt:`故障 ${c}`}).txt;
+const alarmSev  = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
+const alarmHint = c => (ALARM_CODE[c]||{}).hint;
+
+// ══════════════════════════════════════
+// 裝置設定檔
+// ══════════════════════════════════════
+const PROFILES = {
+  'original': {
+    label:'原驅動器', protocol:'ASCII', slaveId:0x11,
+    startReg:0x4600, regCount:16, hasPage10:true,
+    idx:{status:0,alarm:1,rpm:4,power:6,voltage:7,duty:8,current:9},
+    scale:{voltage:0.01,duty:0.1,current:0.01}
+  },
+  'gan-robot': {
+    label:'GaN AI ROBOT', protocol:'RTU', slaveId:0x01,
+    startReg:0x0000, regCount:16, hasPage10:false,
+    idx:{status:0,alarm:3,rpm:2,power:7,voltage:9,duty:11,current:12},
+    scale:{voltage:0.01,duty:0.1,current:0.01}
+  }
+};
+
+// 裝置顏色（最多 6 台）
+const DEV_COLORS = ['#22d3ee','#fbbf24','#34d399','#fb7185','#a78bfa','#f97316'];
+
+// ══════════════════════════════════════
+// 裝置管理
+// ══════════════════════════════════════
+const devices = new Map();
+let nextId = 1;
+
+function createDeviceObj(profileKey) {
+  const id = nextId++;
+  const color = DEV_COLORS[(id-1) % DEV_COLORS.length];
+  return {
+    id, color,
+    profileKey: profileKey || 'gan-robot',
+    get profile() { return PROFILES[this.profileKey] || PROFILES['gan-robot']; },
+    bleDevice:null, bleTxChar:null, bleRxChar:null,
+    isConnected: false,
+    rtuBuf: new Uint8Array(256), rtuLen: 0,
+    asciiBuffer: '',
+    bleQueue: [], bleQueueRunning: false,
+    currentValues: new Array(16).fill(0),
+    tempD09: null, page10Pending: false, page10Step: 0, page10ReadingReg: 9,
+    pollTimer: null, tempPollTimer: null,
+    lastAlmCode: 0,
+    pwrAccWh: 0, pwrRunSec: 0, pwrStartCount: 0, pwrLastTime: null, pwrRunning: false,
+    statMaxRpm: 0, statMaxCur: 0, statMaxVlt: 0, statMaxPwr: 0,
+    almCnt: 0,
+    trendRpm: [], chart: null
+  };
+}
+
+function addDevice() {
+  if (devices.size >= 6) { showToast('最多支援 6 台裝置'); return; }
+  const dev = createDeviceObj('gan-robot');
+  devices.set(dev.id, dev);
+  renderDeviceCard(dev);
+  document.getElementById('emptyHint').classList.add('hidden');
+  addLog(`+ 新增裝置 #${dev.id}`);
+}
+
+function removeDevice(id) {
+  const dev = devices.get(id);
+  if (!dev) return;
+  if (dev.isConnected) disconnectDevice(id);
+  devices.delete(id);
+  document.getElementById(`devcard-${id}`)?.remove();
+  removeCombinedDataset(id);
+  updateActiveCount();
+  if (devices.size === 0) document.getElementById('emptyHint').classList.remove('hidden');
+  if (devices.size < 2) document.getElementById('combinedChartWrap').classList.add('hidden');
+  addLog(`✕ 移除裝置 #${id}`);
+}
+
+// ══════════════════════════════════════
+// 裝置卡片 HTML
+// ══════════════════════════════════════
+function renderDeviceCard(dev) {
+  const list = document.getElementById('deviceList');
+  const wrap = document.createElement('div');
+  wrap.id = `devcard-${dev.id}`;
+  wrap.className = 'card p-3 slide-up transition-all duration-300';
+  wrap.style.borderLeftColor = dev.color;
+  wrap.style.borderLeftWidth = '3px';
+  wrap.innerHTML = `
+    <!-- 頂列 -->
+    <div class="flex items-center gap-2 mb-2.5">
+      <div id="dot-${dev.id}" class="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500"></div>
+      <span class="text-xs font-bold text-slate-300 flex-1">裝置 #${dev.id}</span>
+      <select id="prof-${dev.id}" onchange="changeProfile(${dev.id},this.value)"
+        class="bg-slate-800 border border-slate-700 text-slate-400 text-[10px] rounded-lg px-1.5 py-1 outline-none">
+        <option value="gan-robot" ${dev.profileKey==='gan-robot'?'selected':''}>GaN AI ROBOT</option>
+        <option value="original" ${dev.profileKey==='original'?'selected':''}>原驅動器</option>
+      </select>
+      <button id="connbtn-${dev.id}" onclick="connectDevice(${dev.id})"
+        class="btn-press text-[11px] font-bold px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition-all">連線</button>
+      <button onclick="removeDevice(${dev.id})"
+        class="btn-press text-slate-600 hover:text-red-400 text-lg leading-none px-1 transition-colors">✕</button>
+    </div>
+
+    <!-- 馬達狀態列 -->
+    <div class="flex items-center gap-2 mb-2">
+      <span id="sicon-${dev.id}" class="text-xl">⬛</span>
+      <span id="stxt-${dev.id}" class="text-sm font-black status-stop">等待連線</span>
+      <div id="almbadge-${dev.id}" class="hidden ml-auto">
+        <span id="almtxt-${dev.id}" class="badge-crit text-[10px] font-black px-2 py-0.5 rounded-lg alarm-blink"></span>
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="grid grid-cols-4 gap-1.5 mb-2">
+      <div class="glass p-2 text-center">
+        <div id="rpm-${dev.id}" class="text-sm font-black font-mono" style="color:${dev.color}">--</div>
+        <div class="text-[9px] text-slate-600">RPM</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="cur-${dev.id}" class="text-sm font-black font-mono text-amber-400">--</div>
+        <div class="text-[9px] text-slate-600">電流 A</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="pwr-${dev.id}" class="text-sm font-black font-mono text-purple-400">--</div>
+        <div class="text-[9px] text-slate-600">功率 W</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="vlt-${dev.id}" class="text-sm font-black font-mono text-emerald-400">--</div>
+        <div class="text-[9px] text-slate-600">電壓 V</div>
+      </div>
+    </div>
+
+    <!-- 警報提示條 -->
+    <div id="almhint-${dev.id}" class="hidden text-[11px] text-slate-400 bg-red-950/30 border border-red-900/40 rounded-xl px-3 py-2 mb-2 leading-snug"></div>
+
+    <!-- 迷你 Spark 圖 (RPM) -->
+    <div class="relative" style="height:48px">
+      <canvas id="spark-${dev.id}"></canvas>
+    </div>
+    <div class="text-[9px] text-slate-700 text-right mt-0.5">RPM 趨勢 (60s)</div>
+  `;
+  list.appendChild(wrap);
+
+  // 初始化 spark chart
+  const ctx = document.getElementById(`spark-${dev.id}`);
+  dev.chart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: dev.trendRpm.map((_,i)=>i),
+      datasets:[{
+        data: dev.trendRpm,
+        borderColor: dev.color,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.4,
+        fill: true,
+        backgroundColor: dev.color+'22'
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:0},
+      scales:{x:{display:false},y:{display:false}},
+      plugins:{legend:{display:false},tooltip:{enabled:false}}
+    }
+  });
+}
+
+function changeProfile(id, profileKey) {
+  const dev = devices.get(id);
+  if (!dev || dev.isConnected) { showToast('請先斷線再切換設定檔'); return; }
+  dev.profileKey = profileKey;
+}
+
+// ══════════════════════════════════════
+// Modbus RTU helpers（純函式，傳入 dev）
+// ══════════════════════════════════════
+function crc16(buf) {
+  let crc=0xFFFF;
+  for(const b of buf){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?(crc>>>1)^0xA001:crc>>>1;}
+  return crc;
+}
+function buildFC03(slaveId, reg, cnt) {
+  const b=[slaveId,0x03,(reg>>8)&0xFF,reg&0xFF,(cnt>>8)&0xFF,cnt&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function buildFC06(slaveId, reg, val) {
+  const b=[slaveId,0x06,(reg>>8)&0xFF,reg&0xFF,(val>>8)&0xFF,val&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function rtuToAscii(slaveId, frame) {
+  const data=frame.slice(0,-2);
+  let sum=0; for(const b of data) sum=(sum+b)&0xFF;
+  const lrc=((~sum)+1)&0xFF;
+  return ':'+[...data,lrc].map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join('')+'\r\n';
+}
+function adcToTemperature(adc, ntcB=3950) {
+  if(adc<=0||adc>=4095) return null;
+  const r=10000*adc/(4096-adc);
+  return parseFloat((1/(1/298.15+Math.log(r/10000)/ntcB)-273.15).toFixed(1));
+}
+
+// ══════════════════════════════════════
+// BLE 發送佇列（per device）
+// ══════════════════════════════════════
+function devSendModbus(dev, rtuFrame) {
+  if(!dev.isConnected||!dev.bleTxChar) return;
+  const p=dev.profile;
+  const payload = p.protocol==='RTU' ? rtuFrame : rtuToAscii(p.slaveId, rtuFrame);
+  const isMainPoll=(rtuFrame[1]===0x03&&rtuFrame[2]===((p.startReg>>8)&0xFF)&&rtuFrame[3]===(p.startReg&0xFF));
+  if(isMainPoll&&dev.bleQueue.some(q=>{
+    const b=typeof q==='string'?null:q;
+    return b&&b[1]===0x03&&b[2]===((p.startReg>>8)&0xFF)&&b[3]===(p.startReg&0xFF);
+  })) return;
+  dev.bleQueue.push(payload);
+  devProcessQueue(dev);
+}
+function devSendRawAscii(dev, str) {
+  if(!dev.isConnected||!dev.bleTxChar) return;
+  dev.bleQueue.push(str);
+  devProcessQueue(dev);
+}
+async function devProcessQueue(dev) {
+  if(dev.bleQueueRunning||!dev.bleQueue.length) return;
+  dev.bleQueueRunning=true;
+  while(dev.bleQueue.length) {
+    const item=dev.bleQueue.shift();
+    try {
+      const bytes=typeof item==='string'?new TextEncoder().encode(item):item;
+      for(let i=0;i<bytes.length;i+=20){
+        await dev.bleTxChar.writeValueWithoutResponse(bytes.slice(i,i+20));
+        if(bytes.length>20) await new Promise(r=>setTimeout(r,30));
+      }
+    } catch(e){console.error(e);}
+    await new Promise(r=>setTimeout(r,40));
+  }
+  dev.bleQueueRunning=false;
+}
+
+// ══════════════════════════════════════
+// BLE 連線 / 斷線（per device）
+// ══════════════════════════════════════
+const HM10_SVC='0000ffe0-0000-1000-8000-00805f9b34fb';
+
+async function connectDevice(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  if(dev.isConnected){disconnectDevice(id);return;}
+  const btn=document.getElementById(`connbtn-${id}`);
+  btn.textContent='搜尋…'; btn.disabled=true;
+  try {
+    dev.bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[HM10_SVC]}], optionalServices:[HM10_SVC]
+    });
+    dev.bleDevice.addEventListener('gattserverdisconnected',()=>onDevDisconnected(id));
+    const server=await dev.bleDevice.gatt.connect();
+    const svc=await server.getPrimaryService(HM10_SVC);
+    const chars=await svc.getCharacteristics();
+    for(const c of chars){
+      const p=c.properties;
+      if(p.notify||p.indicate) dev.bleRxChar=c;
+      if(p.write||p.writeWithoutResponse) dev.bleTxChar=c;
+    }
+    if(!dev.bleRxChar||!dev.bleTxChar) throw new Error('找不到 FFE1 特徵值');
+    await dev.bleRxChar.startNotifications();
+    dev.bleRxChar.addEventListener('characteristicvaluechanged', e=>onDevBleData(id,e));
+    dev.isConnected=true;
+    onDevConnected(id);
+  } catch(e) {
+    btn.textContent='連線'; btn.disabled=false;
+    showToast(`#${id} 連線失敗：${e.message}`);
+  }
+}
+
+function onDevConnected(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  const btn=document.getElementById(`connbtn-${id}`);
+  btn.textContent='斷線'; btn.disabled=false;
+  btn.className='btn-press text-[11px] font-bold px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-all';
+  document.getElementById(`dot-${id}`).className='w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 transition-colors duration-500';
+  const p=dev.profile;
+  if(p.hasPage10) devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
+  setTimeout(()=>{
+    const pkt=buildFC03(p.slaveId, p.startReg, p.regCount);
+    dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt),500);
+    if(p.hasPage10) dev.tempPollTimer=setInterval(()=>doPage10Read(id),8000);
+  },500);
+  updateActiveCount();
+  addCombinedDataset(dev);
+  if(devices.size>=2) document.getElementById('combinedChartWrap').classList.remove('hidden');
+  addLog(`● 裝置 #${id} (${p.label}) 連線成功`, 'green');
+  showToast(`✅ 裝置 #${id} 連線`);
+}
+
+function disconnectDevice(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  clearInterval(dev.pollTimer); clearInterval(dev.tempPollTimer);
+  dev.pollTimer=null; dev.tempPollTimer=null;
+  if(dev.bleDevice?.gatt.connected) dev.bleDevice.gatt.disconnect();
+}
+
+function onDevDisconnected(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  dev.isConnected=false;
+  clearInterval(dev.pollTimer); clearInterval(dev.tempPollTimer);
+  dev.pollTimer=null; dev.tempPollTimer=null;
+  const btn=document.getElementById(`connbtn-${id}`);
+  if(btn){btn.textContent='連線';btn.disabled=false;btn.className='btn-press text-[11px] font-bold px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition-all';}
+  const dot=document.getElementById(`dot-${id}`);
+  if(dot) dot.className='w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500';
+  const stxt=document.getElementById(`stxt-${id}`);
+  if(stxt){stxt.textContent='已斷線';stxt.className='text-sm font-black status-stop';}
+  const card=document.getElementById(`devcard-${id}`);
+  if(card){card.classList.remove('dev-card-run','dev-card-fault');}
+  updateActiveCount();
+  if([...devices.values()].filter(d=>d.isConnected).length < 2)
+    document.getElementById('combinedChartWrap').classList.add('hidden');
+  addLog(`○ 裝置 #${id} 已斷線`, 'red');
+  showToast(`⚠ 裝置 #${id} 斷線`);
+}
+
+// ══════════════════════════════════════
+// BLE 接收 / Modbus 解析（per device）
+// ══════════════════════════════════════
+function onDevBleData(id, e) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  if(dev.profile.protocol==='RTU') onDevRTU(dev,e);
+  else                              onDevASCII(dev,e);
+}
+function onDevRTU(dev, e) {
+  const chunk=new Uint8Array(e.target.value.buffer);
+  if(dev.rtuLen+chunk.length>dev.rtuBuf.length) dev.rtuLen=0;
+  dev.rtuBuf.set(chunk,dev.rtuLen); dev.rtuLen+=chunk.length;
+  tryParseRTU(dev);
+}
+function tryParseRTU(dev) {
+  while(dev.rtuLen>=4){
+    const fc=dev.rtuBuf[1]; let frameLen;
+    if     (fc===0x03){if(dev.rtuLen<3)break; frameLen=3+dev.rtuBuf[2]+2;}
+    else if(fc===0x06){frameLen=8;}
+    else{dev.rtuBuf.copyWithin(0,1);dev.rtuLen--;continue;}
+    if(dev.rtuLen<frameLen) break;
+    const c=crc16(dev.rtuBuf.slice(0,frameLen-2));
+    if((c&0xFF)===dev.rtuBuf[frameLen-2]&&((c>>8)&0xFF)===dev.rtuBuf[frameLen-1])
+      processFrame(dev,fc,dev.rtuBuf.slice(0,frameLen));
+    dev.rtuBuf.copyWithin(0,frameLen); dev.rtuLen-=frameLen;
+  }
+}
+function processFrame(dev, fc, frame) {
+  const p=dev.profile;
+  if(fc===0x03){
+    const cnt=frame[2]>>1;
+    if(dev.page10Pending&&cnt===1){
+      dev.page10Pending=false;
+      const adc=(frame[3]<<8)|frame[4];
+      dev.tempD09=adcToTemperature(adc);
+      devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
+      updateCard(dev); return;
+    }
+    if(!dev.page10Pending&&cnt===p.regCount){
+      for(let i=0;i<p.regCount;i++){
+        let v=(frame[3+i*2]<<8)|frame[4+i*2];
+        if(v>32767) v-=65536;
+        dev.currentValues[i]=v;
+      }
+      updateCard(dev);
+    }
+  }
+  if(fc===0x06){
+    const addr=(frame[2]<<8)|frame[3],val=(frame[4]<<8)|frame[5];
+    if(addr===0x090A&&val===0&&!dev.pollTimer){
+      const pkt=buildFC03(p.slaveId,p.startReg,p.regCount);
+      dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt),500);
+    }
+  }
+}
+function onDevASCII(dev, e) {
+  dev.asciiBuffer+=new TextDecoder().decode(e.target.value);
+  let idx;
+  while((idx=dev.asciiBuffer.indexOf('\n'))!==-1){
+    const line=dev.asciiBuffer.slice(0,idx+1).trim();
+    dev.asciiBuffer=dev.asciiBuffer.slice(idx+1);
+    if(line.startsWith(':')) parsePacketASCII(dev,line);
+  }
+}
+function parsePacketASCII(dev, pkt) {
+  if(pkt.length<7) return;
+  const p=dev.profile;
+  const fc=pkt.substr(3,2);
+  if(fc==='03'){
+    if(dev.page10Pending&&pkt.length>=13&&pkt.length<20){
+      dev.page10Pending=false;
+      dev.tempD09=adcToTemperature(parseInt(pkt.substr(7,4),16));
+      devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
+      updateCard(dev); return;
+    }
+    if(!dev.page10Pending&&pkt.length>=71){
+      const dh=pkt.substr(7,64);
+      for(let i=0;i<16;i++){
+        let v=parseInt(dh.substr(i*4,4),16);
+        if(v>32767) v-=65536;
+        dev.currentValues[i]=v;
+      }
+      updateCard(dev);
+    }
+  }
+  if(fc==='06'){
+    const addr=parseInt(pkt.substr(5,4),16),val=parseInt(pkt.substr(9,4),16);
+    if(addr===0x090A&&val===0&&!dev.pollTimer){
+      const pkt2=buildFC03(p.slaveId,p.startReg,p.regCount);
+      dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt2),500);
+    }
+  }
+}
+async function doPage10Read(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected||dev.page10Pending) return;
+  const p=dev.profile;
+  dev.page10Pending=true;
+  dev.page10ReadingReg=dev.page10Step===0?9:10;
+  dev.page10Step=1-dev.page10Step;
+  devSendModbus(dev, buildFC06(p.slaveId,0x090A,10));
+  await new Promise(r=>setTimeout(r,800));
+  devSendModbus(dev, buildFC03(p.slaveId,dev.page10ReadingReg,1));
+  setTimeout(()=>{if(dev.page10Pending){dev.page10Pending=false;devSendModbus(dev,buildFC06(p.slaveId,0x090A,0));}},2500);
+}
+
+// ══════════════════════════════════════
+// 裝置卡片資料更新
+// ══════════════════════════════════════
+function updateCard(dev) {
+  const {idx,scale}=dev.profile;
+  const id=dev.id;
+  const st  =dev.currentValues[idx.status];
+  const alm =dev.currentValues[idx.alarm];
+  const rpm =dev.currentValues[idx.rpm];
+  const pwr =dev.currentValues[idx.power];
+  const vlt =(dev.currentValues[idx.voltage]*scale.voltage).toFixed(1);
+  const cur =(dev.currentValues[idx.current]*scale.current).toFixed(2);
+  const dty =(dev.currentValues[idx.duty]*scale.duty).toFixed(1);
+  const s   =MOTOR_STATUS[st]||{txt:`狀態 ${st}`,icon:'❓',clr:'status-stop'};
+
+  const $=i=>document.getElementById(`${i}-${id}`);
+  $('sicon').textContent=s.icon;
+  const stxtEl=$('stxt'); stxtEl.textContent=s.txt; stxtEl.className=`text-sm font-black ${s.clr}`;
+  $('rpm').textContent=rpm;
+  $('cur').textContent=cur;
+  $('pwr').textContent=pwr;
+  $('vlt').textContent=vlt;
+
+  // 卡片邊框狀態
+  const card=document.getElementById(`devcard-${id}`);
+  card.classList.remove('dev-card-run','dev-card-fault');
+  if(st===2) card.classList.add('dev-card-run');
+  else if(st===5||alm!==0) card.classList.add('dev-card-fault');
+
+  // 警報徽章
+  const badge=$('almbadge'), hint=$('almhint');
+  if(alm!==0||st===5){
+    const sev=alarmSev(alm);
+    badge.classList.remove('hidden');
+    $('almtxt').textContent=`⚠ ${alm} ${alarmDesc(alm)}`;
+    $('almtxt').className=`badge-${sev} text-[10px] font-black px-2 py-0.5 rounded-lg alarm-blink`;
+    const h=alarmHint(alm);
+    if(h){hint.textContent=h;hint.classList.remove('hidden');}
+  } else {
+    badge.classList.add('hidden');
+    hint.classList.add('hidden');
+  }
+
+  // Spark chart
+  dev.trendRpm.push(rpm);
+  if(dev.trendRpm.length>120) dev.trendRpm.shift();
+  if(dev.chart){
+    dev.chart.data.labels=dev.trendRpm.map((_,i)=>i);
+    dev.chart.data.datasets[0].data=dev.trendRpm;
+    dev.chart.update('none');
+  }
+
+  // 功率累積 / 運轉時間
+  const now=Date.now();
+  const isRunning=(st===2);
+  if(isRunning&&!dev.pwrRunning){dev.pwrStartCount++;dev.pwrRunning=true;addLog(`▶ #${id} 啟動 #${dev.pwrStartCount}  ${rpm} RPM`,'green');}
+  if(!isRunning&&dev.pwrRunning){dev.pwrRunning=false;addLog(`■ #${id} 停止  累積 ${dev.pwrAccWh.toFixed(3)} Wh`);}
+  if(isRunning&&dev.pwrLastTime){
+    const dt=(now-dev.pwrLastTime)/3600000;
+    dev.pwrAccWh+=pwr*dt;
+    dev.pwrRunSec+=(now-dev.pwrLastTime)/1000;
+  }
+  dev.pwrLastTime=now;
+
+  // 統計
+  if(rpm>dev.statMaxRpm) dev.statMaxRpm=rpm;
+  if(parseFloat(cur)>dev.statMaxCur) dev.statMaxCur=parseFloat(cur);
+  if(parseFloat(vlt)>dev.statMaxVlt) dev.statMaxVlt=parseFloat(vlt);
+  if(pwr>dev.statMaxPwr) dev.statMaxPwr=pwr;
+
+  // 警報事件
+  const t=new Date().toLocaleTimeString('zh-TW');
+  if(alm!==0&&alm!==dev.lastAlmCode){
+    dev.almCnt++;
+    const hint=alarmHint(alm)||'';
+    almEvents.unshift({time:t,devId:id,code:alm,desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
+    totalAlmCnt++;
+    document.getElementById('almCntBadge').textContent=totalAlmCnt+' 次';
+    renderAlmEvents();
+    addLog(`⚠ #${id} 警報 ${alm}：${alarmDesc(alm)}${hint?' — '+hint:''}`, 'red');
+  }
+  if(alm===0&&dev.lastAlmCode!==0){
+    const found=almEvents.find(e=>e.devId===id&&e.code===dev.lastAlmCode&&!e.resolvedAt);
+    if(found){found.resolvedAt=t;renderAlmEvents();}
+    addLog(`✓ #${id} 警報 ${dev.lastAlmCode} 解除`, 'green');
+  }
+  dev.lastAlmCode=alm;
+
+  // 合併趨勢圖
+  pushCombinedRpm(dev, rpm);
+}
+
+// ══════════════════════════════════════
+// 合併趨勢圖（多裝置 RPM）
+// ══════════════════════════════════════
+const COMBINED_MAX = 180;
+const combinedLabels = [];
+let combinedChart = null;
+let trendPaused = false;
+
+function initCombinedChart() {
+  const ctx=document.getElementById('combinedChart');
+  combinedChart=new Chart(ctx,{
+    type:'line',
+    data:{labels:combinedLabels, datasets:[]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:0},
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{
+          ticks:{color:'#94a3b8',font:{size:9,weight:'600'},maxRotation:0,autoSkip:true,maxTicksLimit:3},
+          grid:{color:'rgba(255,255,255,.06)'}
+        },
+        y:{
+          position:'left',
+          ticks:{color:'#94a3b8',font:{size:9}},
+          grid:{color:'rgba(255,255,255,.04)'},
+          title:{display:true,text:'RPM',color:'#94a3b8',font:{size:9}}
+        }
+      },
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:9},boxWidth:10,padding:8}},
+        tooltip:{backgroundColor:'rgba(13,17,23,.95)',titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:8}
+      }
+    }
+  });
+}
+
+function addCombinedDataset(dev) {
+  if(!combinedChart) return;
+  const existing=combinedChart.data.datasets.find(d=>d.devId===dev.id);
+  if(existing) return;
+  combinedChart.data.datasets.push({
+    devId: dev.id,
+    label: `#${dev.id} RPM`,
+    data: [],
+    borderColor: dev.color,
+    backgroundColor: dev.color+'22',
+    borderWidth: 1.5,
+    pointRadius: 0,
+    tension: 0.3,
+    fill: false
+  });
+  combinedChart.update('none');
+}
+
+function removeCombinedDataset(id) {
+  if(!combinedChart) return;
+  combinedChart.data.datasets=combinedChart.data.datasets.filter(d=>d.devId!==id);
+  combinedChart.update('none');
+}
+
+function pushCombinedRpm(dev, rpm) {
+  if(trendPaused||!combinedChart) return;
+  const t=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const ds=combinedChart.data.datasets.find(d=>d.devId===dev.id);
+  if(!ds) return;
+
+  // 所有裝置共用 label（以最新一次為準）
+  combinedLabels.push(t);
+  if(combinedLabels.length>COMBINED_MAX) combinedLabels.shift();
+  combinedChart.data.labels=combinedLabels;
+
+  ds.data.push(rpm);
+  if(ds.data.length>COMBINED_MAX) ds.data.shift();
+
+  // 補齊其他裝置資料長度
+  combinedChart.data.datasets.forEach(d=>{
+    while(d.data.length<combinedLabels.length) d.data.unshift(null);
+    if(d.data.length>COMBINED_MAX) d.data.shift();
+  });
+
+  combinedChart.update('none');
+}
+
+function toggleTrendPause() {
+  trendPaused=!trendPaused;
+  const btn=document.getElementById('trendPauseBtn');
+  const bar=document.getElementById('trendPausedBar');
+  if(trendPaused){
+    btn.textContent='▶ 繼續';
+    btn.className='btn-press text-[10px] px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white border border-amber-600 transition-colors';
+    bar.classList.remove('hidden');
+  } else {
+    btn.textContent='⏸ 暫停';
+    btn.className='btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 border border-slate-600 transition-colors';
+    bar.classList.add('hidden');
+  }
+}
+
+// ══════════════════════════════════════
+// 警報事件列表（共享）
+// ══════════════════════════════════════
+let almEvents=[], totalAlmCnt=0;
+const bg=s=>s==='crit'||s==='emer'?'bg-red-900/30 border-red-800/40':'bg-amber-900/20 border-amber-700/30';
+const icon=s=>s==='crit'||s==='emer'?'🔴':'🟡';
+
+function renderAlmEvents() {
+  const el=document.getElementById('almEventList');
+  if(!almEvents.length){el.innerHTML='<div class="text-slate-600 text-xs text-center py-3">無警報記錄</div>';return;}
+  el.innerHTML=almEvents.map(a=>`
+    <div class="${bg(a.sev)} border rounded-xl px-3 py-2.5 mb-2">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-base leading-none">${icon(a.sev)}</span>
+        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-current" style="color:${DEV_COLORS[(a.devId-1)%DEV_COLORS.length]}">#${a.devId}</span>
+        <span class="badge-${a.sev} text-[10px] font-black px-2 py-0.5 rounded-lg">警報 ${a.code}</span>
+        <span class="text-xs font-bold text-slate-200">${a.desc}</span>
+        <span class="ml-auto text-[10px] text-slate-600 font-mono shrink-0">${a.time}</span>
+      </div>
+      ${a.hint?`<div class="text-[11px] text-slate-400 pl-7 leading-snug">${a.hint}</div>`:''}
+      ${a.resolvedAt?`<div class="text-[10px] text-emerald-500 pl-7 mt-1">✓ 解除於 ${a.resolvedAt}</div>`:''}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════
+// 事件紀錄（共享）
+// ══════════════════════════════════════
+let sysLog=[];
+function addLog(msg, color='') {
+  const t=new Date().toLocaleTimeString('zh-TW');
+  sysLog.unshift({t,msg,color});
+  if(sysLog.length>300) sysLog.pop();
+  renderLog();
+}
+function renderLog() {
+  const el=document.getElementById('sysLogList');
+  if(!sysLog.length){el.innerHTML='<div class="text-slate-600 text-center py-3">尚無紀錄</div>';return;}
+  el.innerHTML=sysLog.map(l=>{
+    const clr=l.color==='red'?'text-red-400':l.color==='green'?'text-emerald-400':'text-slate-500';
+    return `<div class="${clr}"><span class="text-slate-700">${l.t}</span>  ${l.msg}</div>`;
+  }).join('');
+}
+function clearLog(){sysLog=[];renderLog();}
+
+// ══════════════════════════════════════
+// 工具
+// ══════════════════════════════════════
+function updateActiveCount() {
+  const n=[...devices.values()].filter(d=>d.isConnected).length;
+  document.getElementById('activeCount').textContent=n;
+}
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.remove('hidden'); t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.classList.add('hidden'),400);},2500);
+}
+
+// 初始化
+window.addEventListener('load',()=>{ initCombinedChart(); });
+</script>
+</body>
+</html>
