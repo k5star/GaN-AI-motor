@@ -56,6 +56,21 @@
 <!-- ══════════════════════ 裝置卡片區 ══════════════════════ -->
 <main class="px-3 py-3 space-y-3">
 
+<!-- ══ 記錄列 ══ -->
+<div class="card px-4 py-3 space-y-2">
+  <div class="flex gap-2">
+    <button id="recBtn" onclick="toggleRec()"
+      class="btn-press flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
+      <span>▶</span><span>開始記錄</span>
+    </button>
+    <button onclick="resetAllStats()" title="重置所有統計"
+      class="btn-press px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-lg transition">↺</button>
+    <button onclick="exportCSV()" title="匯出 CSV"
+      class="btn-press px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-sm font-bold transition">CSV</button>
+  </div>
+  <div id="recStatus" class="text-[11px] text-slate-600 text-center">尚未開始記錄</div>
+</div>
+
 <div id="emptyHint" class="card px-5 py-10 text-center">
   <div class="text-4xl mb-3">📡</div>
   <div class="text-slate-400 font-bold mb-1">尚無裝置</div>
@@ -196,7 +211,7 @@ function createDeviceObj(profileKey) {
     pollTimer: null, tempPollTimer: null,
     lastAlmCode: 0,
     pwrAccWh: 0, pwrRunSec: 0, pwrStartCount: 0, pwrLastTime: null, pwrRunning: false,
-    statMaxRpm: 0, statMaxCur: 0, statMaxVlt: 0, statMaxPwr: 0,
+    statMaxRpm: 0, statMaxCur: 0, statMaxVlt: 0, statMaxPwr: 0, statMaxTemp: -999,
     almCnt: 0,
     trendRpm: [], chart: null
   };
@@ -286,7 +301,46 @@ function renderDeviceCard(dev) {
     <div class="relative" style="height:48px">
       <canvas id="spark-${dev.id}"></canvas>
     </div>
-    <div class="text-[9px] text-slate-700 text-right mt-0.5">RPM 趨勢 (60s)</div>
+    <div class="text-[9px] text-slate-700 text-right mt-0.5 mb-2">RPM 趨勢 (60s)</div>
+
+    <!-- 本次連線統計（可折疊） -->
+    <div>
+      <button onclick="toggleStats(${dev.id})"
+        class="w-full flex items-center justify-between text-[10px] text-slate-600 hover:text-slate-400 py-1 transition-colors">
+        <span class="uppercase tracking-widest font-semibold">本次連線統計</span>
+        <span id="statsarrow-${dev.id}" class="text-xs">▸</span>
+      </button>
+      <div id="statsbox-${dev.id}" class="hidden mt-1.5 grid grid-cols-2 gap-1.5">
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxrpm-${dev.id}" class="text-sm font-black font-mono text-cyan-400">-- RPM</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最高轉速</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxcur-${dev.id}" class="text-sm font-black font-mono text-amber-400">-- A</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最大電流</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="salmcnt-${dev.id}" class="text-sm font-black font-mono text-red-400">0 次</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">警報次數</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxtemp-${dev.id}" class="text-sm font-black font-mono text-sky-400">-- °C</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最高溫度</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxvlt-${dev.id}" class="text-sm font-black font-mono text-emerald-400">-- V</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最高電壓</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxpwr-${dev.id}" class="text-sm font-black font-mono text-purple-400">-- W</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最大功率</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2 col-span-2">
+          <div id="swh-${dev.id}" class="text-sm font-black font-mono text-cyan-300">0.000 Wh</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">累積電能</div>
+        </div>
+      </div>
+    </div>
   `;
   list.appendChild(wrap);
 
@@ -506,6 +560,10 @@ function processFrame(dev, fc, frame) {
       dev.page10Pending=false;
       const adc=(frame[3]<<8)|frame[4];
       dev.tempD09=adcToTemperature(adc);
+      if(dev.tempD09!==null&&dev.tempD09>dev.statMaxTemp){
+        dev.statMaxTemp=dev.tempD09;
+        _s(`smaxtemp-${dev.id}`, dev.tempD09+' °C');
+      }
       devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
       updateCard(dev); return;
     }
@@ -642,15 +700,19 @@ function updateCard(dev) {
   dev.pwrLastTime=now;
 
   // 統計
-  if(rpm>dev.statMaxRpm) dev.statMaxRpm=rpm;
-  if(parseFloat(cur)>dev.statMaxCur) dev.statMaxCur=parseFloat(cur);
-  if(parseFloat(vlt)>dev.statMaxVlt) dev.statMaxVlt=parseFloat(vlt);
-  if(pwr>dev.statMaxPwr) dev.statMaxPwr=pwr;
+  if(rpm>dev.statMaxRpm){ dev.statMaxRpm=rpm; _s(`smaxrpm-${id}`,rpm+' RPM'); }
+  if(parseFloat(cur)>dev.statMaxCur){ dev.statMaxCur=parseFloat(cur); _s(`smaxcur-${id}`,cur+' A'); }
+  if(parseFloat(vlt)>dev.statMaxVlt){ dev.statMaxVlt=parseFloat(vlt); _s(`smaxvlt-${id}`,vlt+' V'); }
+  if(pwr>dev.statMaxPwr){ dev.statMaxPwr=pwr; _s(`smaxpwr-${id}`,pwr+' W'); }
+  const mm=String(Math.floor(dev.pwrRunSec/60)).padStart(2,'0');
+  const ss2=String(Math.floor(dev.pwrRunSec%60)).padStart(2,'0');
+  _s(`swh-${id}`,dev.pwrAccWh.toFixed(3)+` Wh  (${mm}:${ss2})`);
 
   // 警報事件
   const t=new Date().toLocaleTimeString('zh-TW');
   if(alm!==0&&alm!==dev.lastAlmCode){
     dev.almCnt++;
+    _s(`salmcnt-${id}`, dev.almCnt+' 次');
     const hint=alarmHint(alm)||'';
     almEvents.unshift({time:t,devId:id,code:alm,desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
     totalAlmCnt++;
@@ -667,6 +729,9 @@ function updateCard(dev) {
 
   // 合併趨勢圖
   pushCombinedRpm(dev, rpm);
+
+  // 記錄快照
+  snapshotRecord();
 }
 
 // ══════════════════════════════════════
@@ -812,8 +877,95 @@ function renderLog() {
 function clearLog(){sysLog=[];renderLog();}
 
 // ══════════════════════════════════════
+// 統計折疊 / 重置
+// ══════════════════════════════════════
+function toggleStats(id) {
+  const box=document.getElementById(`statsbox-${id}`);
+  const arrow=document.getElementById(`statsarrow-${id}`);
+  const hidden=box.classList.toggle('hidden');
+  arrow.textContent=hidden?'▸':'▾';
+}
+
+function resetAllStats() {
+  devices.forEach(dev=>{
+    dev.statMaxRpm=0; dev.statMaxCur=0; dev.statMaxVlt=0;
+    dev.statMaxPwr=0; dev.statMaxTemp=-999; dev.almCnt=0;
+    dev.pwrAccWh=0; dev.pwrRunSec=0; dev.pwrStartCount=0;
+    dev.pwrLastTime=null; dev.pwrRunning=false;
+    const id=dev.id;
+    _s(`smaxrpm-${id}`,'-- RPM'); _s(`smaxcur-${id}`,'-- A');
+    _s(`smaxvlt-${id}`,'-- V');   _s(`smaxpwr-${id}`,'-- W');
+    _s(`smaxtemp-${id}`,'-- °C'); _s(`salmcnt-${id}`,'0 次');
+    _s(`swh-${id}`,'0.000 Wh');
+  });
+  almEvents=[]; totalAlmCnt=0;
+  document.getElementById('almCntBadge').textContent='0 次';
+  renderAlmEvents();
+  addLog('↺ 所有統計已重置');
+}
+
+// ══════════════════════════════════════
+// 記錄 / CSV 匯出
+// ══════════════════════════════════════
+let recActive=false, recData=[], recStartTime=null;
+
+function toggleRec() {
+  const btn=document.getElementById('recBtn');
+  if(recActive){
+    recActive=false;
+    btn.innerHTML='<span>▶</span><span>開始記錄</span>';
+    btn.className='btn-press flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2';
+    const sec=Math.round((Date.now()-recStartTime)/1000);
+    document.getElementById('recStatus').textContent=`已停止 · 共 ${recData.length} 筆 · ${sec} 秒`;
+    addLog(`■ 記錄停止  ${recData.length} 筆`, 'green');
+  } else {
+    recData=[]; recStartTime=Date.now(); recActive=true;
+    btn.innerHTML='<span>⏹</span><span>停止記錄</span>';
+    btn.className='btn-press flex-1 py-2.5 bg-red-700 hover:bg-red-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2';
+    document.getElementById('recStatus').textContent='記錄中…';
+    addLog('▶ 記錄開始', 'green');
+  }
+}
+
+function snapshotRecord() {
+  if(!recActive) return;
+  const t=new Date().toLocaleTimeString('zh-TW');
+  devices.forEach(dev=>{
+    if(!dev.isConnected) return;
+    const {idx,scale}=dev.profile;
+    recData.push({
+      time: t,
+      dev: dev.id,
+      rpm:  dev.currentValues[idx.rpm],
+      cur:  (dev.currentValues[idx.current]*scale.current).toFixed(2),
+      vlt:  (dev.currentValues[idx.voltage]*scale.voltage).toFixed(1),
+      pwr:  dev.currentValues[idx.power],
+      dty:  (dev.currentValues[idx.duty]*scale.duty).toFixed(1),
+      temp: dev.tempD09!==null?dev.tempD09:'',
+      alm:  dev.currentValues[idx.alarm]
+    });
+  });
+  const sec=Math.round((Date.now()-recStartTime)/1000);
+  document.getElementById('recStatus').textContent=`記錄中 · ${recData.length} 筆 · ${sec} 秒`;
+}
+
+function exportCSV() {
+  if(!recData.length){showToast('尚無記錄資料');return;}
+  const hdr='時間,裝置,轉速RPM,電流A,電壓V,功率W,工作週期%,溫度°C,警報代號\n';
+  const rows=recData.map(r=>`${r.time},#${r.dev},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.temp},${r.alm}`).join('\n');
+  const blob=new Blob(['﻿'+hdr+rows],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`motor_v2_${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  showToast('✅ CSV 匯出完成');
+}
+
+// ══════════════════════════════════════
 // 工具
 // ══════════════════════════════════════
+const _s=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+
 function updateActiveCount() {
   const n=[...devices.values()].filter(d=>d.isConnected).length;
   document.getElementById('activeCount').textContent=n;
