@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GaN 馬達監控 V1</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+  body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;
+       overscroll-behavior:none;-webkit-user-select:none;user-select:none;}
+  @keyframes almblink{0%,100%{opacity:1}50%{opacity:.3}}
+  .alarm-blink{animation:almblink .8s infinite}
+  @keyframes pulse2{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  .run-pulse{animation:pulse2 1.4s infinite}
+  .btn-press:active{transform:scale(.93);transition:transform .07s}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+  .card{background:rgba(22,27,34,.95);border:1px solid rgba(255,255,255,.07);border-radius:16px}
+  .glass{background:rgba(255,255,255,.04);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px}
+  .val-box{background:rgba(0,0,0,.3);border-radius:12px;padding:10px 6px;text-align:center}
+  .val-num{font-size:1.75rem;font-weight:900;font-family:ui-monospace,monospace;line-height:1.1}
+  .val-lbl{font-size:.6rem;color:#64748b;margin-top:2px}
+  .badge-warn{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+  .badge-crit{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+  .badge-emer{background:rgba(239,68,68,.25);color:#fca5a5;border:1px solid rgba(239,68,68,.4);animation:almblink 1s infinite}
+  .badge-ok  {background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25)}
+  .status-run {color:#34d399}
+  .status-stop{color:#64748b}
+  .status-fault{color:#f87171}
+  .status-warn{color:#fbbf24}
+  .stat-box{background:rgba(0,0,0,.25);border-radius:12px;padding:10px 12px}
+  .stat-val{font-size:1.1rem;font-weight:900;font-family:ui-monospace,monospace;color:#e2e8f0}
+  .stat-lbl{font-size:.6rem;color:#64748b;margin-top:1px}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ══════════════════════ 標題列 ══════════════════════ -->
+<header class="sticky top-0 z-40 bg-slate-900/97 backdrop-blur border-b border-slate-700/40 px-4 py-2.5 flex items-center justify-between">
+  <div class="flex items-center gap-2.5">
+    <div class="relative">
+      <div id="hdrDot" class="w-2.5 h-2.5 rounded-full bg-slate-600 transition-colors duration-500"></div>
+      <div id="hdrDotRing" class="hidden absolute inset-0 rounded-full border-2 border-emerald-400 animate-ping opacity-60"></div>
+    </div>
+    <div>
+      <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控</div>
+      <div id="hdrProto" class="text-[9px] text-slate-500 font-mono hidden">BLE · <span id="hdrProtoTxt">Modbus RTU · GaN AI ROBOT</span></div>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="hdrRpm" class="text-sm font-mono text-cyan-400 hidden font-bold"></span>
+    <select id="deviceSelect" onchange="applyProfile(this.value)"
+      class="bg-slate-800 border border-slate-600 text-slate-300 text-xs rounded-lg px-2 py-1.5 outline-none">
+      <option value="original">原驅動器</option>
+      <option value="gan-robot">GaN AI ROBOT</option>
+    </select>
+    <button id="connectBtn" onclick="doConnect()"
+      class="btn-press bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-1.5 rounded-xl text-sm transition-all">
+      連線
+    </button>
+  </div>
+</header>
+
+<!-- ══════════════════════ 主內容 ══════════════════════ -->
+<main class="px-3 py-3 space-y-3 pb-6">
+
+<!-- 記錄操作列 -->
+<div class="card px-4 py-3 space-y-2">
+  <div class="flex gap-2">
+    <button id="recBtn" onclick="toggleRec()"
+      class="btn-press flex-1 py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
+      <span>▶</span><span>開始記錄</span>
+    </button>
+    <button onclick="resetStats()" title="重置統計"
+      class="btn-press px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-lg transition">↺</button>
+    <button onclick="exportCSV()" title="匯出 CSV"
+      class="btn-press px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-base transition font-bold">CSV</button>
+  </div>
+  <div id="recStatus" class="text-[11px] text-slate-600 text-center">尚未開始記錄</div>
+</div>
+
+<!-- 警報橫幅（有警報才顯示） -->
+<div id="alarmBanner" class="hidden card px-4 py-3 border-red-800/50 flex items-center gap-3">
+  <span id="alarmBannerIcon" class="text-2xl alarm-blink">🔴</span>
+  <div class="flex-1 min-w-0">
+    <div id="alarmBannerCode" class="text-sm font-black text-red-400"></div>
+    <div id="alarmBannerHint" class="text-xs text-slate-400 leading-snug mt-0.5"></div>
+  </div>
+</div>
+
+<!-- KPI 摘要條 -->
+<div class="grid grid-cols-4 gap-2">
+  <div class="glass p-2 text-center">
+    <div id="kpiRpm" class="text-base font-black text-cyan-400 font-mono">--</div>
+    <div class="text-[9px] text-slate-600">轉速 RPM</div>
+  </div>
+  <div class="glass p-2 text-center">
+    <div id="kpiCur" class="text-base font-black text-amber-400 font-mono">--</div>
+    <div class="text-[9px] text-slate-600">電流 A</div>
+  </div>
+  <div class="glass p-2 text-center">
+    <div id="kpiPwr" class="text-base font-black text-purple-400 font-mono">--</div>
+    <div class="text-[9px] text-slate-600">功率 W</div>
+  </div>
+  <div class="glass p-2 text-center">
+    <div id="kpiTemp" class="text-base font-black text-sky-400 font-mono">--</div>
+    <div class="text-[9px] text-slate-600">溫度 °C</div>
+  </div>
+</div>
+
+<!-- 馬達狀態主卡 -->
+<div id="statusCard" class="card p-4 transition-all duration-500">
+  <div class="flex items-center gap-3 mb-3">
+    <div id="statusIcon" class="text-4xl grayscale transition-all duration-500">⬛</div>
+    <div class="flex-1 min-w-0">
+      <div id="statusText" class="text-xl font-black text-slate-400">等待連線</div>
+      <div class="text-[11px] text-slate-600">馬達運作狀態</div>
+    </div>
+    <div class="text-right shrink-0">
+      <div id="dispVolt" class="text-lg font-black font-mono text-emerald-400">--</div>
+      <div class="text-[9px] text-slate-600">電壓 V</div>
+    </div>
+  </div>
+  <div class="grid grid-cols-3 gap-2 mb-2">
+    <div class="val-box">
+      <div id="dispRpm" class="val-num text-cyan-400">--</div>
+      <div class="val-lbl">轉速 RPM</div>
+    </div>
+    <div class="val-box">
+      <div id="dispCur" class="val-num text-amber-400">--</div>
+      <div class="val-lbl">電流 A</div>
+    </div>
+    <div class="val-box">
+      <div id="dispPwr" class="val-num text-purple-400">--</div>
+      <div class="val-lbl">功率 W</div>
+    </div>
+  </div>
+  <div class="grid grid-cols-3 gap-2">
+    <div class="val-box">
+      <div id="dispDuty" class="text-lg font-bold text-slate-300 font-mono">--</div>
+      <div class="val-lbl">工作週期 %</div>
+    </div>
+    <div class="val-box">
+      <div id="dispTemp" class="text-lg font-bold text-sky-400 font-mono">--</div>
+      <div class="val-lbl">系統溫度 °C</div>
+    </div>
+    <div class="val-box">
+      <div id="dispRunTime" class="text-lg font-bold text-emerald-400 font-mono">00:00</div>
+      <div class="val-lbl">運轉時間</div>
+    </div>
+  </div>
+</div>
+
+<!-- 即時趨勢圖 -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-2">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">即時趨勢 (最近 3 分鐘)</div>
+    <div class="flex items-center gap-3">
+      <div class="flex gap-3 text-[9px]">
+        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-cyan-400 inline-block rounded"></span>轉速</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-amber-400 inline-block rounded"></span>電流</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-purple-400 inline-block rounded"></span>功率</span>
+      </div>
+      <button id="trendPauseBtn" onclick="toggleTrendPause()"
+        class="btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 transition-colors border border-slate-600">
+        ⏸ 暫停
+      </button>
+    </div>
+  </div>
+  <div style="position:relative;height:140px">
+    <canvas id="trendChart"></canvas>
+  </div>
+  <div id="trendPausedBar" class="hidden mt-2 text-center text-[10px] text-amber-400 font-semibold">⏸ 已暫停 — 點按鈕繼續更新</div>
+</div>
+
+<!-- 本次連線統計 -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">本次連線統計</div>
+    <button onclick="resetStats()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition-colors btn-press">↺ 重置</button>
+  </div>
+  <div class="grid grid-cols-2 gap-2">
+    <div class="stat-box">
+      <div id="statMaxRpm" class="stat-val text-cyan-400">-- RPM</div>
+      <div class="stat-lbl">最高轉速</div>
+    </div>
+    <div class="stat-box">
+      <div id="statMaxCur" class="stat-val text-amber-400">-- A</div>
+      <div class="stat-lbl">最大電流</div>
+    </div>
+    <div class="stat-box">
+      <div id="statAlmCnt" class="stat-val text-red-400">0 次</div>
+      <div class="stat-lbl">警報次數</div>
+    </div>
+    <div class="stat-box">
+      <div id="statMaxTemp" class="stat-val text-sky-400">-- °C</div>
+      <div class="stat-lbl">最高溫度</div>
+    </div>
+    <div class="stat-box">
+      <div id="statMaxVlt" class="stat-val text-emerald-400">-- V</div>
+      <div class="stat-lbl">最高電壓</div>
+    </div>
+    <div class="stat-box">
+      <div id="statMaxPwr" class="stat-val text-purple-400">-- W</div>
+      <div class="stat-lbl">最大功率</div>
+    </div>
+  </div>
+  <div class="stat-box mt-2">
+    <div id="statWh" class="stat-val text-cyan-300">0.000 Wh</div>
+    <div class="stat-lbl">累積電能</div>
+  </div>
+</div>
+
+<!-- 警報事件 -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">警報事件</div>
+    <span id="almCntBadge" class="text-[10px] text-slate-500">0 次</span>
+  </div>
+  <div id="almEventList">
+    <div class="text-slate-600 text-xs text-center py-3">無警報記錄</div>
+  </div>
+</div>
+
+<!-- 事件紀錄 -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">事件紀錄</div>
+    <button onclick="clearLog()" class="text-[10px] text-slate-600 hover:text-red-400 btn-press transition-colors">清除</button>
+  </div>
+  <div id="sysLogList" class="font-mono text-[11px] leading-relaxed space-y-0.5 max-h-64 overflow-y-auto">
+    <div class="text-slate-600 text-center py-3">尚無紀錄</div>
+  </div>
+</div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 text-slate-200 text-sm px-5 py-2.5 rounded-2xl shadow-xl transition-opacity"></div>
+
+<script>
+// ══════════════════════════════════════
+// 狀態碼 / 警報碼
+// ══════════════════════════════════════
+const MOTOR_STATUS = {
+  0:{txt:'停止',     icon:'⬛',clr:'status-stop'},
+  2:{txt:'運轉中',   icon:'🟢',clr:'status-run'},
+  3:{txt:'電子煞車', icon:'🟠',clr:'status-warn'},
+  4:{txt:'自由運轉', icon:'⚪',clr:'status-stop'},
+  5:{txt:'故障',     icon:'🔴',clr:'status-fault'},
+  6:{txt:'禁止輸入', icon:'🟡',clr:'status-warn'},
+  7:{txt:'伺服啟動', icon:'🟣',clr:'status-run'},
+  8:{txt:'位置保持', icon:'🔵',clr:'status-run'},
+};
+const ALARM_CODE = {
+  0:{txt:'正常',         sev:'ok'},
+  1:{txt:'過電流 (OC)',  sev:'crit', hint:'⚡ 負載過重或馬達堵轉，檢查機械負載'},
+  2:{txt:'過電壓 (OV)',  sev:'crit', hint:'🔋 電源電壓過高或制動能量回充'},
+  3:{txt:'低電壓 (UV)',  sev:'warn', hint:'🔋 電源不穩或電池電量不足'},
+  4:{txt:'MOS 過溫',    sev:'crit', hint:'🌡 散熱不足，降低負載或改善散熱'},
+  5:{txt:'馬達過溫',    sev:'crit', hint:'🌡 馬達持續高負荷，需冷卻或降速'},
+  6:{txt:'IPM 過溫',    sev:'crit', hint:'🌡 驅動模組溫度過高，減少佔空比'},
+  7:{txt:'霍爾感測異常', sev:'crit', hint:'🔌 感測器接線問題或磁場干擾'},
+  8:{txt:'超速',         sev:'crit', hint:'⚠ 轉速超過額定上限，降低目標轉速'},
+  9:{txt:'位置偏差',     sev:'warn', hint:'📐 位置誤差過大，檢查機械阻力'},
+ 10:{txt:'編碼器異常',  sev:'crit', hint:'🔌 編碼器接線或訊號異常'},
+ 11:{txt:'通訊逾時',    sev:'warn', hint:'📡 BLE 訊號不穩定，靠近設備'},
+ 12:{txt:'EEPROM 錯誤', sev:'crit', hint:'💾 設定儲存失敗，重新上電並還原出廠'},
+ 13:{txt:'參數錯誤',    sev:'warn', hint:'⚙ 參數超出範圍，重設驅動器設定'},
+ 14:{txt:'硬體過流保護',sev:'crit', hint:'⚡ 硬體層級過流，立即停機檢查'},
+ 15:{txt:'軟體過流保護',sev:'warn', hint:'⚡ 電流超過軟體限制值'},
+ 16:{txt:'U 相斷路',    sev:'crit', hint:'🔌 U 相接線或 MOS 開路故障'},
+ 17:{txt:'V 相斷路',    sev:'crit', hint:'🔌 V 相接線或 MOS 開路故障'},
+ 18:{txt:'W 相斷路',    sev:'crit', hint:'🔌 W 相接線或 MOS 開路故障'},
+ 19:{txt:'電流感測異常',sev:'crit', hint:'🔌 電流感測器接線或損壞'},
+ 20:{txt:'制動電阻過熱',sev:'warn', hint:'🌡 制動使用過於頻繁，加大制動電阻'},
+ 21:{txt:'接地故障',    sev:'crit', hint:'⚡ 馬達或線路接地，立即停機'},
+ 22:{txt:'失速',         sev:'warn', hint:'⚙ 馬達無法達到目標轉速，檢查負載'},
+ 2048:{txt:'系統故障',  sev:'crit', hint:'🔧 驅動器內部錯誤，重新上電'},
+ 2056:{txt:'IO 故障',   sev:'warn', hint:'🔌 數位 IO 異常'},
+};
+const alarmDesc = c => (ALARM_CODE[c]||{txt:`故障代號 ${c}`}).txt;
+const alarmSev  = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
+const alarmHint = c => (ALARM_CODE[c]||{}).hint;
+
+// ══════════════════════════════════════
+// 裝置設定檔
+// ══════════════════════════════════════
+const PROFILES = {
+  'original': {
+    label:'原驅動器', protocol:'ASCII', slaveId:0x11,
+    startReg:0x4600, regCount:16, hasPage10:true, hasProtRead:false,
+    idx:{ status:0, alarm:1, rpm:4, power:6, voltage:7, duty:8, current:9 },
+    scale:{ voltage:0.01, duty:0.1, current:0.01 }
+  },
+  'gan-robot': {
+    label:'GaN AI ROBOT', protocol:'RTU', slaveId:0x01,
+    startReg:0x0000, regCount:16, hasPage10:false, hasProtRead:false,
+    idx:{ status:0, alarm:3, rpm:2, power:7, voltage:9, duty:11, current:12 },
+    scale:{ voltage:0.01, duty:0.1, current:0.01 }
+  }
+};
+let activeProfile = PROFILES['original'];
+let modbusMode = activeProfile.protocol;
+let SLAVE_ID   = activeProfile.slaveId;
+
+function applyProfile(key) {
+  activeProfile = PROFILES[key] || PROFILES['original'];
+  modbusMode = activeProfile.protocol;
+  SLAVE_ID   = activeProfile.slaveId;
+  const el = document.getElementById('hdrProtoTxt');
+  if (el) el.textContent = `Modbus ${activeProfile.protocol} · ${activeProfile.label}`;
+}
+
+// ══════════════════════════════════════
+// BLE 狀態 / 緩衝區
+// ══════════════════════════════════════
+const HM10_SVC  = '0000ffe0-0000-1000-8000-00805f9b34fb';
+let bleDevice, bleTxChar, bleRxChar;
+let isConnected = false;
+let pollTimer = null, tempPollTimer = null;
+let rtuBuf = new Uint8Array(256), rtuLen = 0;
+let asciiBuffer = '';
+let bleQueue = [], bleQueueRunning = false;
+let currentValues = new Array(16).fill(0);
+let tempD09 = null, tempD10 = null;
+let page10Pending = false, page10Step = 0, page10ReadingReg = 9;
+let ntcB = 3950;
+
+// 統計
+let statMaxRpm=0, statMaxCur=0, statMaxTemp=-999, statMaxVlt=0, statMaxPwr=0;
+let statAlmCnt=0, lastAlmCode=0, almEvents=[], sysLog=[];
+let pwrAccWh=0, pwrRunSec=0, pwrStartCount=0, pwrLastTime=null, pwrRunning=false;
+
+// 記錄
+let recActive=false, recData=[], recStartTime=null, recTimer=null;
+
+// ══════════════════════════════════════
+// 即時趨勢圖
+// ══════════════════════════════════════
+const TREND_MAX = 180;
+let trendPaused = false;
+const trendBuf = { rpm:[], cur:[], pwr:[], labels:[] };
+let trendChart = null;
+
+function initChart() {
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) return;
+  trendChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: trendBuf.labels,
+      datasets:[
+        {label:'轉速 RPM', data:trendBuf.rpm, borderColor:'#22d3ee', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:'y'},
+        {label:'電流 A',   data:trendBuf.cur, borderColor:'#fbbf24', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:'y1'},
+        {label:'功率 W',   data:trendBuf.pwr, borderColor:'#c084fc', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:'y1'},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:0},
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{display:false},
+        y:{position:'left',  ticks:{color:'#22d3ee',font:{size:9}}, grid:{color:'rgba(255,255,255,.04)'},
+           title:{display:true,text:'RPM',color:'#22d3ee',font:{size:9}}},
+        y1:{position:'right', ticks:{color:'#fbbf24',font:{size:9}}, grid:{drawOnChartArea:false},
+            title:{display:true,text:'A / W',color:'#fbbf24',font:{size:9}}},
+      },
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:9},boxWidth:10,padding:8}},
+        tooltip:{backgroundColor:'rgba(13,17,23,.95)',titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:8}
+      }
+    }
+  });
+}
+
+function pushTrend(rpm, cur, pwr) {
+  if (trendPaused) return;
+  const t = new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  trendBuf.labels.push(t); trendBuf.rpm.push(rpm);
+  trendBuf.cur.push(parseFloat(cur)); trendBuf.pwr.push(pwr);
+  if (trendBuf.labels.length > TREND_MAX) {
+    trendBuf.labels.shift(); trendBuf.rpm.shift(); trendBuf.cur.shift(); trendBuf.pwr.shift();
+  }
+  if (trendChart) trendChart.update('none');
+}
+function toggleTrendPause() {
+  trendPaused = !trendPaused;
+  const btn = document.getElementById('trendPauseBtn');
+  const bar = document.getElementById('trendPausedBar');
+  if (trendPaused) {
+    btn.textContent = '▶ 繼續';
+    btn.className = 'btn-press text-[10px] px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white transition-colors border border-amber-600';
+    bar.classList.remove('hidden');
+  } else {
+    btn.textContent = '⏸ 暫停';
+    btn.className = 'btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 transition-colors border border-slate-600';
+    bar.classList.add('hidden');
+  }
+}
+
+// ══════════════════════════════════════
+// Modbus RTU helpers
+// ══════════════════════════════════════
+function crc16(buf) {
+  let crc=0xFFFF;
+  for (const b of buf){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?(crc>>>1)^0xA001:crc>>>1;}
+  return crc;
+}
+function buildFC03(reg, cnt) {
+  const b=[SLAVE_ID,0x03,(reg>>8)&0xFF,reg&0xFF,(cnt>>8)&0xFF,cnt&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function buildFC06(reg, val) {
+  const b=[SLAVE_ID,0x06,(reg>>8)&0xFF,reg&0xFF,(val>>8)&0xFF,val&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function rtuToAscii(frame) {
+  const data=frame.slice(0,-2);
+  let sum=0; for(const b of data) sum=(sum+b)&0xFF;
+  const lrc=((~sum)+1)&0xFF;
+  return ':'+[...data,lrc].map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join('')+'\r\n';
+}
+function adcToTemperature(adc) {
+  if(adc<=0||adc>=4095) return null;
+  const r=10000*adc/(4096-adc);
+  const tK=1/(1/298.15+Math.log(r/10000)/ntcB);
+  return parseFloat((tK-273.15).toFixed(1));
+}
+
+// ══════════════════════════════════════
+// BLE 發送佇列
+// ══════════════════════════════════════
+function sendModbus(rtuFrame) {
+  if (!isConnected||!bleTxChar) return;
+  const payload = modbusMode==='RTU' ? rtuFrame : rtuToAscii(rtuFrame);
+  const isMainPoll=(rtuFrame[1]===0x03&&rtuFrame[2]===0x00&&rtuFrame[3]===0x00&&rtuFrame[5]===16);
+  if (isMainPoll&&bleQueue.some(q=>{const b=typeof q==='string'?null:q;return b&&b[1]===0x03&&b[2]===0x00&&b[3]===0x00&&b[5]===16;})) return;
+  bleQueue.push(payload); processBLEQueue();
+}
+function sendRawAscii(str) {
+  if (!isConnected||!bleTxChar) return;
+  bleQueue.push(str); processBLEQueue();
+}
+async function processBLEQueue() {
+  if (bleQueueRunning||!bleQueue.length) return;
+  bleQueueRunning=true;
+  while (bleQueue.length) {
+    const item=bleQueue.shift();
+    try {
+      const bytes=typeof item==='string'?new TextEncoder().encode(item):item;
+      for(let i=0;i<bytes.length;i+=20){
+        await bleTxChar.writeValueWithoutResponse(bytes.slice(i,i+20));
+        if(bytes.length>20) await new Promise(r=>setTimeout(r,30));
+      }
+    } catch(e){console.error(e);}
+    await new Promise(r=>setTimeout(r,40));
+  }
+  bleQueueRunning=false;
+}
+
+// ══════════════════════════════════════
+// BLE 連線 / 斷線
+// ══════════════════════════════════════
+async function doConnect() {
+  if (isConnected){doDisconnect();return;}
+  const btn=document.getElementById('connectBtn');
+  btn.textContent='搜尋中…'; btn.disabled=true;
+  try {
+    bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[HM10_SVC]}], optionalServices:[HM10_SVC]
+    });
+    bleDevice.addEventListener('gattserverdisconnected',onDisconnected);
+    const server=await bleDevice.gatt.connect();
+    const svc=await server.getPrimaryService(HM10_SVC);
+    const chars=await svc.getCharacteristics();
+    for(const c of chars){
+      const p=c.properties;
+      if(p.notify||p.indicate) bleRxChar=c;
+      if(p.write||p.writeWithoutResponse) bleTxChar=c;
+    }
+    if(!bleRxChar||!bleTxChar) throw new Error('找不到 FFE1 特徵值');
+    await bleRxChar.startNotifications();
+    bleRxChar.addEventListener('characteristicvaluechanged',onBleData);
+    isConnected=true;
+    onConnected();
+  } catch(e){
+    btn.textContent='連線'; btn.disabled=false;
+    showToast('❌ 連線失敗：'+e.message);
+  }
+}
+
+function onConnected() {
+  const btn=document.getElementById('connectBtn');
+  btn.textContent='斷線'; btn.disabled=false;
+  btn.className='btn-press bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-1.5 rounded-xl text-sm transition-all';
+  document.getElementById('hdrDot').className='w-2.5 h-2.5 rounded-full bg-emerald-400 transition-colors duration-500';
+  document.getElementById('hdrDotRing').classList.remove('hidden');
+  document.getElementById('hdrProto').classList.remove('hidden');
+  if (activeProfile.hasPage10) sendModbus(buildFC06(0x090A,0));
+  setTimeout(()=>{
+    const pkt=buildFC03(activeProfile.startReg,activeProfile.regCount);
+    pollTimer=setInterval(()=>sendModbus(pkt),500);
+    if(activeProfile.hasPage10) tempPollTimer=setInterval(doPage10Read,8000);
+  },500);
+  addLog('● BLE 連線成功','green');
+  showToast('✅ 連線成功');
+}
+
+function doDisconnect() {
+  clearInterval(pollTimer); clearInterval(tempPollTimer);
+  pollTimer=null; tempPollTimer=null;
+  if(bleDevice&&bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+}
+
+function onDisconnected() {
+  isConnected=false;
+  clearInterval(pollTimer); clearInterval(tempPollTimer);
+  pollTimer=null; tempPollTimer=null;
+  const btn=document.getElementById('connectBtn');
+  btn.textContent='連線';
+  btn.className='btn-press bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-1.5 rounded-xl text-sm transition-all';
+  document.getElementById('hdrDot').className='w-2.5 h-2.5 rounded-full bg-slate-600 transition-colors duration-500';
+  document.getElementById('hdrDotRing').classList.add('hidden');
+  document.getElementById('hdrProto').classList.add('hidden');
+  document.getElementById('hdrRpm').classList.add('hidden');
+  document.getElementById('statusText').textContent='已斷線';
+  document.getElementById('statusText').className='text-xl font-black status-stop';
+  document.getElementById('statusIcon').textContent='⚫';
+  addLog('○ BLE 已斷線','red');
+  showToast('⚠ 已斷線');
+}
+
+// ══════════════════════════════════════
+// BLE 接收 / 解析
+// ══════════════════════════════════════
+function onBleData(e) {
+  if(modbusMode==='RTU') onBleDataRTU(e);
+  else                   onBleDataASCII(e);
+}
+function onBleDataRTU(e) {
+  const chunk=new Uint8Array(e.target.value.buffer);
+  if(rtuLen+chunk.length>rtuBuf.length) rtuLen=0;
+  rtuBuf.set(chunk,rtuLen); rtuLen+=chunk.length;
+  tryParseRTU();
+}
+function tryParseRTU() {
+  while(rtuLen>=4){
+    const fc=rtuBuf[1]; let frameLen;
+    if     (fc===0x03){if(rtuLen<3)break; frameLen=3+rtuBuf[2]+2;}
+    else if(fc===0x06){frameLen=8;}
+    else{rtuBuf.copyWithin(0,1);rtuLen--;continue;}
+    if(rtuLen<frameLen) break;
+    const c=crc16(rtuBuf.slice(0,frameLen-2));
+    if((c&0xFF)===rtuBuf[frameLen-2]&&((c>>8)&0xFF)===rtuBuf[frameLen-1])
+      processFrame(fc,rtuBuf.slice(0,frameLen));
+    rtuBuf.copyWithin(0,frameLen); rtuLen-=frameLen;
+  }
+}
+function processFrame(fc,frame) {
+  if(fc===0x03){
+    const regCount=frame[2]>>1;
+    if(page10Pending&&regCount===1){
+      page10Pending=false;
+      const adc=(frame[3]<<8)|frame[4];
+      if(page10ReadingReg===9) tempD09=adcToTemperature(adc);
+      else                     tempD10=adcToTemperature(adc);
+      sendModbus(buildFC06(0x090A,0));
+      updateTempDisp(); return;
+    }
+    if(!page10Pending&&regCount===16){
+      for(let i=0;i<16;i++){
+        let v=(frame[3+i*2]<<8)|frame[4+i*2];
+        if(v>32767) v-=65536;
+        currentValues[i]=v;
+      }
+      updateDashboard();
+    }
+  }
+  if(fc===0x06){
+    const addr=(frame[2]<<8)|frame[3], val=(frame[4]<<8)|frame[5];
+    if(addr===0x090A&&val===0&&!pollTimer){
+      const pkt=buildFC03(activeProfile.startReg,activeProfile.regCount);
+      pollTimer=setInterval(()=>sendModbus(pkt),500);
+    }
+  }
+}
+function onBleDataASCII(e) {
+  asciiBuffer+=new TextDecoder().decode(e.target.value);
+  let idx;
+  while((idx=asciiBuffer.indexOf('\n'))!==-1){
+    const line=asciiBuffer.slice(0,idx+1).trim();
+    asciiBuffer=asciiBuffer.slice(idx+1);
+    if(line.startsWith(':')) parsePacket(line);
+  }
+}
+function parsePacket(pkt) {
+  if(pkt.length<7) return;
+  const fc=pkt.substr(3,2);
+  if(fc==='03'){
+    if(page10Pending&&pkt.length>=13&&pkt.length<20){
+      page10Pending=false;
+      const adc=parseInt(pkt.substr(7,4),16);
+      if(page10ReadingReg===9) tempD09=adcToTemperature(adc);
+      else                     tempD10=adcToTemperature(adc);
+      sendModbus(buildFC06(0x090A,0));
+      updateTempDisp(); return;
+    }
+    if(!page10Pending&&pkt.length>=71){
+      const dh=pkt.substr(7,64);
+      for(let i=0;i<16;i++){
+        let v=parseInt(dh.substr(i*4,4),16);
+        if(v>32767) v-=65536;
+        currentValues[i]=v;
+      }
+      updateDashboard();
+    }
+  }
+  if(fc==='06'){
+    const addr=parseInt(pkt.substr(5,4),16),val=parseInt(pkt.substr(9,4),16);
+    if(addr===0x090A&&val===0&&!pollTimer){
+      const pkt2=buildFC03(activeProfile.startReg,activeProfile.regCount);
+      pollTimer=setInterval(()=>sendModbus(pkt2),500);
+    }
+  }
+}
+
+// Page10 溫度讀取（原驅動器）
+async function doPage10Read() {
+  if(!isConnected||page10Pending) return;
+  page10Pending=true;
+  page10ReadingReg=page10Step===0?9:10;
+  page10Step=1-page10Step;
+  sendModbus(buildFC06(0x090A,10));
+  await new Promise(r=>setTimeout(r,800));
+  sendModbus(buildFC03(page10ReadingReg,1));
+  setTimeout(()=>{if(page10Pending){page10Pending=false;sendModbus(buildFC06(0x090A,0));}},2500);
+}
+
+// ══════════════════════════════════════
+// 儀表板更新
+// ══════════════════════════════════════
+function updateDashboard() {
+  const {idx,scale}=activeProfile;
+  const st  = currentValues[idx.status];
+  const alm = currentValues[idx.alarm];
+  const rpm = currentValues[idx.rpm];
+  const pwr = currentValues[idx.power];
+  const vlt = (currentValues[idx.voltage]*scale.voltage).toFixed(1);
+  const dty = (currentValues[idx.duty]*scale.duty).toFixed(1);
+  const cur = (currentValues[idx.current]*scale.current).toFixed(2);
+
+  const s=MOTOR_STATUS[st]||{txt:`狀態 ${st}`,icon:'❓',clr:'status-stop'};
+  document.getElementById('statusIcon').textContent=s.icon;
+  document.getElementById('statusIcon').className=`text-4xl transition-all duration-500 ${st===2?'run-pulse':''}`;
+  document.getElementById('statusText').textContent=s.txt;
+  document.getElementById('statusText').className=`text-xl font-black ${s.clr}`;
+
+  document.getElementById('dispRpm').textContent=rpm;
+  document.getElementById('dispCur').textContent=cur;
+  document.getElementById('dispVolt').textContent=vlt;
+  document.getElementById('dispPwr').textContent=pwr;
+  document.getElementById('dispDuty').textContent=dty+'%';
+  document.getElementById('kpiRpm').textContent=rpm;
+  document.getElementById('kpiCur').textContent=cur;
+  document.getElementById('kpiPwr').textContent=pwr;
+  document.getElementById('hdrRpm').textContent=rpm+' RPM';
+  document.getElementById('hdrRpm').classList.remove('hidden');
+
+  pushTrend(rpm,cur,pwr);
+
+  // 警報橫幅
+  if(alm!==0||st===5){
+    const sev=alarmSev(alm);
+    const banner=document.getElementById('alarmBanner');
+    banner.classList.remove('hidden');
+    banner.style.borderColor='rgba(239,68,68,.5)';
+    document.getElementById('alarmBannerCode').textContent=`警報 ${alm}：${alarmDesc(alm)}`;
+    document.getElementById('alarmBannerHint').textContent=alarmHint(alm)||'';
+    document.getElementById('alarmBannerIcon').textContent=sev==='crit'||sev==='emer'?'🔴':'🟡';
+    document.getElementById('statusCard').style.borderColor='rgba(239,68,68,.5)';
+  } else {
+    document.getElementById('alarmBanner').classList.add('hidden');
+    document.getElementById('statusCard').style.borderColor='';
+  }
+
+  // 功率累積 / 運轉時間
+  const now=Date.now();
+  const isRunning=(st===2);
+  if(isRunning&&!pwrRunning){pwrStartCount++;pwrRunning=true;addLog(`▶ 啟動 #${pwrStartCount}  ${rpm} RPM`,'green');}
+  if(!isRunning&&pwrRunning){pwrRunning=false;addLog(`■ 停止  累積 ${pwrAccWh.toFixed(3)} Wh`);}
+  if(isRunning&&pwrLastTime){
+    const dt=(now-pwrLastTime)/3600000;
+    pwrAccWh+=pwr*dt; pwrRunSec+=(now-pwrLastTime)/1000;
+  }
+  pwrLastTime=now;
+  const mm=String(Math.floor(pwrRunSec/60)).padStart(2,'0');
+  const ss=String(Math.floor(pwrRunSec%60)).padStart(2,'0');
+  document.getElementById('dispRunTime').textContent=`${mm}:${ss}`;
+
+  // 統計更新
+  if(rpm>statMaxRpm){statMaxRpm=rpm;document.getElementById('statMaxRpm').textContent=rpm+' RPM';}
+  if(parseFloat(cur)>statMaxCur){statMaxCur=parseFloat(cur);document.getElementById('statMaxCur').textContent=cur+' A';}
+  if(parseFloat(vlt)>statMaxVlt){statMaxVlt=parseFloat(vlt);document.getElementById('statMaxVlt').textContent=vlt+' V';}
+  if(pwr>statMaxPwr){statMaxPwr=pwr;document.getElementById('statMaxPwr').textContent=pwr+' W';}
+  document.getElementById('statWh').textContent=pwrAccWh.toFixed(3)+' Wh';
+
+  // 警報事件
+  const t=new Date().toLocaleTimeString('zh-TW');
+  if(alm!==0&&alm!==lastAlmCode){
+    statAlmCnt++;
+    document.getElementById('statAlmCnt').textContent=statAlmCnt+' 次';
+    document.getElementById('almCntBadge').textContent=statAlmCnt+' 次';
+    almEvents.unshift({time:t,code:alm,desc:alarmDesc(alm),sev:alarmSev(alm),hint:alarmHint(alm)||'',resolvedAt:null});
+    renderAlmEvents();
+    addLog(`⚠ 警報 ${alm}：${alarmDesc(alm)}${alarmHint(alm)?' — '+alarmHint(alm):''}`, 'red');
+  }
+  if(alm===0&&lastAlmCode!==0){
+    // 警報解除：標記最近一筆對應警報
+    const found=almEvents.find(e=>e.code===lastAlmCode&&!e.resolvedAt);
+    if(found){ found.resolvedAt=t; renderAlmEvents(); }
+    addLog(`✓ 警報 ${lastAlmCode} 解除`, 'green');
+  }
+  lastAlmCode=alm;
+
+  // 記錄資料
+  if(recActive){
+    recData.push({
+      time:new Date().toLocaleTimeString('zh-TW'),
+      rpm,cur,vlt,pwr,dty,
+      temp:tempD09!==null?tempD09:'',
+      alm
+    });
+    const elapsed=Math.round((Date.now()-recStartTime)/1000);
+    document.getElementById('recStatus').textContent=`記錄中 · ${recData.length} 筆 · ${elapsed} 秒`;
+  }
+}
+
+function updateTempDisp() {
+  const t=tempD09!==null?tempD09:'--';
+  document.getElementById('dispTemp').textContent=t+(tempD09!==null?'°C':'');
+  document.getElementById('kpiTemp').textContent=t+(tempD09!==null?'°C':'');
+  if(tempD09!==null&&tempD09>statMaxTemp){
+    statMaxTemp=tempD09;
+    document.getElementById('statMaxTemp').textContent=tempD09+' °C';
+  }
+}
+
+// ══════════════════════════════════════
+// 警報列表
+// ══════════════════════════════════════
+function renderAlmEvents() {
+  const el=document.getElementById('almEventList');
+  if(!almEvents.length){el.innerHTML='<div class="text-slate-600 text-xs text-center py-3">無警報記錄</div>';return;}
+  const bg=s=>s==='crit'||s==='emer'?'bg-red-900/30 border-red-800/40':'bg-amber-900/20 border-amber-700/30';
+  const icon=s=>s==='crit'||s==='emer'?'🔴':'🟡';
+  el.innerHTML=almEvents.map(a=>`
+    <div class="${bg(a.sev)} border rounded-xl px-3 py-2.5 mb-2">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-base leading-none">${icon(a.sev)}</span>
+        <span class="badge-${a.sev} text-[10px] font-black px-2 py-0.5 rounded-lg">警報 ${a.code}</span>
+        <span class="text-xs font-bold text-slate-200">${a.desc}</span>
+        <span class="ml-auto text-[10px] text-slate-600 font-mono shrink-0">${a.time}</span>
+      </div>
+      ${a.hint?`<div class="text-[11px] text-slate-400 pl-7 leading-snug">${a.hint}</div>`:''}
+      ${a.resolvedAt?`<div class="text-[10px] text-emerald-500 pl-7 mt-1">✓ 解除於 ${a.resolvedAt}</div>`:''}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════
+// 事件紀錄
+// ══════════════════════════════════════
+function addLog(msg, color='') {
+  const t=new Date().toLocaleTimeString('zh-TW');
+  sysLog.unshift({t,msg,color});
+  if(sysLog.length>200) sysLog.pop();
+  renderLog();
+}
+function renderLog() {
+  const el=document.getElementById('sysLogList');
+  if(!sysLog.length){el.innerHTML='<div class="text-slate-600 text-center py-3">尚無紀錄</div>';return;}
+  el.innerHTML=sysLog.map(l=>{
+    const clr=l.color==='red'?'text-red-400':l.color==='green'?'text-emerald-400':'text-slate-500';
+    return `<div class="${clr}"><span class="text-slate-700">${l.t}</span>  ${l.msg}</div>`;
+  }).join('');
+}
+function clearLog(){sysLog=[];renderLog();}
+
+// ══════════════════════════════════════
+// 記錄 / 匯出
+// ══════════════════════════════════════
+function toggleRec() {
+  const btn=document.getElementById('recBtn');
+  if(recActive){
+    recActive=false;
+    clearInterval(recTimer); recTimer=null;
+    btn.innerHTML='<span>▶</span><span>開始記錄</span>';
+    btn.className='btn-press flex-1 py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2';
+    const sec=Math.round((Date.now()-recStartTime)/1000);
+    document.getElementById('recStatus').textContent=`已停止 · 共 ${recData.length} 筆 · ${sec} 秒`;
+    addLog(`■ 記錄停止  ${recData.length} 筆`,'green');
+  } else {
+    recData=[]; recStartTime=Date.now(); recActive=true;
+    btn.innerHTML='<span>⏹</span><span>停止記錄</span>';
+    btn.className='btn-press flex-1 py-3 bg-red-700 hover:bg-red-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2';
+    document.getElementById('recStatus').textContent='記錄中…';
+    addLog('▶ 記錄開始','green');
+  }
+}
+function exportCSV() {
+  if(!recData.length){showToast('尚無記錄資料');return;}
+  const hdr='時間,轉速RPM,電流A,電壓V,功率W,工作週期%,溫度°C,警報代號\n';
+  const rows=recData.map(r=>`${r.time},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.temp},${r.alm}`).join('\n');
+  const blob=new Blob(['﻿'+hdr+rows],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`motor_${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  showToast('✅ CSV 匯出完成');
+}
+
+// ══════════════════════════════════════
+// 統計重置
+// ══════════════════════════════════════
+function resetStats() {
+  statMaxRpm=0; statMaxCur=0; statMaxTemp=-999; statMaxVlt=0; statMaxPwr=0;
+  statAlmCnt=0; lastAlmCode=0; almEvents=[];
+  pwrAccWh=0; pwrRunSec=0; pwrStartCount=0; pwrLastTime=null; pwrRunning=false;
+  document.getElementById('statMaxRpm').textContent='-- RPM';
+  document.getElementById('statMaxCur').textContent='-- A';
+  document.getElementById('statMaxTemp').textContent='-- °C';
+  document.getElementById('statMaxVlt').textContent='-- V';
+  document.getElementById('statMaxPwr').textContent='-- W';
+  document.getElementById('statAlmCnt').textContent='0 次';
+  document.getElementById('almCntBadge').textContent='0 次';
+  document.getElementById('statWh').textContent='0.000 Wh';
+  document.getElementById('dispRunTime').textContent='00:00';
+  renderAlmEvents();
+  addLog('↺ 統計已重置');
+}
+
+// ══════════════════════════════════════
+// Toast
+// ══════════════════════════════════════
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.remove('hidden'); t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.classList.add('hidden'),400);},2500);
+}
+
+// 初始化
+window.addEventListener('load',()=>{ initChart(); });
+</script>
+</body>
+</html>
