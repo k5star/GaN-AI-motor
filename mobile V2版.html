@@ -294,6 +294,18 @@ function renderDeviceCard(dev) {
       </div>
     </div>
 
+    <!-- 控制按鈕 -->
+    <div class="grid grid-cols-2 gap-2 mb-2">
+      <button onclick="devSendRun(${dev.id})"
+        class="btn-press py-3 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-1.5">
+        <span class="text-base">▶</span> 啟動
+      </button>
+      <button onclick="devSendStop(${dev.id})"
+        class="btn-press py-3 bg-red-800 hover:bg-red-700 active:bg-red-900 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-1.5">
+        <span class="text-base">⏹</span> 關閉
+      </button>
+    </div>
+
     <!-- 警報提示條 -->
     <div id="almhint-${dev.id}" class="hidden text-[11px] text-slate-400 bg-red-950/30 border border-red-900/40 rounded-xl px-3 py-2 mb-2 leading-snug"></div>
 
@@ -879,6 +891,26 @@ function clearLog(){sysLog=[];renderLog();}
 // ══════════════════════════════════════
 // 統計折疊 / 重置
 // ══════════════════════════════════════
+// ══════════════════════════════════════
+// 馬達控制（per device）
+// ══════════════════════════════════════
+function devSendRun(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  const p=dev.profile;
+  devSendModbus(dev, buildFC06(p.slaveId, 0x1400, 1));
+  if(navigator.vibrate) navigator.vibrate(30);
+  addLog(`▶ #${id} 發送啟動指令`, 'green');
+}
+function devSendStop(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  const p=dev.profile;
+  devSendModbus(dev, buildFC06(p.slaveId, 0x1400, 0));
+  if(navigator.vibrate) navigator.vibrate(30);
+  addLog(`⏹ #${id} 發送停止指令`);
+}
+
 function toggleStats(id) {
   const box=document.getElementById(`statsbox-${id}`);
   const arrow=document.getElementById(`statsarrow-${id}`);
