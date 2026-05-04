@@ -173,7 +173,7 @@
       </button>
     </div>
   </div>
-  <div style="position:relative;height:140px">
+  <div style="position:relative;height:165px">
     <canvas id="trendChart"></canvas>
   </div>
   <div id="trendPausedBar" class="hidden mt-2 text-center text-[10px] text-amber-400 font-semibold">⏸ 已暫停 — 點按鈕繼續更新</div>
@@ -366,7 +366,14 @@ function initChart() {
       responsive:true, maintainAspectRatio:false, animation:{duration:0},
       interaction:{mode:'index',intersect:false},
       scales:{
-        x:{display:false},
+        x:{
+          display:true,
+          ticks:{
+            color:'#475569', font:{size:8}, maxRotation:0, autoSkip:true, maxTicksLimit:7,
+            callback: function(val, idx) { return this.getLabelForValue(val); }
+          },
+          grid:{color:'rgba(255,255,255,.03)'}
+        },
         y:{position:'left',  ticks:{color:'#22d3ee',font:{size:9}}, grid:{color:'rgba(255,255,255,.04)'},
            title:{display:true,text:'RPM',color:'#22d3ee',font:{size:9}}},
         y1:{position:'right', ticks:{color:'#fbbf24',font:{size:9}}, grid:{drawOnChartArea:false},
