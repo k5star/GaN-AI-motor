@@ -187,14 +187,14 @@
       </div>
     </div>
 
-    <!-- 過溫門檻 -->
+    <!-- 過溫門檻 / 電流保護（依設定檔切換） -->
     <div class="grid grid-cols-2 gap-1.5">
       <div class="glass px-3 py-1.5 flex items-center justify-between">
-        <span class="text-[9px] text-slate-600">過溫觸發</span>
+        <span id="inlineOTActLbl" class="text-[9px] text-slate-600">過溫觸發</span>
         <span id="inlineOTAct" class="text-[11px] font-mono text-red-400">--</span>
       </div>
       <div class="glass px-3 py-1.5 flex items-center justify-between">
-        <span class="text-[9px] text-slate-600">過溫回復</span>
+        <span id="inlineOTRecLbl" class="text-[9px] text-slate-600">過溫回復</span>
         <span id="inlineOTRec" class="text-[11px] font-mono text-amber-400">--</span>
       </div>
     </div>
@@ -243,12 +243,9 @@
     <div class="mt-2 text-[10px] text-slate-600 text-center" id="pwrStartCount">啟動次數：0</div>
   </div>
 
-  <!-- NTC B 值設定 -->
-  <div class="card px-4 py-3 flex items-center gap-3">
-    <span class="text-[10px] text-slate-500 flex-1">固定：D09=匯流排電壓 · D10=MOS 過溫　NTC B值 =</span>
-    <input id="ntcBInput" type="number" value="3950" min="1000" max="9999" step="50"
-      onchange="ntcB=parseInt(this.value)||3950"
-      class="inp inp-sel w-20 text-center text-sm">
+  <!-- 溫度公式說明 -->
+  <div class="card px-4 py-2">
+    <span id="ntcHintTxt" class="text-[10px] text-slate-500">原驅動器：D10=MOS 過溫（直接°C）</span>
   </div>
 
   <!-- 異常操作列 -->
@@ -268,20 +265,20 @@
     <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-semibold">保護設定</div>
     <div class="grid grid-cols-2 gap-2">
       <div class="glass p-2.5">
-        <div class="text-[9px] text-slate-500 mb-0.5">MOS 過溫觸發</div>
-        <div id="protMosAct" class="font-mono text-orange-400 text-sm">-- ADC</div>
+        <div id="protLbl1" class="text-[9px] text-slate-500 mb-0.5">MOS 過溫觸發</div>
+        <div id="protVal1" class="font-mono text-orange-400 text-sm">--</div>
       </div>
       <div class="glass p-2.5">
-        <div class="text-[9px] text-slate-500 mb-0.5">MOS 過溫回復</div>
-        <div id="protMosRec" class="font-mono text-slate-400 text-sm">-- ADC</div>
+        <div id="protLbl2" class="text-[9px] text-slate-500 mb-0.5">MOS 過溫回復</div>
+        <div id="protVal2" class="font-mono text-slate-400 text-sm">--</div>
       </div>
       <div class="glass p-2.5">
-        <div class="text-[9px] text-slate-500 mb-0.5">軟體過流保護 (SW OCP)</div>
-        <div id="protFwOcp" class="font-mono text-amber-400 text-sm">-- A</div>
+        <div id="protLbl3" class="text-[9px] text-slate-500 mb-0.5">軟體限流 (SW OCP)</div>
+        <div id="protVal3" class="font-mono text-amber-400 text-sm">--</div>
       </div>
       <div class="glass p-2.5">
-        <div class="text-[9px] text-slate-500 mb-0.5">硬體過流保護 (HW OCP)</div>
-        <div id="protHwOcp" class="font-mono text-red-400 text-sm">-- A</div>
+        <div id="protLbl4" class="text-[9px] text-slate-500 mb-0.5">硬體保護 (HW OCP)</div>
+        <div id="protVal4" class="font-mono text-red-400 text-sm">--</div>
       </div>
     </div>
     <button onclick="readProt()" class="mt-3 w-full py-2.5 bg-slate-700/60 hover:bg-slate-600/60 rounded-xl text-xs text-slate-300 transition btn-press">
@@ -506,6 +503,72 @@
 
 </div><!-- end tab-notes -->
 
+<!-- ── 參數掃描 TAB ── -->
+<div id="tab-scan" class="tab-panel px-3 py-3 space-y-3">
+
+  <!-- 快速預設 -->
+  <div class="card p-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-semibold">快速掃描預設</div>
+    <div class="grid grid-cols-2 gap-2">
+      <button onclick="setScanPreset('0000',16)" class="btn-press py-2 bg-slate-700/60 border border-slate-600 text-slate-300 rounded-xl text-xs transition">
+        📊 Page0 監控資料<br><span class="text-slate-500 text-[10px]">0x0000 × 16</span>
+      </button>
+      <button onclick="setScanPreset('8100',16)" class="btn-press py-2 bg-slate-700/60 border border-slate-600 text-slate-300 rounded-xl text-xs transition">
+        🛡 保護寄存器<br><span class="text-slate-500 text-[10px]">0x8100 × 16</span>
+      </button>
+      <button onclick="setScanPreset('4600',16)" class="btn-press py-2 bg-slate-700/60 border border-slate-600 text-slate-300 rounded-xl text-xs transition">
+        📡 原驅動器主資料<br><span class="text-slate-500 text-[10px]">0x4600 × 16</span>
+      </button>
+      <button onclick="setScanPreset('0900',16)" class="btn-press py-2 bg-slate-700/60 border border-slate-600 text-slate-300 rounded-xl text-xs transition">
+        ⚙ P9 通訊參數<br><span class="text-slate-500 text-[10px]">0x0900 × 16</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 自訂掃描 -->
+  <div class="card p-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-semibold">自訂掃描</div>
+    <div class="grid grid-cols-3 gap-2 mb-2">
+      <div>
+        <div class="text-[9px] text-slate-500 mb-1">起始地址 (HEX)</div>
+        <input id="scanStartReg" type="text" value="8100" maxlength="4"
+          class="inp w-full text-center font-mono text-sm" placeholder="8100">
+      </div>
+      <div>
+        <div class="text-[9px] text-slate-500 mb-1">讀取筆數</div>
+        <input id="scanCount" type="number" value="16" min="1" max="32"
+          class="inp w-full text-center text-sm">
+      </div>
+      <div class="flex items-end">
+        <button onclick="doScan()" id="scanBtn"
+          class="btn-press w-full py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition">
+          🔍 掃描
+        </button>
+      </div>
+    </div>
+    <div id="scanStatus" class="text-[10px] text-slate-600 text-center py-1">尚未掃描</div>
+  </div>
+
+  <!-- 掃描結果 -->
+  <div class="card p-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">掃描結果</div>
+      <button onclick="exportScan()" class="text-[10px] text-cyan-400 px-2 py-1 border border-cyan-700/40 rounded-lg">📥 CSV</button>
+    </div>
+    <!-- 表頭 -->
+    <div class="grid grid-cols-4 gap-1 mb-1 px-1">
+      <div class="text-[9px] text-slate-600 font-semibold">地址</div>
+      <div class="text-[9px] text-slate-600 font-semibold text-right">原始值</div>
+      <div class="text-[9px] text-slate-600 font-semibold text-right">×0.01A</div>
+      <div class="text-[9px] text-slate-600 font-semibold text-right">溫度°C</div>
+    </div>
+    <div id="scanResultList" class="space-y-0.5 max-h-96 overflow-y-auto font-mono">
+      <div class="text-slate-600 text-xs text-center py-4">按「掃描」開始讀取</div>
+    </div>
+  </div>
+
+</div><!-- end tab-scan -->
+
 <!-- ── TX/RX LOG TAB ── -->
 <div id="tab-log" class="tab-panel px-3 py-3">
   <div class="flex items-center justify-between mb-2">
@@ -535,7 +598,7 @@
 <!-- ══════════════════════════════════════
      底部導覽
 ══════════════════════════════════════ -->
-<nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/97 border-t border-slate-700/40 grid grid-cols-4 safe-area-inset-bottom">
+<nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/97 border-t border-slate-700/40 grid grid-cols-5 safe-area-inset-bottom">
   <button onclick="switchTab('control')" id="navControl"
     class="py-2.5 flex flex-col items-center gap-0.5 border-t-2 nav-active transition-colors">
     <span class="text-lg">🎮</span>
@@ -545,6 +608,11 @@
     class="py-2.5 flex flex-col items-center gap-0.5 border-t-2 nav-inactive transition-colors">
     <span class="text-lg">📊</span>
     <span class="text-[10px] font-bold">監控</span>
+  </button>
+  <button onclick="switchTab('scan')" id="navScan"
+    class="py-2.5 flex flex-col items-center gap-0.5 border-t-2 nav-inactive transition-colors">
+    <span class="text-lg">🔍</span>
+    <span class="text-[10px] font-bold">掃描</span>
   </button>
   <button onclick="switchTab('notes')" id="navNotes"
     class="py-2.5 flex flex-col items-center gap-0.5 border-t-2 nav-inactive transition-colors">
@@ -577,36 +645,57 @@ const MOTOR_STATUS = {
 };
 
 const ALARM_CODE = {
-  0:{txt:'正常',         sev:'ok'},
-  1:{txt:'過電流 (OC)',  sev:'crit', hint:'⚡ 負載過重或馬達堵轉，檢查機械負載'},
-  2:{txt:'過電壓 (OV)',  sev:'crit', hint:'🔋 電源電壓過高或制動能量回充'},
-  3:{txt:'低電壓 (UV)',  sev:'warn', hint:'🔋 電源不穩或電池電量不足'},
-  4:{txt:'MOS 過溫',    sev:'crit', hint:'🌡 散熱不足，降低負載或改善散熱'},
-  5:{txt:'馬達過溫',    sev:'crit', hint:'🌡 馬達持續高負荷，需冷卻或降速'},
-  6:{txt:'IPM 過溫',    sev:'crit', hint:'🌡 驅動模組溫度過高，減少佔空比'},
-  7:{txt:'霍爾感測異常', sev:'crit', hint:'🔌 感測器接線問題或磁場干擾'},
-  8:{txt:'超速',         sev:'crit', hint:'⚠ 轉速超過額定上限，降低目標轉速'},
-  9:{txt:'位置偏差',     sev:'warn', hint:'📐 位置誤差過大，檢查機械阻力'},
- 10:{txt:'編碼器異常',  sev:'crit', hint:'🔌 編碼器接線或訊號異常'},
- 11:{txt:'通訊逾時',    sev:'warn', hint:'📡 BLE 訊號不穩定，靠近設備'},
- 12:{txt:'EEPROM 錯誤', sev:'crit', hint:'💾 設定儲存失敗，重新上電並還原出廠'},
- 13:{txt:'參數錯誤',    sev:'warn', hint:'⚙ 參數超出範圍，重設驅動器設定'},
- 14:{txt:'硬體過流保護',sev:'crit', hint:'⚡ 硬體層級過流，立即停機檢查'},
- 15:{txt:'軟體過流保護',sev:'warn', hint:'⚡ 電流超過軟體限制值'},
- 16:{txt:'U 相斷路',    sev:'crit', hint:'🔌 U 相接線或 MOS 開路故障'},
- 17:{txt:'V 相斷路',    sev:'crit', hint:'🔌 V 相接線或 MOS 開路故障'},
- 18:{txt:'W 相斷路',    sev:'crit', hint:'🔌 W 相接線或 MOS 開路故障'},
- 19:{txt:'電流感測異常',sev:'crit', hint:'🔌 電流感測器接線或損壞'},
- 20:{txt:'制動電阻過熱',sev:'warn', hint:'🌡 制動使用過於頻繁，加大制動電阻'},
- 21:{txt:'接地故障',    sev:'crit', hint:'⚡ 馬達或線路接地，立即停機'},
- 22:{txt:'失速',         sev:'warn', hint:'⚙ 馬達無法達到目標轉速，檢查負載'},
- 2048:{txt:'系統故障',  sev:'crit', hint:'🔧 驅動器內部錯誤，重新上電'},
- 2056:{txt:'IO 故障',   sev:'warn', hint:'🔌 數位 IO 異常'},
+  0:{txt:'正常',              sev:'ok'},
+  1:{txt:'過電流 (OC)',       sev:'crit', hint:'⚡ 負載過重或馬達堵轉，檢查機械負載'},
+  2:{txt:'過電壓 (OV)',       sev:'crit', hint:'🔋 電源電壓過高或制動能量回充'},
+  3:{txt:'低電壓 (UV)',       sev:'warn', hint:'🔋 電源不穩或電池電量不足'},
+  4:{txt:'MOS 過溫',          sev:'crit', hint:'🌡 散熱不足，降低負載或改善散熱'},
+  5:{txt:'馬達過溫',          sev:'crit', hint:'🌡 馬達持續高負荷，需冷卻或降速'},
+  6:{txt:'IPM 過溫',          sev:'crit', hint:'🌡 驅動模組溫度過高，減少佔空比'},
+  7:{txt:'霍爾感測異常',      sev:'crit', hint:'🔌 感測器接線問題或磁場干擾'},
+  8:{txt:'超速',              sev:'crit', hint:'⚠ 轉速超過額定上限，降低目標轉速'},
+  9:{txt:'位置偏差',          sev:'warn', hint:'📐 位置誤差過大，檢查機械阻力'},
+ 10:{txt:'編碼器異常',        sev:'crit', hint:'🔌 編碼器接線或訊號異常'},
+ 11:{txt:'通訊逾時',          sev:'warn', hint:'📡 BLE 訊號不穩定，靠近設備'},
+ 12:{txt:'EEPROM 錯誤',       sev:'crit', hint:'💾 設定儲存失敗，重新上電並還原出廠'},
+ 13:{txt:'參數錯誤',          sev:'warn', hint:'⚙ 參數超出範圍，重設驅動器設定'},
+ 14:{txt:'硬體過流保護',      sev:'crit', hint:'⚡ 硬體層級過流，立即停機檢查'},
+ 15:{txt:'軟體過流保護',      sev:'warn', hint:'⚡ 電流超過軟體限制值'},
+ 16:{txt:'U 相斷路',          sev:'crit', hint:'🔌 U 相接線或 MOS 開路故障'},
+ 17:{txt:'V 相斷路',          sev:'crit', hint:'🔌 V 相接線或 MOS 開路故障'},
+ 18:{txt:'W 相斷路',          sev:'crit', hint:'🔌 W 相接線或 MOS 開路故障'},
+ 19:{txt:'電流感測異常',      sev:'crit', hint:'🔌 電流感測器接線或損壞'},
+ 20:{txt:'制動電阻過熱',      sev:'warn', hint:'🌡 制動使用過於頻繁，加大制動電阻'},
+ 21:{txt:'接地故障',          sev:'crit', hint:'⚡ 馬達或線路接地，立即停機'},
+ 22:{txt:'失速',              sev:'warn', hint:'⚙ 馬達無法達到目標轉速，檢查負載'},
+ // 原驅動器擴展故障碼（0x100～0x3FF）
+100:{txt:'速度命令錯誤',      sev:'warn', hint:'⚙ 轉速命令超出範圍，確認目標 RPM 設定'},
+101:{txt:'加速度過大',        sev:'warn', hint:'⚙ 加減速時間設定過短，請加大加速時間'},
+102:{txt:'制動逾時',          sev:'warn', hint:'🛑 煞車未完成，確認制動電阻及負載'},
+103:{txt:'輸入缺相',          sev:'crit', hint:'🔌 三相電源缺相，檢查電源輸入接線'},
+104:{txt:'輸出缺相',          sev:'crit', hint:'🔌 馬達接線缺相，檢查 UVW 輸出'},
+105:{txt:'驅動器過熱',        sev:'crit', hint:'🌡 驅動器環境溫度過高，加強通風散熱'},
+106:{txt:'PID 異常',          sev:'warn', hint:'⚙ PID 回授訊號異常，確認感測器接線'},
+200:{txt:'預充電逾時',        sev:'warn', hint:'🔋 直流母線預充電失敗，確認電源電壓'},
+201:{txt:'充電電路異常',      sev:'crit', hint:'🔋 預充電回路故障，返廠維修'},
+300:{txt:'散熱風扇異常',      sev:'warn', hint:'💨 散熱風扇停轉或轉速異常，清潔或更換'},
+400:{txt:'外部故障輸入',      sev:'warn', hint:'🔌 外部 EXT 故障端子被觸發，檢查外部信號'},
+500:{txt:'RS485 通訊異常',    sev:'warn', hint:'📡 Modbus 通訊逾時或 CRC 錯誤，確認接線'},
+600:{txt:'類比輸入異常',      sev:'warn', hint:'📐 AI 訊號斷線或超出範圍，確認 0-10V/4-20mA'},
+700:{txt:'記憶體校驗失敗',    sev:'crit', hint:'💾 內部記憶體錯誤，嘗試恢復出廠設定'},
+800:{txt:'驅動器保護動作',    sev:'crit', hint:'🛡 驅動器內部保護觸發，重新上電；若持續發生請記錄運轉條件並聯繫廠商'},
+801:{txt:'過載保護 (OL)',     sev:'crit', hint:'⚡ 馬達長時間過載，降低負載或調高過載設定'},
+802:{txt:'電子熱電驛動作',    sev:'warn', hint:'🌡 電子熱保護跳脫，確認馬達額定電流設定'},
+900:{txt:'啟動失敗',          sev:'warn', hint:'⚙ 馬達無法啟動，確認接線及轉速命令'},
+ 2048:{txt:'系統故障',        sev:'crit', hint:'🔧 驅動器內部錯誤，重新上電'},
+ 2056:{txt:'IO 故障',         sev:'warn', hint:'🔌 數位 IO 異常'},
 };
 
-const alarmDesc = c => (ALARM_CODE[c]||{txt:`故障代號 ${c}`}).txt;
-const alarmSev  = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
-const alarmHint = c => (ALARM_CODE[c]||{}).hint;
+const alarmDesc  = c => (ALARM_CODE[c]||{txt:`未登錄故障碼 ${c}，請查閱驅動器手冊`}).txt;
+const alarmSev   = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
+const alarmHint  = c => (ALARM_CODE[c]||{hint:`📖 代號 ${c} 未收錄，請對照驅動器說明書確認原因`}).hint;
+const alarmLabel = c => `代號 ${c}`;
+const alarmDisplay = c => `${alarmLabel(c)} · ${alarmDesc(c)}`;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // BLE 狀態
@@ -619,13 +708,18 @@ let isConnected = false;
 const PROFILES = {
   'original': {
     label: '原驅動器', protocol:'ASCII', slaveId:0x11,
-    startReg:0x4600, regCount:16, hasPage10:true, hasProtRead:true,
+    startReg:0x4600, regCount:16, hasPage10:true, hasProtRead:false,
+    // 保護參數固定值與 GaN 相同：MOS OT 101°C/80°C，HW OCP 90A
+    // SW OCP 無對應暫存器（顯示 --）
     idx:{ status:0, alarm:1, rpm:4, power:6, voltage:7, duty:8, current:9 },
     scale:{ voltage:0.01, duty:0.1, current:0.01 }
   },
   'gan-robot': {
     label: 'GaN AI ROBOT', protocol:'RTU', slaveId:0x01,
     startReg:0x0000, regCount:16, hasPage10:false, hasProtRead:false,
+    // 0x000F(idx=15)=溫度電壓(mV) → T=25+(1.337-V)/0.00818，V=raw/1000
+    // 0x000D(idx=13)=SW OCP (×0.01 A)，HW OCP 固定 90A 無暫存器
+    tempIdx: 15, swOcpIdx: 13,  // 0x000D(idx=13)=軟體限流 SW OCP
     idx:{ status:0, alarm:3, rpm:2, power:7, voltage:9, duty:11, current:12 },
     scale:{ voltage:0.01, duty:0.1, current:0.01 }
   }
@@ -638,8 +732,13 @@ function applyProfile(key) {
   activeProfile = PROFILES[key] || PROFILES['original'];
   modbusMode = activeProfile.protocol;
   SLAVE_ID   = activeProfile.slaveId;
+  // ★ 不清除 currentValues / tempD09 / tempD10
+  //   溫度與 SW OCP 直接從最新收到的資料判斷，不依賴 profile
   const txt = document.getElementById('hdrProtoTxt');
   if (txt) txt.textContent = `Modbus ${activeProfile.protocol} · ${activeProfile.label}`;
+  const hint = document.getElementById('ntcHintTxt');
+  if (hint) hint.textContent = 'GaN：0x000F→T=25+(1.337-V)/0.00818  ‖  原驅動器：D10直接°C';
+  updateProtCard();
 }
 // ── BLE 狀態 ────────────────────────────
 let pollTimer = null, tempPollTimer = null;
@@ -647,9 +746,16 @@ let rtuBuf = new Uint8Array(256), rtuLen = 0;
 let asciiBuffer = '';
 let bleQueue = [], bleQueueRunning = false;
 let currentValues = new Array(16).fill(0);
+let page0Values   = new Array(16).fill(0); // RTU PAGE0(0x0000~0x000F) 專用
 let currentDir = 'CW';
 let tempD09 = null, tempD10 = null;
-let page10Pending = false, scanPending = false;
+let page10Pending = false;
+let page0ReadPending = false, page0PollTimer = null;
+// ── Scan 獨立狀態 ──
+let scanPending = false;
+let scanCallback = null;
+let scanRtuBuf = new Uint8Array(256), scanRtuLen = 0;
+let scanAsciiBuf = '';
 let page10Step = 0, page10ReadingReg = 9;
 let ntcB = 3950;
 
@@ -664,7 +770,7 @@ let statAlmCnt=0, lastAlmCode=0;
 // 事件紀錄
 let sysLog = [];
 let almEvents = [];
-let protOTActivate=null, protOTRecover=null, protFWOCP=null, protHWOCP=null;
+let protOTActivate=null, protOTRecover=null, protFWOCP=null, protHWP=null, protHWOCP=null;
 let protReadPending = false;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -755,6 +861,14 @@ function makePage10Frame(addr) {
   const lrc = ((~sum)+1)&0xFF;
   return `:${SLAVE_ID.toString(16).toUpperCase().padStart(2,'0')}03${addr.toString(16).padStart(4,'0').toUpperCase()}0001${lrc.toString(16).padStart(2,'0').toUpperCase()}\r\n`;
 }
+// GaN AI ROBOT 專用溫度公式：T = 25 + (1.337 - V) / 0.00818
+// raw 為電壓 mV 整數（例如 1344 = 1.344 V），非 ADC counts
+function ganAdcToTemp(raw) {
+  if (raw <= 0 || raw > 5000) return null;
+  const v = raw / 1000;   // mV → V
+  return parseFloat((25 + (1.337 - v) / 0.00818).toFixed(1));
+}
+// 原驅動器 NTC 熱敏電阻公式（保留供 D09 使用）
 function adcToTemperature(adc) {
   if (adc<=0||adc>=4095) return null;
   const r = 10000*adc/(4096-adc);
@@ -839,6 +953,8 @@ async function doConnect() {
 }
 
 function onConnected() {
+  scanPending = false; scanCallback = null; scanRtuLen = 0; scanAsciiBuf = '';
+  if (document.getElementById('scanBtn')) document.getElementById('scanBtn').disabled = false;
   const btn = document.getElementById('connectBtn');
   btn.textContent = '斷線'; btn.disabled = false;
   btn.className = 'btn-press bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-1.5 rounded-xl text-sm transition-all';
@@ -849,21 +965,25 @@ function onConnected() {
   setTimeout(()=>{
     const pkt = buildFC03(activeProfile.startReg, activeProfile.regCount);
     pollTimer = setInterval(()=>sendModbus(pkt), 500);
-    if (activeProfile.hasPage10)   tempPollTimer = setInterval(doPage10Read, 8000);
+    if (activeProfile.hasPage10) tempPollTimer = setInterval(doPage10Read, 8000);
     if (activeProfile.hasProtRead) setTimeout(readProt, 1500);
+    // ★ 兩個設定檔都定期讀 PAGE0 0x000D×3 取得 SW OCP(0x000D) 和溫度(0x000F)
+    page0PollTimer = setInterval(doPage0Read, 3000);
+    setTimeout(doPage0Read, 800); // 連線後立即讀一次
   }, 500);
   addSysLog('● BLE 連線成功', 'green');
   showToast('✅ 連線成功');
 }
 
 function doDisconnect() {
-  clearInterval(pollTimer); clearInterval(tempPollTimer);
-  pollTimer = null; tempPollTimer = null;
+  clearInterval(pollTimer); clearInterval(tempPollTimer); clearInterval(page0PollTimer);
+  pollTimer = null; tempPollTimer = null; page0PollTimer = null;
   if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
 }
 
 function onDisconnected() {
   isConnected = false;
+  clearInterval(page0PollTimer); page0PollTimer = null; page0ReadPending = false;
   clearInterval(pollTimer); clearInterval(tempPollTimer);
   pollTimer = null; tempPollTimer = null;
   const btn = document.getElementById('connectBtn');
@@ -884,6 +1004,11 @@ function onDisconnected() {
 // BLE 接收 / 解析封包（RTU / ASCII 雙模式）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function onBleData(e) {
+  if (scanCallback) {
+    if (modbusMode === 'RTU') onScanDataRTU(e);
+    else                      onScanDataASCII(e);
+    return;
+  }
   if (modbusMode === 'RTU') onBleDataRTU(e);
   else                      onBleDataASCII(e);
 }
@@ -916,25 +1041,55 @@ function processFrame(fc, frame) {
     const reg = i => { let v=(frame[3+i*2]<<8)|frame[4+i*2]; return v; };
     if (protReadPending && regCount===10) {
       protReadPending=false;
-      protOTActivate=reg(0); protOTRecover=reg(1);
-      protFWOCP=reg(4)*0.01; protHWOCP=reg(9)*0.01;
+      if (activeProfile === PROFILES['original']) {
+        // 原驅動器 Page1：0x8102=MosOT過溫、0x8103=MosOT回復
+        // ※ 0x8106=Shunt W Offset校正（非SW OCP）、0x8109=類比訊號2校正值（非HW OCP）
+        protOTActivate=reg(0); protOTRecover=reg(1);
+        protFWOCP=null; protHWP=null; protHWOCP=null;
+      } else {
+        // GaN AI ROBOT Page2：0x8106(reg[4])=軟體限流SW OCP、0x8109(reg[7])=扭力限制HWP、0x810B(reg[9])=硬體保護HW OCP
+        protOTActivate=null; protOTRecover=null;
+        protFWOCP=reg(4)*0.01; protHWP=reg(7)*0.01; protHWOCP=reg(9)*0.01;
+      }
       updateProtCard(); return;
+    }
+    if (page0ReadPending && regCount===3) {
+      page0ReadPending = false;
+      // frame: [slaveId, fc, byteCount, D13hi, D13lo, D14hi, D14lo, D15hi, D15lo, crcL, crcH]
+      const swOcpRaw = (frame[3]<<8)|frame[4];   // 0x000D = SW OCP ×0.01A
+      const tempRaw  = (frame[7]<<8)|frame[8];   // 0x000F = 溫度mV
+      if (swOcpRaw > 0) page0Values[13] = swOcpRaw;
+      if (tempRaw  > 0) page0Values[15] = tempRaw;
+      const ganT = ganAdcToTemp(tempRaw);
+      if (ganT !== null) tempD09 = ganT;
+      updateProtCard();
+      updateTempDisp();
+      return;
     }
     if (page10Pending && regCount===1) {
       page10Pending=false;
-      const adc=(frame[3]<<8)|frame[4];
-      if (page10ReadingReg===9) tempD09=adcToTemperature(adc);
-      else                      tempD10=adcToTemperature(adc);
+      const raw=(frame[3]<<8)|frame[4];
+      if (page10ReadingReg===9) {
+        tempD09=adcToTemperature(raw); // D09=匯流排電壓，套NTC（通常null）
+      } else {
+        tempD10=raw; // D10=MOS過溫，原始值即為°C整數，不套NTC公式
+      }
       sendModbus(buildFC06(0x090A,0));
       updateTempDisp(); return;
     }
-    if (!page10Pending && !scanPending && regCount===16) {
+    if (!page10Pending && regCount===16) {
       for (let i=0;i<16;i++) {
         let v=(frame[3+i*2]<<8)|frame[4+i*2];
         if(v>32767) v-=65536;
         currentValues[i]=v;
+        page0Values[i]=v; // RTU 一定是 PAGE0，記錄備用
       }
-      updateDashboard(); return;
+      // PAGE0 0x000F(idx=15)=溫度mV → 線性公式
+      const ganT = ganAdcToTemp(page0Values[15]);
+      if (ganT !== null) { tempD09 = ganT; }
+      updateDashboard();
+      updateTempDisp();
+      return;
     }
   }
   if (fc === 0x06) {
@@ -965,24 +1120,54 @@ function parsePacket(pkt) {
       protReadPending = false;
       const dh = pkt.substr(7,40);
       const r = i => parseInt(dh.substr(i*4,4),16);
-      protOTActivate=r(0); protOTRecover=r(1);
-      protFWOCP=r(4)*0.01; protHWOCP=r(9)*0.01;
+      if (activeProfile === PROFILES['original']) {
+        // 原驅動器 Page1：0x8102=MosOT過溫、0x8103=MosOT回復
+        // ※ 0x8106=Shunt W Offset校正（非SW OCP）、0x8109=類比訊號2校正值（非HW OCP）
+        protOTActivate=r(0); protOTRecover=r(1);
+        protFWOCP=null; protHWP=null; protHWOCP=null;
+      } else {
+        // GaN AI ROBOT Page2：0x8106(r[4])=軟體限流SW OCP、0x8109(r[7])=扭力限制HWP、0x810B(r[9])=硬體保護HW OCP
+        protOTActivate=null; protOTRecover=null;
+        protFWOCP=r(4)*0.01; protHWP=r(7)*0.01; protHWOCP=r(9)*0.01;
+      }
       updateProtCard(); return;
+    }
+    if (page0ReadPending && pkt.length>=19 && pkt.length<=25) {
+      // ASCII FC03 回應 3 registers: ":LLFF03060000 0000 000F CS\r\n" → byteCount=06 (12 hex chars)
+      page0ReadPending = false;
+      const dh = pkt.substr(7, 12); // 6 bytes = 3 registers × 2 bytes
+      const swOcpRaw = parseInt(dh.substr(0, 4), 16); // 0x000D
+      const tempRaw  = parseInt(dh.substr(8, 4), 16); // 0x000F
+      if (swOcpRaw > 0) page0Values[13] = swOcpRaw;
+      if (tempRaw  > 0) page0Values[15] = tempRaw;
+      const ganT = ganAdcToTemp(tempRaw);
+      if (ganT !== null) tempD09 = ganT;
+      updateProtCard();
+      updateTempDisp();
+      return;
     }
     if (page10Pending && pkt.length>=13 && pkt.length<20) {
       page10Pending=false;
-      const adc=parseInt(pkt.substr(7,4),16);
-      if (page10ReadingReg===9) tempD09=adcToTemperature(adc);
-      else                      tempD10=adcToTemperature(adc);
+      const raw=parseInt(pkt.substr(7,4),16);
+      if (page10ReadingReg===9) {
+        tempD09=adcToTemperature(raw); // D09=匯流排電壓，套NTC（通常null）
+      } else {
+        tempD10=raw; // D10=MOS過溫，原始值即為°C整數，不套NTC公式
+      }
       sendModbus(buildFC06(0x090A,0));
       updateTempDisp(); return;
     }
-    if (!page10Pending && !scanPending && pkt.length>=71) {
+    if (!page10Pending && pkt.length>=71) {
       const dh=pkt.substr(7,64);
       for (let i=0;i<16;i++) {
         let v=parseInt(dh.substr(i*4,4),16);
         if(v>32767) v-=65536;
         currentValues[i]=v;
+      }
+      // GaN AI ROBOT：0x000F(idx=15) 溫度ADC → T=25+(1.337-V)/0.00818
+      if (activeProfile.tempIdx !== undefined) {
+        const t = ganAdcToTemp(currentValues[activeProfile.tempIdx]);
+        if (t !== null) { tempD09 = t; updateTempDisp(); }
       }
       updateDashboard(); return;
     }
@@ -997,13 +1182,61 @@ function parsePacket(pkt) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 掃描獨立接收通道（與正常 parser 完全隔離）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function onScanDataRTU(e) {
+  const chunk = new Uint8Array(e.target.value.buffer);
+  if (scanRtuLen + chunk.length > scanRtuBuf.length) scanRtuLen = 0;
+  scanRtuBuf.set(chunk, scanRtuLen); scanRtuLen += chunk.length;
+  while (scanRtuLen >= 4) {
+    const fc = scanRtuBuf[1];
+    if (fc !== 0x03) { scanRtuBuf.copyWithin(0,1); scanRtuLen--; continue; }
+    if (scanRtuLen < 3) break;
+    const frameLen = 3 + scanRtuBuf[2] + 2;
+    if (scanRtuLen < frameLen) break;
+    const c = crc16(scanRtuBuf.slice(0, frameLen-2));
+    if ((c&0xFF)===scanRtuBuf[frameLen-2] && ((c>>8)&0xFF)===scanRtuBuf[frameLen-1]) {
+      const regCount = scanRtuBuf[2] >> 1;
+      const regs = [];
+      for (let i=0; i<regCount; i++) regs.push((scanRtuBuf[3+i*2]<<8)|scanRtuBuf[4+i*2]);
+      addCommsLog('RX', scanRtuBuf.slice(0, frameLen));
+      scanRtuLen = 0;
+      const cb = scanCallback; scanCallback = null;
+      if (cb) cb(regs);
+      return;
+    }
+    scanRtuBuf.copyWithin(0, frameLen); scanRtuLen -= frameLen;
+  }
+}
+function onScanDataASCII(e) {
+  scanAsciiBuf += new TextDecoder().decode(e.target.value);
+  let idx;
+  while ((idx = scanAsciiBuf.indexOf('\n')) !== -1) {
+    const line = scanAsciiBuf.slice(0, idx+1).trim();
+    scanAsciiBuf = scanAsciiBuf.slice(idx+1);
+    if (!line.startsWith(':') || line.length < 9) continue;
+    if (line.substr(3,2) !== '03') continue;
+    addCommsLog('RX', line);
+    const byteCount = parseInt(line.substr(5,2), 16);
+    const regCount  = byteCount >> 1;
+    const dh = line.substr(7, byteCount*2);
+    const regs = [];
+    for (let i=0; i<regCount; i++) regs.push(parseInt(dh.substr(i*4,4),16));
+    const cb = scanCallback; scanCallback = null;
+    if (cb) cb(regs);
+    return;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Page10 溫度讀取
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function doPage10Read() {
-  if (!isConnected || page10Pending || scanPending) return;
+  if (!isConnected || page10Pending || scanCallback) return;
   page10Pending = true;
-  page10ReadingReg = page10Step === 0 ? 9 : 10;
-  page10Step = 1 - page10Step;
+  // D09=匯流排電壓（非NTC，不讀溫度），D10=MOS過溫（直接°C整數值）
+  // 固定只讀 reg 10（D10 = MOS 即時溫度，原始值即為°C整數）
+  page10ReadingReg = 10;
   sendModbus(buildFC06(0x090A, 10));
   await new Promise(r=>setTimeout(r, 800));
   sendModbus(buildFC03(page10ReadingReg, 1));
@@ -1013,28 +1246,49 @@ async function doPage10Read() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 保護設定讀取
+// PAGE0 溫度＋SW OCP 主動讀取（RTU & ASCII 通用）
+// 讀 0x000D×3 → idx13=SW OCP, idx14=reserved, idx15=溫度mV
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function doPage0Read() {
+  if (!isConnected || page0ReadPending || scanCallback) return;
+  page0ReadPending = true;
+  sendModbus(buildFC03(0x000D, 3)); // 讀 0x000D, 0x000E, 0x000F
+  setTimeout(() => { if (page0ReadPending) page0ReadPending = false; }, 3000);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 保護設定讀取（僅原驅動器使用）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function readProt() {
-  if (!isConnected) return;
+  if (!isConnected || activeProfile !== PROFILES['original']) return;
   protReadPending = true;
   sendModbus(buildFC03(0x8102, 10));
 }
 function adcToTempStr(adc) {
   if (adc===null) return '--';
-  if (adc>4095) return (adc*0.01).toFixed(1)+' °C';
+  if (adc > 4095) return (adc * 0.01).toFixed(1) + ' °C';  // 原驅動器：值×0.01=°C
   const t = adcToTemperature(adc);
-  return t!==null ? t+' °C' : adc+' ADC';
+  return t!==null ? t.toFixed(1)+' °C' : adc+' ADC';
 }
 function updateProtCard() {
-  const actStr = adcToTempStr(protOTActivate);
-  const recStr = adcToTempStr(protOTRecover);
-  document.getElementById('protMosAct').textContent = actStr;
-  document.getElementById('protMosRec').textContent = recStr;
-  document.getElementById('protFwOcp').textContent  = protFWOCP!==null ? protFWOCP.toFixed(2)+' A' : '--';
-  document.getElementById('protHwOcp').textContent  = protHWOCP!==null ? protHWOCP.toFixed(2)+' A' : '--';
-  document.getElementById('inlineOTAct').textContent = actStr;
-  document.getElementById('inlineOTRec').textContent = recStr;
+  // SW OCP：currentValues[13] = PAGE0 0x000D，值 > 100 才視為有效（避免雜訊）
+  // SW OCP 從 page0Values[13]（PAGE0 0x000D）讀，與原驅動器的 currentValues 完全隔離
+  // RTU(GaN) 每次 poll 都更新 page0Values；ASCII(原驅動器) 不更新 → 顯示 --
+  const swOcpRaw = page0Values[13] > 100 ? page0Values[13] : null;
+  const swOcp = swOcpRaw !== null ? (swOcpRaw * 0.01).toFixed(2) + ' A' : '--';
+
+  document.getElementById('protLbl1').textContent = '軟體限流 SW OCP (0x000D)';
+  document.getElementById('protVal1').textContent = swOcp;
+  document.getElementById('protLbl2').textContent = 'MOS 過溫觸發 (固定)';
+  document.getElementById('protVal2').textContent = '101 °C  (0.715 V)';
+  document.getElementById('protLbl3').textContent = 'MOS 過溫回復 (固定)';
+  document.getElementById('protVal3').textContent = '80 °C  (0.883 V)';
+  document.getElementById('protLbl4').textContent = '硬體保護 HW OCP (固定)';
+  document.getElementById('protVal4').textContent = '90 A';
+  document.getElementById('inlineOTActLbl').textContent = 'SW OCP (0x000D)';
+  document.getElementById('inlineOTAct').textContent = swOcp;
+  document.getElementById('inlineOTRecLbl').textContent = 'HW OCP (固定)';
+  document.getElementById('inlineOTRec').textContent = '90 A';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1078,6 +1332,9 @@ function updateDashboard() {
   // 趨勢圖
   pushTrend(rpm, cur, pwr);
 
+  // 每次 poll 更新保護卡（SW OCP 從 0x000D 讀取，固定值同步顯示）
+  updateProtCard();
+
   // 警報處理
   const almBadge    = document.getElementById('alarmBadge');
   const alarmAction = document.getElementById('alarmActionBar');
@@ -1086,8 +1343,8 @@ function updateDashboard() {
     const sev = alarmSev(alm);
     almBadge.classList.remove('hidden');
     almBadge.querySelector('div').className = `px-3 py-1.5 rounded-xl alarm-blink text-center badge-${sev}`;
-    document.getElementById('alarmCodeTxt').textContent = `警報 ${alm}`;
-    document.getElementById('alarmDescTxt').textContent = alarmDesc(alm);
+    document.getElementById('alarmCodeTxt').textContent = alarmDisplay(alm);
+    document.getElementById('alarmDescTxt').textContent = alarmHint(alm) || '請檢查設備狀態';
     alarmAction.classList.remove('hidden');
     statusCard.style.borderColor = 'rgba(239,68,68,.5)';
     // AI 診斷提示
@@ -1133,7 +1390,7 @@ function updateDashboard() {
     const t = new Date().toLocaleTimeString('zh-TW');
     almEvents.unshift({time:t, code:alm, desc:alarmDesc(alm), sev:alarmSev(alm)});
     renderAlmEvents();
-    addSysLog(`⚠ 警報 ${alm}：${alarmDesc(alm)}`, 'red');
+    addSysLog(`⚠ ${alarmDisplay(alm)}`, 'red');
   }
   lastAlmCode = alm;
 
@@ -1141,13 +1398,18 @@ function updateDashboard() {
 }
 
 function updateTempDisp() {
+  // tempD09 = GaN 線性公式換算（RTU parser 每次 poll 更新）
+  // tempD10 = 原驅動器 Page10 D10（直接°C整數）
+  // 優先顯示 tempD09（有效值），其次 tempD10
+  const t = tempD09 !== null ? tempD09 : tempD10;
   const e9 = document.getElementById('dispTempD09');
-  if (tempD09!==null) {
-    e9.textContent = tempD09+'°C';
-    e9.className = `text-lg font-bold font-mono ${tempD09>=60?'text-red-400 alarm-blink':tempD09>=45?'text-amber-400':'text-sky-400'}`;
-    document.getElementById('kpiTemp').textContent = tempD09+'°C';
-    document.getElementById('kpiTemp').className = `text-base font-black font-mono ${tempD09>=60?'text-red-400':tempD09>=45?'text-amber-400':'text-sky-400'}`;
-    if (tempD09>statMaxTemp) { statMaxTemp=tempD09; document.getElementById('statMaxTemp').textContent=tempD09+' °C'; }
+  if (t !== null) {
+    e9.textContent = t + '°C';
+    const clr = t>=60?'text-red-400 alarm-blink':t>=45?'text-amber-400':'text-sky-400';
+    e9.className = `text-lg font-bold font-mono ${clr}`;
+    document.getElementById('kpiTemp').textContent = t+'°C';
+    document.getElementById('kpiTemp').className = `text-base font-black font-mono ${clr.replace(' alarm-blink','')}`;
+    if (t > statMaxTemp) { statMaxTemp=t; document.getElementById('statMaxTemp').textContent=t+' °C'; }
   }
 }
 
@@ -1165,7 +1427,7 @@ function showAIHint(almCode) {
     <div class="flex items-start gap-2">
       <span class="text-lg shrink-0">🤖</span>
       <div>
-        <div class="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">AI 診斷建議 · 警報 ${almCode}</div>
+        <div class="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">AI 診斷建議 · ${alarmDisplay(almCode)}</div>
         <div class="text-sm text-slate-200 leading-relaxed">${hint}</div>
       </div>
     </div>`;
@@ -1211,7 +1473,7 @@ function renderAlmEvents() {
     <div class="${sevClr(a.sev)} border rounded-xl px-3 py-2">
       <div class="flex items-center gap-2">
         <span class="text-[10px] text-slate-500 font-mono">${a.time}</span>
-        <span class="badge-${a.sev} text-[10px] font-bold px-2 py-0.5 rounded-lg">代號 ${a.code}</span>
+        <span class="badge-${a.sev} text-[10px] font-bold px-2 py-0.5 rounded-lg">${alarmLabel(a.code)}</span>
         <span class="text-[11px] text-slate-300">${a.desc}</span>
       </div>
     </div>`).join('');
@@ -1361,7 +1623,7 @@ function updateNoteSnapshot() {
   const st  = MOTOR_STATUS[currentValues[idx.status]]||{txt:'未知'};
   const tmp = tempD10!==null ? tempD10+'°C' : (tempD09!==null ? tempD09+'°C' : '--');
   document.getElementById('noteSnapshot').textContent =
-    `狀態:${st.txt}  轉速:${rpm}RPM  電流:${cur}A  電壓:${vlt}V  溫度:${tmp}${alm?`  ⚠警報:${alarmDesc(alm)}`:''}`;
+    `狀態:${st.txt}  轉速:${rpm}RPM  電流:${cur}A  電壓:${vlt}V  溫度:${tmp}${alm?`  ⚠${alarmDisplay(alm)}`:''}`;
 }
 
 function saveNote() {
@@ -1431,12 +1693,103 @@ function exportNotes() {
 // Tab 切換
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function switchTab(name) {
-  const tabs={monitor:'navMonitor', control:'navControl', notes:'navNotes', log:'navLog'};
+  const tabs={monitor:'navMonitor', control:'navControl', scan:'navScan', notes:'navNotes', log:'navLog'};
   Object.entries(tabs).forEach(([t,navId])=>{
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
     const el=document.getElementById(navId);
     if (el) el.className=`py-2.5 flex flex-col items-center gap-0.5 border-t-2 ${t===name?'nav-active':'nav-inactive'} transition-colors`;
   });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 參數掃描
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 參數掃描
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let scanData = [];
+let scanPendingAddr = 0, scanPendingCount = 0;
+
+function setScanPreset(hexAddr, count) {
+  document.getElementById('scanStartReg').value = hexAddr.toUpperCase();
+  document.getElementById('scanCount').value = count;
+}
+
+function scanResumePolling() {
+  scanPending = false; scanCallback = null; scanRtuLen = 0; scanAsciiBuf = '';
+  document.getElementById('scanBtn').disabled = false;
+  if (isConnected && !pollTimer) {
+    const pkt = buildFC03(activeProfile.startReg, activeProfile.regCount);
+    pollTimer = setInterval(()=>sendModbus(pkt), 500);
+  }
+}
+
+async function doScan() {
+  if (!isConnected) { showToast('⚠ 請先連線'); return; }
+  if (scanCallback) { showToast('掃描中，請稍後'); return; }
+  const addrStr = document.getElementById('scanStartReg').value.trim();
+  const count = Math.min(32, Math.max(1, parseInt(document.getElementById('scanCount').value)||16));
+  const addr  = parseInt(addrStr, 16);
+  if (isNaN(addr)) { showToast('⚠ 地址格式錯誤（16進位）'); return; }
+
+  scanPendingAddr = addr; scanPendingCount = count;
+  scanPending = true; scanRtuLen = 0; scanAsciiBuf = '';
+  document.getElementById('scanStatus').textContent = `🔄 掃描 0x${addr.toString(16).toUpperCase().padStart(4,'0')} × ${count}…`;
+  document.getElementById('scanBtn').disabled = true;
+
+  // 暫停 poll，避免與掃描回應混淆
+  clearInterval(pollTimer); pollTimer = null;
+  await new Promise(r=>setTimeout(r, 80));
+
+  const tid = setTimeout(()=>{
+    if (scanCallback) {
+      document.getElementById('scanStatus').textContent = '⚠ 掃描逾時，未收到回應';
+      scanResumePolling();
+    }
+  }, 5000);
+
+  scanCallback = (regs) => { clearTimeout(tid); onScanResult(regs); };
+  sendModbus(buildFC03(addr, count));
+}
+
+function onScanResult(regs) {
+  scanResumePolling();
+  scanData = regs.map((raw, i) => ({ addr: scanPendingAddr + i, raw }));
+  document.getElementById('scanStatus').textContent =
+    `✅ 已讀取 0x${scanPendingAddr.toString(16).toUpperCase().padStart(4,'0')}` +
+    `～0x${(scanPendingAddr+regs.length-1).toString(16).toUpperCase().padStart(4,'0')}，共 ${regs.length} 筆`;
+  renderScanResult();
+}
+
+function renderScanResult() {
+  const el = document.getElementById('scanResultList');
+  if (!scanData.length) { el.innerHTML='<div class="text-slate-600 text-xs text-center py-4">無資料</div>'; return; }
+  el.innerHTML = scanData.map(({addr, raw}) => {
+    const hexAddr = '0x'+addr.toString(16).toUpperCase().padStart(4,'0');
+    const asCur   = (raw*0.01).toFixed(2);
+    // 溫度欄：用 GaN 線性公式（T=25+(1.337-V)/0.00818）
+    const ganT    = ganAdcToTemp(raw);
+    const curClr  = raw>0&&raw<60000?'text-amber-300':'text-slate-500';
+    const tmpClr  = ganT!==null?'text-sky-300':'text-slate-600';
+    return `<div class="grid grid-cols-4 gap-1 px-1 py-1 border-b border-slate-800/60 hover:bg-slate-800/30 rounded">
+      <div class="text-[11px] text-cyan-400 font-mono">${hexAddr}</div>
+      <div class="text-[11px] text-slate-300 font-mono text-right">${raw}</div>
+      <div class="text-[11px] ${curClr} font-mono text-right">${asCur}</div>
+      <div class="text-[11px] ${tmpClr} font-mono text-right">${ganT!==null?ganT+'°':'—'}</div>
+    </div>`;
+  }).join('');
+}
+
+function exportScan() {
+  if (!scanData.length) { showToast('尚無掃描資料'); return; }
+  let csv = 'Address,Raw,×0.01A,Temp°C(GaN公式)\n';
+  scanData.forEach(({addr, raw}) => {
+    const hexAddr = '0x'+addr.toString(16).toUpperCase().padStart(4,'0');
+    csv += `${hexAddr},${raw},${(raw*0.01).toFixed(2)},${ganAdcToTemp(raw)??''}\n`;
+  });
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = `scan_0x${scanPendingAddr.toString(16).toUpperCase().padStart(4,'0')}.csv`;
+  a.click();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>GaN 馬達監控 V2</title>
+<title>GaN 馬達監控 V3 (ASCII)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
@@ -42,8 +42,8 @@
 <!-- ══════════════════════ 標題列 ══════════════════════ -->
 <header class="sticky top-0 z-40 bg-slate-900/97 backdrop-blur border-b border-slate-700/40 px-4 py-2.5 flex items-center justify-between">
   <div>
-    <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V2</div>
-    <div class="text-[9px] text-slate-500 font-mono">多裝置 BLE · <span id="activeCount">0</span> 台連線中</div>
+    <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V3</div>
+    <div class="text-[9px] text-slate-500 font-mono">ASCII 多裝置 BLE · <span id="activeCount">0</span> 台連線中</div>
   </div>
   <div class="flex items-center gap-2">
     <button onclick="addDevice()"
@@ -168,35 +168,13 @@ const alarmSev  = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
 const alarmHint = c => (ALARM_CODE[c]||{}).hint;
 
 // ══════════════════════════════════════
-// 裝置設定檔
+// 裝置設定檔（ASCII 專用）
 // ══════════════════════════════════════
-const PROFILES = {
-  'original': {
-    label:'ASCII 連接', protocol:'ASCII', slaveId:0x11,
-    startReg:0x4600, regCount:16, hasPage10:true, hasProtRead:true,
-    // 保護寄存器 FC03 起始 0x8102 讀10筆:
-    //   reg[0]=0x8102 MosOT過溫值(ADC)  reg[1]=0x8103 MosOT回復值(ADC)
-    //   ※ reg[4]=0x8106 是 Shunt W Offset(非SW OCP)
-    //   ※ reg[9]=0x810B 是 PGA Index(非HW OCP)
-    prot:{ startReg:0x8102, count:10,
-           mosActIdx:0, mosRecIdx:1,
-           swOcpIdx:null, hwpIdx:null, hwOcpIdx:null },
-    idx:{status:0,alarm:1,rpm:4,power:6,voltage:7,duty:8,current:9},
-    scale:{voltage:0.01,duty:0.1,current:0.01}
-  },
-  'gan-robot': {
-    label:'RTU 連接', protocol:'RTU', slaveId:0x01,
-    startReg:0x0000, regCount:16, hasPage10:false, hasProtRead:true,
-    // 保護寄存器 FC03 起始 0x8102 讀10筆:
-    //   reg[4]=0x8106 軟體限流值 SW OCP (×0.01A)
-    //   reg[7]=0x8109 扭力限制最大值 HWP (×0.01A)
-    //   reg[9]=0x810B 電流限制硬體保護值 HW OCP (×0.01A)
-    prot:{ startReg:0x8102, count:10,
-           mosActIdx:null, mosRecIdx:null,
-           swOcpIdx:4, hwpIdx:7, hwOcpIdx:9 },
-    idx:{status:0,alarm:3,rpm:2,power:7,voltage:9,duty:11,current:12},
-    scale:{voltage:0.01,duty:0.1,current:0.01}
-  }
+const PROFILE = {
+  label:'ASCII 連接', protocol:'ASCII', slaveId:0x11,
+  startReg:0x4600, regCount:16, hasPage10:true,
+  idx:{status:0, alarm:1, rpm:4, power:6, voltage:7, duty:8, current:9},
+  scale:{voltage:0.01, duty:0.1, current:0.01}
 };
 
 // 裝置顏色（最多 6 台）
@@ -208,23 +186,21 @@ const DEV_COLORS = ['#22d3ee','#fbbf24','#34d399','#fb7185','#a78bfa','#f97316']
 const devices = new Map();
 let nextId = 1;
 
-function createDeviceObj(profileKey) {
+function createDeviceObj() {
   const id = nextId++;
   const color = DEV_COLORS[(id-1) % DEV_COLORS.length];
   return {
     id, color,
-    profileKey: profileKey || 'gan-robot',
-    get profile() { return PROFILES[this.profileKey] || PROFILES['gan-robot']; },
+    bleName: '',           // BLE 裝置名稱（連線後填入）
     bleDevice:null, bleTxChar:null, bleRxChar:null,
     isConnected: false,
-    rtuBuf: new Uint8Array(256), rtuLen: 0,
     asciiBuffer: '',
     bleQueue: [], bleQueueRunning: false,
     currentValues: new Array(16).fill(0),
-    page0Values: new Array(16).fill(0), // PAGE0(0x000D~0x000F) 專用：SW OCP / 溫度
+    page0Values: new Array(16).fill(0),  // PAGE0 0x000D~0x000F 專用
     page0ReadPending: false, page0PollTimer: null,
-    tempD09: null, tempD10: null, // tempD09=GaN線性公式°C; tempD10=原驅動器Page10 D10直接°C整數
-    page10Pending: false, page10Step: 0, page10ReadingReg: 10,
+    tempD09: null, tempD10: null, // tempD09=GaN公式°C; tempD10=Page10 D10直接°C
+    page10Pending: false, page10ReadingReg: 10,
     pollTimer: null, tempPollTimer: null,
     lastAlmCode: 0,
     pwrAccWh: 0, pwrRunSec: 0, pwrStartCount: 0, pwrLastTime: null, pwrRunning: false,
@@ -236,7 +212,7 @@ function createDeviceObj(profileKey) {
 
 function addDevice() {
   if (devices.size >= 6) { showToast('最多支援 6 台裝置'); return; }
-  const dev = createDeviceObj('gan-robot');
+  const dev = createDeviceObj();
   devices.set(dev.id, dev);
   renderDeviceCard(dev);
   document.getElementById('emptyHint').classList.add('hidden');
@@ -270,12 +246,11 @@ function renderDeviceCard(dev) {
     <!-- 頂列 -->
     <div class="flex items-center gap-2 mb-2.5">
       <div id="dot-${dev.id}" class="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500"></div>
-      <span class="text-xs font-bold text-slate-300 flex-1">裝置 #${dev.id}</span>
-      <select id="prof-${dev.id}" onchange="changeProfile(${dev.id},this.value)"
-        class="bg-slate-800 border border-slate-700 text-slate-400 text-[10px] rounded-lg px-1.5 py-1 outline-none">
-        <option value="gan-robot" ${dev.profileKey==='gan-robot'?'selected':''}>RTU 連接</option>
-        <option value="original" ${dev.profileKey==='original'?'selected':''}>ASCII 連接</option>
-      </select>
+      <div class="flex-1 min-w-0">
+        <span class="text-xs font-bold text-slate-300">裝置 #${dev.id}</span>
+        <span id="devname-${dev.id}" class="ml-1.5 text-[10px] text-slate-500 font-mono truncate hidden"></span>
+      </div>
+      <span class="text-[10px] text-slate-600 border border-slate-700 rounded px-1.5 py-0.5">ASCII</span>
       <button id="connbtn-${dev.id}" onclick="connectDevice(${dev.id})"
         class="btn-press text-[11px] font-bold px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition-all">連線</button>
       <button onclick="removeDevice(${dev.id})"
@@ -322,6 +297,11 @@ function renderDeviceCard(dev) {
         <span class="text-base">⏹</span> 關閉
       </button>
     </div>
+    <!-- 異常復規按鈕 -->
+    <button onclick="devSendReset(${dev.id})"
+      class="btn-press w-full py-2.5 mb-2 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+      <span class="text-base">⚠</span> 異常復規 (Fault Reset)
+    </button>
 
     <!-- 警報提示條 -->
     <div id="almhint-${dev.id}" class="hidden text-[11px] text-slate-400 bg-red-950/30 border border-red-900/40 rounded-xl px-3 py-2 mb-2 leading-snug"></div>
@@ -366,7 +346,7 @@ function renderDeviceCard(dev) {
         </div>
         <div class="bg-black/25 rounded-xl px-3 py-2 col-span-2">
           <div id="swh-${dev.id}" class="text-sm font-black font-mono text-cyan-300">0.000 Wh</div>
-          <div class="text-[9px] text-slate-600 mt-0.5">累積電能</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">累積電能 / 運轉時間</div>
         </div>
       </div>
     </div>
@@ -397,14 +377,8 @@ function renderDeviceCard(dev) {
   });
 }
 
-function changeProfile(id, profileKey) {
-  const dev = devices.get(id);
-  if (!dev || dev.isConnected) { showToast('請先斷線再切換設定檔'); return; }
-  dev.profileKey = profileKey;
-}
-
 // ══════════════════════════════════════
-// Modbus RTU helpers（純函式，傳入 dev）
+// Modbus ASCII helpers
 // ══════════════════════════════════════
 function crc16(buf) {
   let crc=0xFFFF;
@@ -419,7 +393,8 @@ function buildFC06(slaveId, reg, val) {
   const b=[slaveId,0x06,(reg>>8)&0xFF,reg&0xFF,(val>>8)&0xFF,val&0xFF];
   const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
 }
-function rtuToAscii(slaveId, frame) {
+// RTU frame → ASCII string（自動計算 LRC）
+function rtuToAscii(frame) {
   const data=frame.slice(0,-2);
   let sum=0; for(const b of data) sum=(sum+b)&0xFF;
   const lrc=((~sum)+1)&0xFF;
@@ -430,32 +405,27 @@ function adcToTemperature(adc, ntcB=3950) {
   const r=10000*adc/(4096-adc);
   return parseFloat((1/(1/298.15+Math.log(r/10000)/ntcB)-273.15).toFixed(1));
 }
-// GaN AI ROBOT 溫度公式：T = 25 + (1.337 - V) / 0.00818
-// raw = 電壓 mV 整數（例如 1344 = 1.344V）
+// PAGE0 0x000F 溫度公式：T = 25 + (1.337 - V) / 0.00818，raw 為 mV 整數
 function ganAdcToTemp(raw) {
   if(raw<=0||raw>5000) return null;
-  const v=raw/1000; // mV → V
+  const v=raw/1000;
   return parseFloat((25+(1.337-v)/0.00818).toFixed(1));
 }
 
 // ══════════════════════════════════════
-// BLE 發送佇列（per device）
+// BLE 發送佇列（per device，純 ASCII）
 // ══════════════════════════════════════
-function devSendModbus(dev, rtuFrame) {
+function devSend(dev, rtuFrame) {
   if(!dev.isConnected||!dev.bleTxChar) return;
-  const p=dev.profile;
-  const payload = p.protocol==='RTU' ? rtuFrame : rtuToAscii(p.slaveId, rtuFrame);
-  const isMainPoll=(rtuFrame[1]===0x03&&rtuFrame[2]===((p.startReg>>8)&0xFF)&&rtuFrame[3]===(p.startReg&0xFF));
-  if(isMainPoll&&dev.bleQueue.some(q=>{
-    const b=typeof q==='string'?null:q;
-    return b&&b[1]===0x03&&b[2]===((p.startReg>>8)&0xFF)&&b[3]===(p.startReg&0xFF);
-  })) return;
+  const payload = rtuToAscii(rtuFrame);
+  // 去重：主輪詢只保留一個
+  const sid = PROFILE.slaveId, sr = PROFILE.startReg;
+  const isMainPoll = rtuFrame[1]===0x03 && rtuFrame[2]===((sr>>8)&0xFF) && rtuFrame[3]===(sr&0xFF);
+  if(isMainPoll && dev.bleQueue.some(q=>typeof q==='string' &&
+    q.indexOf(`:${sid.toString(16).toUpperCase().padStart(2,'0')}03`)===0 &&
+    q.indexOf(((sr>>8)&0xFF).toString(16).toUpperCase().padStart(2,'0').repeat(0) + '')>=0
+  )) {} // 不去重 string，依賴 40ms 間隔自然節流
   dev.bleQueue.push(payload);
-  devProcessQueue(dev);
-}
-function devSendRawAscii(dev, str) {
-  if(!dev.isConnected||!dev.bleTxChar) return;
-  dev.bleQueue.push(str);
   devProcessQueue(dev);
 }
 async function devProcessQueue(dev) {
@@ -502,6 +472,8 @@ async function connectDevice(id) {
     if(!dev.bleRxChar||!dev.bleTxChar) throw new Error('找不到 FFE1 特徵值');
     await dev.bleRxChar.startNotifications();
     dev.bleRxChar.addEventListener('characteristicvaluechanged', e=>onDevBleData(id,e));
+    // ★ 記錄 BLE 裝置名稱
+    dev.bleName = dev.bleDevice.name || '';
     dev.isConnected=true;
     onDevConnected(id);
   } catch(e) {
@@ -517,21 +489,32 @@ function onDevConnected(id) {
   btn.textContent='斷線'; btn.disabled=false;
   btn.className='btn-press text-[11px] font-bold px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-all';
   document.getElementById(`dot-${id}`).className='w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 transition-colors duration-500';
-  const p=dev.profile;
-  if(p.hasPage10) devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
+
+  // ★ 顯示裝置名稱（白字顯眼）
+  const nameEl = document.getElementById(`devname-${id}`);
+  if(nameEl && dev.bleName) {
+    nameEl.textContent = dev.bleName;
+    nameEl.className = 'ml-1.5 text-xs font-bold text-white bg-cyan-800/60 border border-cyan-600/50 rounded-md px-1.5 py-0.5';
+  }
+
+  // 啟動 page10 後開始主輪詢
+  devSend(dev, buildFC06(PROFILE.slaveId, 0x090A, 0));
   setTimeout(()=>{
-    const pkt=buildFC03(p.slaveId, p.startReg, p.regCount);
-    dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt),500);
-    if(p.hasPage10) dev.tempPollTimer=setInterval(()=>doPage10Read(id),8000);
-    // ★ 兩個設定檔都定期讀 PAGE0 0x000D×3 取得 SW OCP 和溫度(0x000F)
-    dev.page0PollTimer=setInterval(()=>doPage0Read(id),3000);
-    setTimeout(()=>doPage0Read(id),1000); // 連線後立即讀一次
-  },500);
+    const pkt=buildFC03(PROFILE.slaveId, PROFILE.startReg, PROFILE.regCount);
+    dev.pollTimer=setInterval(()=>devSend(dev,pkt), 500);
+    dev.tempPollTimer=setInterval(()=>doPage10Read(id), 8000);
+    // PAGE0 0x000D×3（SW OCP + 溫度 0x000F）每 3 秒讀一次
+    dev.page0PollTimer=setInterval(()=>doPage0Read(id), 3000);
+    setTimeout(()=>doPage0Read(id), 1000);
+  }, 500);
+
   updateActiveCount();
   addCombinedDataset(dev);
   if(devices.size>=2) document.getElementById('combinedChartWrap').classList.remove('hidden');
-  addLog(`● 裝置 #${id} (${p.label}) 連線成功`, 'green');
-  showToast(`✅ 裝置 #${id} 連線`);
+  // 事件紀錄加上裝置名稱
+  const nameStr = dev.bleName ? ` [${dev.bleName}]` : '';
+  addLog(`● 裝置 #${id}${nameStr} (ASCII) 連線成功`, 'green');
+  showToast(`✅ 裝置 #${id}${dev.bleName?' · '+dev.bleName:''} 連線`);
 }
 
 function disconnectDevice(id) {
@@ -554,113 +537,42 @@ function onDevDisconnected(id) {
   if(dot) dot.className='w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500';
   const stxt=document.getElementById(`stxt-${id}`);
   if(stxt){stxt.textContent='已斷線';stxt.className='text-sm font-black status-stop';}
+  const nameEl2=document.getElementById(`devname-${id}`);
+  if(nameEl2){nameEl2.className='ml-1.5 text-[10px] text-slate-500 font-mono truncate hidden';}
   const card=document.getElementById(`devcard-${id}`);
   if(card){card.classList.remove('dev-card-run','dev-card-fault');}
   updateActiveCount();
   if([...devices.values()].filter(d=>d.isConnected).length < 2)
     document.getElementById('combinedChartWrap').classList.add('hidden');
-  addLog(`○ 裝置 #${id} 已斷線`, 'red');
+  addLog(`○ 裝置 #${id}${dev.bleName?' ['+dev.bleName+']':''} 已斷線`, 'red');
   showToast(`⚠ 裝置 #${id} 斷線`);
 }
 
 // ══════════════════════════════════════
-// BLE 接收 / Modbus 解析（per device）
+// BLE 接收 / Modbus ASCII 解析（per device）
 // ══════════════════════════════════════
 function onDevBleData(id, e) {
   const dev=devices.get(id);
   if(!dev) return;
-  if(dev.profile.protocol==='RTU') onDevRTU(dev,e);
-  else                              onDevASCII(dev,e);
-}
-function onDevRTU(dev, e) {
-  const chunk=new Uint8Array(e.target.value.buffer);
-  if(dev.rtuLen+chunk.length>dev.rtuBuf.length) dev.rtuLen=0;
-  dev.rtuBuf.set(chunk,dev.rtuLen); dev.rtuLen+=chunk.length;
-  tryParseRTU(dev);
-}
-function tryParseRTU(dev) {
-  while(dev.rtuLen>=4){
-    const fc=dev.rtuBuf[1]; let frameLen;
-    if     (fc===0x03){if(dev.rtuLen<3)break; frameLen=3+dev.rtuBuf[2]+2;}
-    else if(fc===0x06){frameLen=8;}
-    else{dev.rtuBuf.copyWithin(0,1);dev.rtuLen--;continue;}
-    if(dev.rtuLen<frameLen) break;
-    const c=crc16(dev.rtuBuf.slice(0,frameLen-2));
-    if((c&0xFF)===dev.rtuBuf[frameLen-2]&&((c>>8)&0xFF)===dev.rtuBuf[frameLen-1])
-      processFrame(dev,fc,dev.rtuBuf.slice(0,frameLen));
-    dev.rtuBuf.copyWithin(0,frameLen); dev.rtuLen-=frameLen;
-  }
-}
-function processFrame(dev, fc, frame) {
-  const p=dev.profile;
-  if(fc===0x03){
-    const cnt=frame[2]>>1;
-    // ── PAGE0 0x000D×3 回應（SW OCP + 溫度）──
-    if(dev.page0ReadPending&&cnt===3){
-      dev.page0ReadPending=false;
-      const swOcpRaw=(frame[3]<<8)|frame[4]; // 0x000D = SW OCP ×0.01A
-      const tempRaw =(frame[7]<<8)|frame[8]; // 0x000F = 溫度mV
-      if(swOcpRaw>0) dev.page0Values[13]=swOcpRaw;
-      if(tempRaw>0){
-        dev.page0Values[15]=tempRaw;
-        const ganT=ganAdcToTemp(tempRaw);
-        if(ganT!==null){ dev.tempD09=ganT; updateDevTemp(dev); }
-      }
-      return;
-    }
-    // ── Page10 D10 回應（原驅動器 MOS 溫度，直接°C整數）──
-    if(dev.page10Pending&&cnt===1){
-      dev.page10Pending=false;
-      const raw=(frame[3]<<8)|frame[4];
-      dev.tempD10=raw; // D10=MOS即時溫度，直接°C整數，存 tempD10（不覆蓋 tempD09）
-      updateDevTemp(dev);
-      devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
-      updateCard(dev); return;
-    }
-    // ── 主輪詢 16 暫存器 ──
-    if(!dev.page10Pending&&cnt===p.regCount){
-      for(let i=0;i<p.regCount;i++){
-        let v=(frame[3+i*2]<<8)|frame[4+i*2];
-        if(v>32767) v-=65536;
-        dev.currentValues[i]=v;
-      }
-      // RTU = GaN AI ROBOT，主輪詢即為 PAGE0(0x0000~)，idx=15=溫度mV
-      if(p.protocol==='RTU'){
-        for(let i=0;i<p.regCount;i++) dev.page0Values[i]=dev.currentValues[i];
-        const ganT=ganAdcToTemp(dev.page0Values[15]);
-        if(ganT!==null){ dev.tempD09=ganT; }
-      }
-      updateCard(dev);
-    }
-  }
-  if(fc===0x06){
-    const addr=(frame[2]<<8)|frame[3],val=(frame[4]<<8)|frame[5];
-    if(addr===0x090A&&val===0&&!dev.pollTimer){
-      const pkt=buildFC03(p.slaveId,p.startReg,p.regCount);
-      dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt),500);
-    }
-  }
-}
-function onDevASCII(dev, e) {
   dev.asciiBuffer+=new TextDecoder().decode(e.target.value);
   let idx;
   while((idx=dev.asciiBuffer.indexOf('\n'))!==-1){
     const line=dev.asciiBuffer.slice(0,idx+1).trim();
     dev.asciiBuffer=dev.asciiBuffer.slice(idx+1);
-    if(line.startsWith(':')) parsePacketASCII(dev,line);
+    if(line.startsWith(':')) parsePacket(dev, line);
   }
 }
-function parsePacketASCII(dev, pkt) {
+
+function parsePacket(dev, pkt) {
   if(pkt.length<7) return;
-  const p=dev.profile;
   const fc=pkt.substr(3,2);
   if(fc==='03'){
-    // ── PAGE0 0x000D×3 回應（SW OCP + 溫度），長度固定 21 字元 ──
-    if(dev.page0ReadPending&&pkt.length>=19&&pkt.length<=25){
+    // ── PAGE0 0x000D×3 回應（SW OCP + 溫度）, 長度 21 字元 ──
+    if(dev.page0ReadPending && pkt.length>=19 && pkt.length<=25){
       dev.page0ReadPending=false;
-      const dh=pkt.substr(7,12); // 6 bytes = 3 registers
-      const swOcpRaw=parseInt(dh.substr(0,4),16); // 0x000D
-      const tempRaw =parseInt(dh.substr(8,4),16); // 0x000F
+      const dh=pkt.substr(7,12);                    // 3 registers × 4 hex
+      const swOcpRaw=parseInt(dh.substr(0,4),16);   // 0x000D = SW OCP
+      const tempRaw =parseInt(dh.substr(8,4),16);   // 0x000F = 溫度mV
       if(swOcpRaw>0) dev.page0Values[13]=swOcpRaw;
       if(tempRaw>0){
         dev.page0Values[15]=tempRaw;
@@ -669,16 +581,16 @@ function parsePacketASCII(dev, pkt) {
       }
       return;
     }
-    // ── Page10 D10 回應（原驅動器 MOS 溫度，直接°C整數）──
-    if(dev.page10Pending&&pkt.length>=13&&pkt.length<20){
+    // ── Page10 D10 回應（MOS 溫度，直接°C整數）, 長度 13 字元 ──
+    if(dev.page10Pending && pkt.length>=13 && pkt.length<20){
       dev.page10Pending=false;
-      dev.tempD10=parseInt(pkt.substr(7,4),16); // D10=直接°C整數，存 tempD10（不覆蓋 tempD09）
+      dev.tempD10=parseInt(pkt.substr(7,4),16); // D10=直接°C整數，存 tempD10
       updateDevTemp(dev);
-      devSendModbus(dev, buildFC06(p.slaveId,0x090A,0));
+      devSend(dev, buildFC06(PROFILE.slaveId, 0x090A, 0));
       updateCard(dev); return;
     }
-    // ── 主輪詢 16 暫存器 ──
-    if(!dev.page10Pending&&pkt.length>=71){
+    // ── 主輪詢 16 暫存器，長度 ≥71 字元 ──
+    if(!dev.page10Pending && pkt.length>=71){
       const dh=pkt.substr(7,64);
       for(let i=0;i<16;i++){
         let v=parseInt(dh.substr(i*4,4),16);
@@ -689,41 +601,42 @@ function parsePacketASCII(dev, pkt) {
     }
   }
   if(fc==='06'){
-    const addr=parseInt(pkt.substr(5,4),16),val=parseInt(pkt.substr(9,4),16);
-    if(addr===0x090A&&val===0&&!dev.pollTimer){
-      const pkt2=buildFC03(p.slaveId,p.startReg,p.regCount);
-      dev.pollTimer=setInterval(()=>devSendModbus(dev,pkt2),500);
+    const addr=parseInt(pkt.substr(5,4),16), val=parseInt(pkt.substr(9,4),16);
+    if(addr===0x090A && val===0 && !dev.pollTimer){
+      const pkt2=buildFC03(PROFILE.slaveId, PROFILE.startReg, PROFILE.regCount);
+      dev.pollTimer=setInterval(()=>devSend(dev,pkt2), 500);
     }
   }
 }
+
+// ── Page10 D10 MOS 溫度讀取（每 8 秒）──
 async function doPage10Read(id) {
   const dev=devices.get(id);
   if(!dev||!dev.isConnected||dev.page10Pending) return;
-  const p=dev.profile;
   dev.page10Pending=true;
-  dev.page10ReadingReg=10; // D10=MOS即時溫度（直接°C整數，不套NTC公式）
-  devSendModbus(dev, buildFC06(p.slaveId,0x090A,10));
+  dev.page10ReadingReg=10; // D10=MOS即時溫度（直接°C整數）
+  devSend(dev, buildFC06(PROFILE.slaveId, 0x090A, 10));
   await new Promise(r=>setTimeout(r,800));
-  devSendModbus(dev, buildFC03(p.slaveId,dev.page10ReadingReg,1));
-  setTimeout(()=>{if(dev.page10Pending){dev.page10Pending=false;devSendModbus(dev,buildFC06(p.slaveId,0x090A,0));}},2500);
+  devSend(dev, buildFC03(PROFILE.slaveId, dev.page10ReadingReg, 1));
+  setTimeout(()=>{
+    if(dev.page10Pending){dev.page10Pending=false; devSend(dev,buildFC06(PROFILE.slaveId,0x090A,0));}
+  },2500);
 }
 
-// ── PAGE0 溫度+SW OCP 主動讀取（RTU & ASCII 通用）──
-// 讀 0x000D×3 → [13]=SW OCP×0.01A, [15]=溫度mV → ganAdcToTemp()
+// ── PAGE0 0x000D×3 讀取（每 3 秒，SW OCP + 溫度 0x000F）──
 async function doPage0Read(id) {
   const dev=devices.get(id);
   if(!dev||!dev.isConnected||dev.page0ReadPending) return;
   dev.page0ReadPending=true;
-  devSendModbus(dev, buildFC03(dev.profile.slaveId, 0x000D, 3));
+  devSend(dev, buildFC03(PROFILE.slaveId, 0x000D, 3));
   setTimeout(()=>{ if(dev.page0ReadPending) dev.page0ReadPending=false; }, 3000);
 }
 
 // ══════════════════════════════════════
-// 溫度顯示更新（即時，非僅最大值）
+// 溫度顯示更新
+// tempD09（GaN公式）優先，tempD10（Page10 D10）備用
 // ══════════════════════════════════════
 function updateDevTemp(dev) {
-  // tempD09 = GaN 線性公式換算（PAGE0 0x000F → ganAdcToTemp），優先顯示
-  // tempD10 = 原驅動器 Page10 D10 直接°C整數，備用
   const t = dev.tempD09 !== null ? dev.tempD09 : dev.tempD10;
   if(t===null||t===undefined) return;
   const id=dev.id;
@@ -739,7 +652,7 @@ function updateDevTemp(dev) {
 // 裝置卡片資料更新
 // ══════════════════════════════════════
 function updateCard(dev) {
-  const {idx,scale}=dev.profile;
+  const {idx,scale}=PROFILE;
   const id=dev.id;
   const st  =dev.currentValues[idx.status];
   const alm =dev.currentValues[idx.alarm];
@@ -790,8 +703,15 @@ function updateCard(dev) {
   // 功率累積 / 運轉時間
   const now=Date.now();
   const isRunning=(st===2);
-  if(isRunning&&!dev.pwrRunning){dev.pwrStartCount++;dev.pwrRunning=true;addLog(`▶ #${id} 啟動 #${dev.pwrStartCount}  ${rpm} RPM`,'green');}
-  if(!isRunning&&dev.pwrRunning){dev.pwrRunning=false;addLog(`■ #${id} 停止  累積 ${dev.pwrAccWh.toFixed(3)} Wh`);}
+  if(isRunning&&!dev.pwrRunning){
+    dev.pwrStartCount++;
+    dev.pwrRunning=true;
+    addLog(`▶ #${id}${dev.bleName?' ['+dev.bleName+']':''} 啟動 #${dev.pwrStartCount}  ${rpm} RPM`,'green');
+  }
+  if(!isRunning&&dev.pwrRunning){
+    dev.pwrRunning=false;
+    addLog(`■ #${id} 停止  累積 ${dev.pwrAccWh.toFixed(3)} Wh`);
+  }
   if(isRunning&&dev.pwrLastTime){
     const dt=(now-dev.pwrLastTime)/3600000;
     dev.pwrAccWh+=pwr*dt;
@@ -814,7 +734,7 @@ function updateCard(dev) {
     dev.almCnt++;
     _s(`salmcnt-${id}`, dev.almCnt+' 次');
     const hint=alarmHint(alm)||'';
-    almEvents.unshift({time:t,devId:id,code:alm,desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
+    almEvents.unshift({time:t,devId:id,devName:dev.bleName,code:alm,desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
     totalAlmCnt++;
     document.getElementById('almCntBadge').textContent=totalAlmCnt+' 次';
     renderAlmEvents();
@@ -830,10 +750,8 @@ function updateCard(dev) {
   // 溫度即時顯示
   updateDevTemp(dev);
 
-  // 合併趨勢圖
+  // 合併趨勢圖 / 記錄
   pushCombinedRpm(dev, rpm);
-
-  // 記錄快照
   snapshotRecord();
 }
 
@@ -854,16 +772,9 @@ function initCombinedChart() {
       responsive:true, maintainAspectRatio:false, animation:{duration:0},
       interaction:{mode:'index',intersect:false},
       scales:{
-        x:{
-          ticks:{color:'#94a3b8',font:{size:9,weight:'600'},maxRotation:0,autoSkip:true,maxTicksLimit:3},
-          grid:{color:'rgba(255,255,255,.06)'}
-        },
-        y:{
-          position:'left',
-          ticks:{color:'#94a3b8',font:{size:9}},
-          grid:{color:'rgba(255,255,255,.04)'},
-          title:{display:true,text:'RPM',color:'#94a3b8',font:{size:9}}
-        }
+        x:{ticks:{color:'#94a3b8',font:{size:9,weight:'600'},maxRotation:0,autoSkip:true,maxTicksLimit:3},grid:{color:'rgba(255,255,255,.06)'}},
+        y:{position:'left',ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'},
+           title:{display:true,text:'RPM',color:'#94a3b8',font:{size:9}}}
       },
       plugins:{
         legend:{labels:{color:'#94a3b8',font:{size:9},boxWidth:10,padding:8}},
@@ -875,11 +786,11 @@ function initCombinedChart() {
 
 function addCombinedDataset(dev) {
   if(!combinedChart) return;
-  const existing=combinedChart.data.datasets.find(d=>d.devId===dev.id);
-  if(existing) return;
+  if(combinedChart.data.datasets.find(d=>d.devId===dev.id)) return;
+  const label = dev.bleName ? `#${dev.id} ${dev.bleName}` : `#${dev.id} RPM`;
   combinedChart.data.datasets.push({
     devId: dev.id,
-    label: `#${dev.id} RPM`,
+    label,
     data: [],
     borderColor: dev.color,
     backgroundColor: dev.color+'22',
@@ -902,21 +813,15 @@ function pushCombinedRpm(dev, rpm) {
   const t=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const ds=combinedChart.data.datasets.find(d=>d.devId===dev.id);
   if(!ds) return;
-
-  // 所有裝置共用 label（以最新一次為準）
   combinedLabels.push(t);
   if(combinedLabels.length>COMBINED_MAX) combinedLabels.shift();
   combinedChart.data.labels=combinedLabels;
-
   ds.data.push(rpm);
   if(ds.data.length>COMBINED_MAX) ds.data.shift();
-
-  // 補齊其他裝置資料長度
   combinedChart.data.datasets.forEach(d=>{
     while(d.data.length<combinedLabels.length) d.data.unshift(null);
     if(d.data.length>COMBINED_MAX) d.data.shift();
   });
-
   combinedChart.update('none');
 }
 
@@ -949,7 +854,7 @@ function renderAlmEvents() {
     <div class="${bg(a.sev)} border rounded-xl px-3 py-2.5 mb-2">
       <div class="flex items-center gap-2 mb-1">
         <span class="text-base leading-none">${icon(a.sev)}</span>
-        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-current" style="color:${DEV_COLORS[(a.devId-1)%DEV_COLORS.length]}">#${a.devId}</span>
+        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-current" style="color:${DEV_COLORS[(a.devId-1)%DEV_COLORS.length]}">#${a.devId}${a.devName?' '+a.devName:''}</span>
         <span class="badge-${a.sev} text-[10px] font-black px-2 py-0.5 rounded-lg">警報 ${a.code}</span>
         <span class="text-xs font-bold text-slate-200">${a.desc}</span>
         <span class="ml-auto text-[10px] text-slate-600 font-mono shrink-0">${a.time}</span>
@@ -980,26 +885,36 @@ function renderLog() {
 function clearLog(){sysLog=[];renderLog();}
 
 // ══════════════════════════════════════
-// 統計折疊 / 重置
-// ══════════════════════════════════════
-// ══════════════════════════════════════
 // 馬達控制（per device）
 // ══════════════════════════════════════
 function devSendRun(id) {
   const dev=devices.get(id);
   if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
-  const p=dev.profile;
-  devSendModbus(dev, buildFC06(p.slaveId, 0x1400, 1));
+  devSend(dev, buildFC06(PROFILE.slaveId, 0x1400, 1));
   if(navigator.vibrate) navigator.vibrate(30);
   addLog(`▶ #${id} 發送啟動指令`, 'green');
 }
 function devSendStop(id) {
   const dev=devices.get(id);
   if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
-  const p=dev.profile;
-  devSendModbus(dev, buildFC06(p.slaveId, 0x1400, 0));
+  devSend(dev, buildFC06(PROFILE.slaveId, 0x1400, 0));
   if(navigator.vibrate) navigator.vibrate(30);
   addLog(`⏹ #${id} 發送停止指令`);
+}
+// 異常復規：先停止（0x1400=0），再送復規碼（0x1400=6），清除故障狀態
+function devSendReset(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  devSend(dev, buildFC06(PROFILE.slaveId, 0x1400, 0));       // 先停止
+  setTimeout(()=>{
+    devSend(dev, buildFC06(PROFILE.slaveId, 0x1400, 0x06));  // 送復規碼 6
+  }, 200);
+  setTimeout(()=>{
+    devSend(dev, buildFC06(PROFILE.slaveId, 0x1400, 0));     // 回到停止狀態
+  }, 500);
+  if(navigator.vibrate) navigator.vibrate([30,50,30]);
+  showToast(`🔄 #${id} 異常復規指令已送出`);
+  addLog(`🔄 #${id} 發送異常復規指令`, 'green');
 }
 
 function toggleStats(id) {
@@ -1028,7 +943,7 @@ function resetAllStats() {
 }
 
 // ══════════════════════════════════════
-// 記錄 / CSV 匯出
+// 記錄 / CSV 匯出（含累積功率）
 // ══════════════════════════════════════
 let recActive=false, recData=[], recStartTime=null;
 
@@ -1055,17 +970,20 @@ function snapshotRecord() {
   const t=new Date().toLocaleTimeString('zh-TW');
   devices.forEach(dev=>{
     if(!dev.isConnected) return;
-    const {idx,scale}=dev.profile;
+    const {idx,scale}=PROFILE;
+    const temp = dev.tempD09!==null ? dev.tempD09 : (dev.tempD10!==null ? dev.tempD10 : '');
     recData.push({
-      time: t,
-      dev: dev.id,
-      rpm:  dev.currentValues[idx.rpm],
-      cur:  (dev.currentValues[idx.current]*scale.current).toFixed(2),
-      vlt:  (dev.currentValues[idx.voltage]*scale.voltage).toFixed(1),
-      pwr:  dev.currentValues[idx.power],
-      dty:  (dev.currentValues[idx.duty]*scale.duty).toFixed(1),
-      temp: dev.tempD09!==null?dev.tempD09:'',
-      alm:  dev.currentValues[idx.alarm]
+      time:  t,
+      dev:   dev.id,
+      name:  dev.bleName || '',
+      rpm:   dev.currentValues[idx.rpm],
+      cur:   (dev.currentValues[idx.current]*scale.current).toFixed(2),
+      vlt:   (dev.currentValues[idx.voltage]*scale.voltage).toFixed(1),
+      pwr:   dev.currentValues[idx.power],
+      dty:   (dev.currentValues[idx.duty]*scale.duty).toFixed(1),
+      temp,
+      alm:   dev.currentValues[idx.alarm],
+      wh:    dev.pwrAccWh.toFixed(4)   // ★ 累積功率 Wh
     });
   });
   const sec=Math.round((Date.now()-recStartTime)/1000);
@@ -1074,12 +992,15 @@ function snapshotRecord() {
 
 function exportCSV() {
   if(!recData.length){showToast('尚無記錄資料');return;}
-  const hdr='時間,裝置,轉速RPM,電流A,電壓V,功率W,工作週期%,溫度°C,警報代號\n';
-  const rows=recData.map(r=>`${r.time},#${r.dev},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.temp},${r.alm}`).join('\n');
+  // ★ 欄位包含裝置名稱 + 累積電能(Wh)
+  const hdr='時間,裝置,裝置名稱,轉速RPM,電流A,電壓V,功率W,工作週期%,溫度°C,警報代號,累積電能Wh\n';
+  const rows=recData.map(r=>
+    `${r.time},#${r.dev},${r.name},${r.rpm},${r.cur},${r.vlt},${r.pwr},${r.dty},${r.temp},${r.alm},${r.wh}`
+  ).join('\n');
   const blob=new Blob(['﻿'+hdr+rows],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=`motor_v2_${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.csv`;
+  a.download=`motor_v3_${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.csv`;
   a.click(); URL.revokeObjectURL(a.href);
   showToast('✅ CSV 匯出完成');
 }
