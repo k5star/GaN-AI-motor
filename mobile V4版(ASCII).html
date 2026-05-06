@@ -96,7 +96,7 @@
     <div class="mb-3">
       <label class="block text-[11px] text-slate-500 uppercase tracking-widest font-semibold mb-1.5">帳號</label>
       <input id="loginUser" type="text" class="login-input"
-        placeholder="Username" value="ITRI" autocomplete="username"
+        placeholder="Username" autocomplete="username"
         onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
     </div>
 
@@ -105,7 +105,7 @@
       <label class="block text-[11px] text-slate-500 uppercase tracking-widest font-semibold mb-1.5">密碼</label>
       <div style="position:relative">
         <input id="loginPass" type="password" class="login-input"
-          placeholder="Password" value="ITRI" autocomplete="current-password"
+          placeholder="Password" autocomplete="current-password"
           style="padding-right:44px"
           onkeydown="if(event.key==='Enter')doLogin()">
         <button onclick="togglePw()" tabindex="-1"
