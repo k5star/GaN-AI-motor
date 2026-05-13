@@ -210,6 +210,30 @@
     .btn-export{background:#2a3010;border:1px solid #4a5020;color:#b8cc60;border-radius:8px;padding:7px;font-size:.72rem;font-weight:700;cursor:pointer;transition:background .15s;}
     .btn-export:active{background:#3a4020;}
     .btn-clear{background:transparent;border:1px solid #2a3f58;color:#4a6080;border-radius:8px;padding:5px;font-size:.68rem;cursor:pointer;}
+
+    /* ── 模式切換 ── */
+    .mode-card{
+      width:100%;max-width:520px;background:var(--card);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+    }
+    .mode-toggle-row{display:flex;gap:8px;align-items:stretch;}
+    .mode-toggle-row .btn{flex:1;padding:12px 0;font-size:.82rem;position:relative;}
+    .btn-mode-ble  {background:#1a3a5a;border:2px solid #2a5a8a;color:#80b8e8;}
+    .btn-mode-ble.active  {background:#1a4a7a;border-color:var(--accent);color:var(--accent);box-shadow:0 0 10px rgba(0,229,255,.25);}
+    .btn-mode-joy  {background:#2a2a1a;border:2px solid #4a4a1a;color:#b0a860;}
+    .btn-mode-joy.active  {background:#3a3a10;border-color:#ffd740;color:#ffd740;box-shadow:0 0 10px rgba(255,215,64,.25);}
+    .mode-status{margin-top:8px;text-align:center;font-size:.72rem;color:var(--muted);min-height:18px;}
+    .mode-side-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+    .mode-side-btn{
+      padding:9px 0;border:1px solid #1e3050;border-radius:8px;
+      font-size:.72rem;font-weight:700;cursor:pointer;transition:all .15s;
+      background:#0d1820;color:var(--muted);text-align:center;
+    }
+    .mode-side-btn:active{transform:scale(.96);}
+    .mode-side-btn.ble-btn {border-color:#2a5a8a;color:#80b8e8;}
+    .mode-side-btn.ble-btn:hover{background:#1a3a5a;}
+    .mode-side-btn.joy-btn {border-color:#4a4a1a;color:#b0a860;}
+    .mode-side-btn.joy-btn:hover{background:#2a2a1a;}
   </style>
 </head>
 <body>
@@ -357,6 +381,35 @@
     <span class="status-txt" id="stTxtR" style="color:var(--muted)">未連線</span>
     <span class="status-alm alm-blink" id="stAlmR" style="display:none"></span>
     <button class="btn btn-red status-rst" id="stRstR" onclick="clearAlarm('R')" disabled>重置異常</button>
+  </div>
+</div>
+
+<!-- ═══ 控制模式切換 (0x0209) ═══ -->
+<div class="mode-card">
+  <div class="card-title">🔀 控制模式切換 (0x0209)</div>
+
+  <!-- 一鍵切換兩輪 -->
+  <div class="mode-toggle-row">
+    <button class="btn btn-mode-ble active" id="btnModeBle"
+            onclick="setModeAll(0)">
+      📱 單機藍芽控制<br>
+      <span style="font-size:.65rem;opacity:.8;">0x0209 = 0（獨立BLE）</span>
+    </button>
+    <button class="btn btn-mode-joy" id="btnModeJoy"
+            onclick="setModeAll(3)">
+      🕹 多機搖桿控制<br>
+      <span style="font-size:.65rem;opacity:.8;">0x0209 = 3（MDL串聯）</span>
+    </button>
+  </div>
+  <div class="mode-status" id="modeStatus">— 目前模式未讀取，請連線後切換 —</div>
+
+  <!-- 左輪 / 右輪 單獨切換 -->
+  <div style="font-size:.68rem;color:var(--muted);margin-top:10px;margin-bottom:4px;">單輪個別設定</div>
+  <div class="mode-side-row">
+    <button class="mode-side-btn ble-btn" onclick="setModeOne('L',0)">左輪 📱 BLE (=0)</button>
+    <button class="mode-side-btn ble-btn" onclick="setModeOne('R',0)">右輪 📱 BLE (=0)</button>
+    <button class="mode-side-btn joy-btn" onclick="setModeOne('L',3)">左輪 🕹 搖桿 (=3)</button>
+    <button class="mode-side-btn joy-btn" onclick="setModeOne('R',3)">右輪 🕹 搖桿 (=3)</button>
   </div>
 </div>
 
@@ -672,6 +725,49 @@ async function clearAlarm(side) {
   if (!W[side].txChar) return;
   await enqueueTx(side, mbFC06(getNodeId(side), 0x0A00, 1));
   log(`[${side}] 發送警報重置`, 'tx');
+}
+
+// ═══════════════════════════════════════════════════
+//  控制模式切換 — 0x0209 多機模式暫存器
+//  0 = 單機藍芽控制 (Single)
+//  3 = 多機搖桿控制 (MDL)
+// ═══════════════════════════════════════════════════
+async function setModeOne(side, val) {
+  if (!W[side].txChar) { log(`[${side}] 未連線，無法設定模式`, 'err'); return; }
+  const nid = getNodeId(side);
+  const modeName = val === 0 ? '📱 單機藍芽(0)' : '🕹 多機搖桿(3)';
+  await enqueueTx(side, mbFC06(nid, 0x0209, val));
+  log(`[${side}] 0x0209 = ${val}  →  ${modeName}`, 'ok');
+  updateModeUI(val);
+}
+
+async function setModeAll(val) {
+  const hasL = !!W.L.txChar, hasR = !!W.R.txChar;
+  if (!hasL && !hasR) {
+    log('[系統] 請先連接左輪或右輪', 'err');
+    document.getElementById('modeStatus').textContent = '⚠ 尚未連線，請先連接 BLE';
+    return;
+  }
+  const modeName = val === 0 ? '📱 單機藍芽控制 (0x0209=0)' : '🕹 多機搖桿控制 (0x0209=3)';
+  const sides = [];
+  if (hasL) { await setModeOne('L', val); sides.push('左輪'); }
+  if (hasR) { await setModeOne('R', val); sides.push('右輪'); }
+  const statusEl = document.getElementById('modeStatus');
+  statusEl.textContent = `✅ ${sides.join('+')} 已切換為 ${modeName}`;
+  statusEl.style.color = val === 0 ? '#80b8e8' : '#ffd740';
+  updateModeUI(val);
+}
+
+function updateModeUI(val) {
+  const bleBtn = document.getElementById('btnModeBle');
+  const joyBtn = document.getElementById('btnModeJoy');
+  if (val === 0) {
+    bleBtn.classList.add('active');
+    joyBtn.classList.remove('active');
+  } else {
+    joyBtn.classList.add('active');
+    bleBtn.classList.remove('active');
+  }
 }
 
 function pollPwr() {
