@@ -354,7 +354,7 @@
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','04',0)">02-04=0<br><span style="font-size:.6rem;">速度:面板</span></button>
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','07',85)">02-07=85<br><span style="font-size:.6rem;">減速時間</span></button>
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','09',0)">02-09=0<br><span style="font-size:.6rem;">還原</span></button>
-      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','10',0)">02-10=0<br><span style="font-size:.6rem;">Single模式</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','09',0)">02-09=0<br><span style="font-size:.6rem;">Single模式</span></button>
     </div>
   </div>
 </div>
@@ -365,7 +365,7 @@
   <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px;line-height:1.6;">
     透過 BLE 寫入參數，不需燒韌體：<br>
     <span style="color:#40c4ff;">02-03 = 0</span>（NET模式，BLE可控）&nbsp;
-    <span style="color:#40c4ff;">02-10 = 0</span>（Single，獨立控制）
+    <span style="color:#40c4ff;">02-09 = 0</span>（Single，獨立控制）
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <button class="btn btn-teal" style="flex:2;padding:10px 0;" onclick="initMotorMode()">
@@ -810,6 +810,7 @@ function parseReply(side, pkt) {
     const addrName = addr === 0x1400 ? '1400h(CMD)' :
                      addr === 0x3F08 ? '3F08h(RPM)' :
                      addr === 0x0203 ? '0203h(02-03)' :
+                     addr === 0x0209 ? '0209h(02-09 多機模式)' :
                      addr === 0x020A ? '020Ah(02-10)' :
                      `${addr.toString(16).toUpperCase()}h`;
     log(`[${side}] ✓ ${addrName}=${val}`, 'ok');
@@ -958,7 +959,7 @@ function renderCompare() {
     '0200':'02-00 控制模式', '0201':'02-01 速度模式', '0202':'02-02 停止方式',
     '0203':'02-03 運轉來源', '0204':'02-04 速度來源', '0205':'02-05 多功能',
     '0206':'02-06 加速時間', '0207':'02-07 減速時間', '0208':'02-08 S曲線',
-    '0209':'02-09', '020A':'02-10 多機模式', '020B':'02-11',
+    '0209':'02-09 多機模式', '020A':'02-10', '020B':'02-11',
     '020C':'02-12', '020D':'02-13', '020E':'02-14', '020F':'02-15',
   };
   let html = '<div style="color:#4dd0c4;margin-bottom:4px;">— 左右輪參數比對 —</div>';
@@ -1055,8 +1056,8 @@ const PARAM_DESC = {
   '0206':'02-06 加速時間',
   '0207':'02-07 減速時間',
   '0208':'02-08 S曲線',
-  '0209':'02-09 (誤寫過=0)',
-  '020A':'02-10 多機模式 (0=Single,3=MDL)',
+  '0209':'02-09 多機模式 (0=Single,3=MDL) (誤寫過=0)',
+  '020A':'02-10',
   '020B':'02-11',
   '020C':'02-12',
   '020D':'02-13',
@@ -1327,7 +1328,7 @@ function stopSendLoop() { clearInterval(sendTimer); sendTimer = null; }
 // ═══════════════════════════════════════════════════
 //  初始化馬達模式（BLE 寫入參數，免燒韌體）
 //  02-03 (0202h) = 0 → NET/Modbus 控制來源
-//  02-10 (0209h) = 0 → Single 模式
+//  02-09 (0209h) = 0 → Single 模式（多機模式，0=Single,3=MDL）
 // ═══════════════════════════════════════════════════
 async function initMotorMode() {
   const hasL = !!W.L.txChar, hasR = !!W.R.txChar;
@@ -1343,12 +1344,12 @@ async function initMotorMode() {
       // Step1: 02-03 = 0（NET 模式）地址 0203h
       await enqueueTx(side, mbFC06(nid, 0x0203, 0));
       await sleep(200);
-      // Step2: 02-10 = 0（Single）地址 020Ah
-      await enqueueTx(side, mbFC06(nid, 0x020A, 0));
+      // Step2: 02-09 = 0（Single 模式）地址 0209h（多機模式暫存器）
+      await enqueueTx(side, mbFC06(nid, 0x0209, 0));
       await sleep(200);
       // Step3: 儲存到 EEPROM（若有需要可加，目前用 RAM 即可）
       results.push(`${side}✓`);
-      log(`[${side}] 02-03=0, 02-10=0 寫入完成`, 'ok');
+      log(`[${side}] 02-03=0, 02-09=0 寫入完成`, 'ok');
     } catch(e) {
       results.push(`${side}✗`);
       log(`[${side}] 寫入失敗: ${e.message}`, 'err');
@@ -1356,22 +1357,22 @@ async function initMotorMode() {
   }
 
   document.getElementById('initStatus').textContent =
-    `完成 ${results.join(' ')} — 0203h(02-03)=0(NET) 020Ah(02-10)=0(Single)`;
+    `完成 ${results.join(' ')} — 0203h(02-03)=0(NET) 0209h(02-09)=0(Single)`;
 }
 
 async function readMotorMode() {
   if (!W.L.txChar && !W.R.txChar) { log('請先連接 BLE', 'err'); return; }
 
-  // 讀取 02-03 和 02-10 目前值
-  // FC03 讀取：從 0202h 開始讀 8 個暫存器
+  // 讀取 02-03 和 02-09 目前值
+  // FC03 讀取：從 0203h 開始讀 7 個暫存器（0203h~0209h）
   for (const side of ['L', 'R']) {
     if (!W[side].txChar) continue;
     const nid = getNodeId(side);
     const nn = nid & 0xFF;
-    // 讀 0203h 開始 8 個暫存器 (02-03 ~ 02-10)
-    const frame = mbFC03(nid, 0x0203, 8);
+    // 讀 0203h 開始 7 個暫存器 (02-03 ~ 02-09，含多機模式 0209h)
+    const frame = mbFC03(nid, 0x0203, 7);
     await enqueueTx(side, frame);
-    log(`[${side}] 讀取 02-03/02-10 參數…`, 'tx');
+    log(`[${side}] 讀取 02-03/02-09(多機模式) 參數…`, 'tx');
   }
 }
 
