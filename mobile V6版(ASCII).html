@@ -697,9 +697,15 @@ async function doSyncBatch() {
       } catch(_) { hint = errText.slice(0, 120); }
       syncErrorCount++;
       updateSyncStatus('error');
-      addLog(`⚠ Supabase HTTP ${resp.status}：${hint || errText.slice(0,80)}`, 'red');
-      if (resp.status === 403 || resp.status === 401)
-        addLog('💡 請在 Supabase SQL Editor 執行：GRANT INSERT ON motor_logs TO anon;', 'red');
+      // 只在前 3 次或每 10 次出一次 log，避免 schema cache 錯誤狂刷畫面
+      const isSchemaCache = hint.includes('schema cache') || hint.includes('does not exist');
+      if (syncErrorCount <= 3 || syncErrorCount % 10 === 0) {
+        addLog(`⚠ Supabase HTTP ${resp.status}：${hint || errText.slice(0,80)}`, 'red');
+        if (isSchemaCache)
+          addLog('💡 請在 Supabase SQL Editor 執行：NOTIFY pgrst, \'reload schema\';', 'red');
+        else if (resp.status === 403 || resp.status === 401)
+          addLog('💡 請在 Supabase SQL Editor 執行：GRANT INSERT ON motor_logs TO anon;', 'red');
+      }
     }
   } catch(e) {
     syncErrorCount++;
