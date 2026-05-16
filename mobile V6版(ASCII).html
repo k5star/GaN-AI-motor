@@ -651,8 +651,12 @@ async function doSyncBatch() {
     if (!batch.length) { updateSyncStatus('idle'); return; }
 
     // 移除本機 id（GENERATED ALWAYS AS IDENTITY 不能插入）
-    // 也移除 synced 欄位（Supabase 端不需要）
-    const payload = batch.map(({ id, synced, ...rest }) => rest);
+    // 也移除 synced 欄位 + 所有 null/undefined 欄位（避免 schema cache 錯誤）
+    const payload = batch.map(({ id, synced, ...rest }) => {
+      const out = {};
+      Object.entries(rest).forEach(([k, v]) => { if (v !== null && v !== undefined) out[k] = v; });
+      return out;
+    });
 
     updateSyncStatus('syncing');
 
