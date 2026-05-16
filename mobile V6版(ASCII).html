@@ -176,14 +176,6 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
     <div class="flex items-center gap-2">
       <span id="metaSaveHint"
         style="font-size:10px;color:#34d399;opacity:0;transition:opacity .3s;pointer-events:none;font-weight:700">✓ 已儲存</span>
-      <button onclick="saveMeta(true)"
-        style="font-size:12px;font-weight:800;padding:6px 16px;border-radius:10px;
-               border:1px solid rgba(6,182,212,.5);background:rgba(6,182,212,.15);
-               color:#22d3ee;cursor:pointer;transition:.2s"
-        onmouseenter="this.style.background='rgba(6,182,212,.3)'"
-        onmouseleave="this.style.background='rgba(6,182,212,.15)'">
-        💾 儲存設定
-      </button>
       <span id="metaArrow" class="text-slate-600 text-xs cursor-pointer" onclick="toggleMetaPanel()">▼</span>
     </div>
   </div>
@@ -212,6 +204,12 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <div class="text-[9px] text-slate-600 mb-1">📝 備註</div>
       <textarea id="metaNoteArea" rows="2" placeholder="測試說明、環境條件、觀察…"
         oninput="saveMeta()"></textarea>
+    </div>
+    <div class="col-span-2 mt-1">
+      <button onclick="saveMeta(true)"
+        class="btn-press w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition">
+        💾 儲存設定
+      </button>
     </div>
   </div>
 </div>
@@ -262,20 +260,22 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
         <input type="datetime-local" id="segEnd" step="1">
       </div>
     </div>
-    <button onclick="analyzeSegment()"
-      class="btn-press w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition mb-2">
-      分析區段
-    </button>
+    <div class="flex gap-2 mb-2">
+      <button onclick="analyzeSegment()"
+        class="btn-press flex-1 py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition">
+        🔍 分析區段
+      </button>
+      <button onclick="exportSegCSV()"
+        class="btn-press flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold rounded-xl text-sm transition">
+        📥 匯出 CSV
+      </button>
+    </div>
     <!-- 分析結果（動態顯示） -->
     <div id="segResult" class="hidden">
       <div id="segStats" class="grid grid-cols-2 gap-1.5 mb-3"></div>
       <div style="position:relative;height:150px" class="mb-2">
         <canvas id="segChart"></canvas>
       </div>
-      <button onclick="exportSegCSV()"
-        class="btn-press w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition">
-        📥 匯出區段 CSV
-      </button>
     </div>
   </div>
 </div>
