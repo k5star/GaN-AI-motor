@@ -265,21 +265,27 @@ function loading(on) {
 // 載入篩選下拉選項
 // ══════════════════════════════════════════════════════
 async function loadOptions() {
+  const fill = (elId, vals, fmt) => {
+    const sel = document.getElementById(elId);
+    while (sel.options.length > 1) sel.remove(1);
+    vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
+  };
+  // 先嘗試完整欄位；若某欄位不存在（HTTP 400）則退回只取基本欄位
+  let rows = null;
   try {
-    const rows = await sbFetch('select=operator%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
-    const fill = (elId, vals, fmt) => {
-      const sel = document.getElementById(elId);
-      // 清除舊選項（保留第一個「全部」）
-      while (sel.options.length > 1) sel.remove(1);
-      vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
-    };
-    fill('fOperator',  [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort());
-    fill('fDevice',    [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b), v=>`裝置 #${v}`);
-    fill('fLocation',  [...new Set(rows.map(r=>r.location).filter(Boolean))].sort());
-    fill('fEquipment', [...new Set(rows.map(r=>r.equipment).filter(Boolean))].sort());
-    const opCount = document.getElementById('fOperator').options.length - 1;
-    setStatus(`已載入篩選選項（${opCount} 位操作員）`);
-  } catch(e) { setStatus('載入選項失敗：'+e.message,'red'); console.error('loadOptions',e); }
+    rows = await sbFetch('select=operator%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
+  } catch(e) {
+    try {
+      rows = await sbFetch('select=operator%2Cdevice_id&limit=5000');
+      setStatus('⚠ Supabase 缺少 location/equipment 欄位，請執行 ALTER TABLE', 'yellow');
+    } catch(e2) { setStatus('載入選項失敗：'+e2.message,'red'); return; }
+  }
+  fill('fOperator',  [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort());
+  fill('fDevice',    [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b), v=>`裝置 #${v}`);
+  fill('fLocation',  [...new Set(rows.map(r=>r.location).filter(Boolean))].sort());
+  fill('fEquipment', [...new Set(rows.map(r=>r.equipment).filter(Boolean))].sort());
+  const opCount = document.getElementById('fOperator').options.length - 1;
+  if (opCount > 0) setStatus(`已載入篩選選項（${opCount} 位操作員）`);
 }
 
 // ══════════════════════════════════════════════════════
