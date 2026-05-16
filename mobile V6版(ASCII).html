@@ -582,8 +582,10 @@ async function doSyncNow() {
 async function doSyncBatch() {
   if (!navigator.onLine) { updateSyncStatus('offline'); return; }
   try {
-    const unsync = await dbGetAll('logs', 'synced', IDBKeyRange.only(false));
-    const batch  = unsync.slice(0, SYNC_BATCH);
+    // IDBKeyRange 不支援布林值 key，改為撈全部再 JS filter
+    const allLogs = await dbGetAll('logs', null, null);
+    const unsync  = allLogs.filter(r => !r.synced);
+    const batch   = unsync.slice(0, SYNC_BATCH);
     if (!batch.length) { updateSyncStatus('idle'); return; }
 
     // 移除本機 id（GENERATED ALWAYS AS IDENTITY 不能插入）
