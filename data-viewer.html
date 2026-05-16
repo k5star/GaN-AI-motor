@@ -70,6 +70,14 @@ tr:hover td{background:rgba(255,255,255,.025)}
       <select id="fDevice"><option value="">全部裝置</option></select>
     </div>
     <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">📍 地點</label>
+      <select id="fLocation"><option value="">全部地點</option></select>
+    </div>
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">🔧 設備型號</label>
+      <select id="fEquipment"><option value="">全部設備</option></select>
+    </div>
+    <div>
       <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">📅 起始時間（台灣）</label>
       <input type="datetime-local" id="fFrom">
     </div>
@@ -93,7 +101,7 @@ tr:hover td{background:rgba(255,255,255,.025)}
 </div>
 
 <!-- ══ KPI Cards ══ -->
-<div class="grid grid-cols-3 md:grid-cols-6 gap-3">
+<div class="grid grid-cols-3 md:grid-cols-7 gap-3">
   <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">總筆數</div>
     <div class="kpi-val text-cyan-400" id="kTotal">—</div></div>
   <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">均轉速</div>
@@ -108,6 +116,9 @@ tr:hover td{background:rgba(255,255,255,.025)}
   <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">最大功率</div>
     <div class="kpi-val text-rose-400" id="kPow">—</div>
     <div class="text-[9px] text-slate-600">W</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">累積電能</div>
+    <div class="kpi-val text-orange-400" id="kWh">—</div>
+    <div class="text-[9px] text-slate-600">Wh（≈每秒1筆）</div></div>
   <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">事件數</div>
     <div class="kpi-val text-sky-400" id="kEvt">—</div>
     <div class="text-[9px] text-slate-600">筆</div></div>
@@ -170,20 +181,38 @@ tr:hover td{background:rgba(255,255,255,.025)}
     <h2 class="text-sm font-bold text-slate-300">📋 數據列表 <span id="tblInfo" class="text-xs text-slate-500 font-normal"></span></h2>
     <span id="tblArrow" class="text-slate-600">▼</span>
   </div>
-  <div id="tblBody" class="overflow-x-auto">
+  <div id="tblBody">
+    <!-- 刪除工具列 -->
+    <div class="flex items-center gap-3 mb-3 flex-wrap">
+      <label class="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+        <input type="checkbox" id="chkAll" onchange="toggleAll(this)"
+          style="width:14px;height:14px;accent-color:#22d3ee;cursor:pointer">
+        全選本頁
+      </label>
+      <span id="chkInfo" class="text-xs text-slate-600 font-mono">已選 0 筆</span>
+      <button class="btn btn-sm" id="deleteBtn" onclick="deleteSelected()"
+        style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171;opacity:.5"
+        disabled>🗑 刪除選取</button>
+      <span class="text-[10px] text-slate-700">（刪除為永久操作，請謹慎）</span>
+    </div>
+    <div class="overflow-x-auto">
     <table>
       <thead>
         <tr>
-          <th>本地時間</th><th>操作員</th><th>裝置</th><th>馬達狀態</th>
+          <th style="width:32px"></th>
+          <th>本地時間</th><th>操作員</th><th>裝置</th>
+          <th>📍地點</th><th>🔧設備</th><th class="text-right">🏋負重kg</th>
+          <th>馬達狀態</th>
           <th class="text-right">RPM</th><th class="text-right">電流 A</th>
           <th class="text-right">電壓 V</th><th class="text-right">功率 W</th>
           <th class="text-right">溫度 °C</th><th>事件</th>
         </tr>
       </thead>
       <tbody id="dataTbody">
-        <tr><td colspan="10" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
+        <tr><td colspan="14" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
       </tbody>
     </table>
+    </div>
     <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/60">
       <button class="btn btn-sm btn-ghost" id="prevBtn" onclick="changePage(-1)">◀ 上一頁</button>
       <span id="pageInfo" class="text-xs text-slate-500 font-mono"></span>
@@ -237,14 +266,16 @@ function loading(on) {
 // ══════════════════════════════════════════════════════
 async function loadOptions() {
   try {
-    const rows = await sbFetch('select=operator%2Cdevice_id&limit=5000');
-    const ops  = [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort();
-    const devs = [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b);
-    const os = document.getElementById('fOperator');
-    ops.forEach(o => { const opt=document.createElement('option'); opt.value=o; opt.textContent=o; os.appendChild(opt); });
-    const ds = document.getElementById('fDevice');
-    devs.forEach(d => { const opt=document.createElement('option'); opt.value=d; opt.textContent=`裝置 #${d}`; ds.appendChild(opt); });
-    setStatus(`已載入（${ops.length} 操作員 · ${devs.length} 裝置）`);
+    const rows = await sbFetch('select=operator%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
+    const fill = (elId, vals, fmt) => {
+      const sel = document.getElementById(elId);
+      vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
+    };
+    fill('fOperator',  [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort());
+    fill('fDevice',    [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b), v=>`裝置 #${v}`);
+    fill('fLocation',  [...new Set(rows.map(r=>r.location).filter(Boolean))].sort());
+    fill('fEquipment', [...new Set(rows.map(r=>r.equipment).filter(Boolean))].sort());
+    setStatus(`已載入篩選選項`);
   } catch(e) { setStatus('載入選項失敗：'+e.message,'red'); }
 }
 
@@ -269,10 +300,14 @@ async function doQuery() {
     const parts = ['select=*','order=timestamp.asc','limit=5000'];
     const op  = document.getElementById('fOperator').value;
     const dev = document.getElementById('fDevice').value;
+    const loc = document.getElementById('fLocation').value;
+    const eq  = document.getElementById('fEquipment').value;
     const fr  = document.getElementById('fFrom').value;
     const to  = document.getElementById('fTo').value;
     if (op)  parts.push(`operator=eq.${encodeURIComponent(op)}`);
     if (dev) parts.push(`device_id=eq.${dev}`);
+    if (loc) parts.push(`location=eq.${encodeURIComponent(loc)}`);
+    if (eq)  parts.push(`equipment=eq.${encodeURIComponent(eq)}`);
     if (fr)  parts.push(`timestamp=gte.${new Date(fr).toISOString()}`);
     if (to)  parts.push(`timestamp=lte.${new Date(to).toISOString()}`);
 
@@ -312,11 +347,15 @@ function renderKPIs() {
   const pow = allData.filter(r=>r.power_w!=null).map(r=>+r.power_w);
   const evt = allData.filter(r=>r.event);
 
+  // 累積電能 Wh（每筆 = 1 秒，∑power_w / 3600）
+  const wh = pow.reduce((s,v)=>s+v, 0) / 3600;
+
   document.getElementById('kTotal').textContent = n.toLocaleString();
   document.getElementById('kRpm').textContent   = rpm.length ? Math.round(avg(rpm)).toLocaleString() : '—';
   document.getElementById('kCur').textContent   = cur.length ? Math.max(...cur).toFixed(2) : '—';
   document.getElementById('kVolt').textContent  = vol.length ? avg(vol).toFixed(1) : '—';
   document.getElementById('kPow').textContent   = pow.length ? Math.max(...pow).toLocaleString() : '—';
+  document.getElementById('kWh').textContent    = pow.length ? wh.toFixed(3) : '—';
   document.getElementById('kEvt').textContent   = evt.length;
 }
 
@@ -517,9 +556,17 @@ function renderTable() {
     const stc = MOTOR_STATE_CLR[st]||'#94a3b8';
     const stt = MOTOR_STATE_TXT[st]??`${st}`;
     return `<tr>
+      <td class="text-center" style="padding:4px 6px">
+        <input type="checkbox" class="row-chk" data-id="${r.id}"
+          onchange="updateChkCount()"
+          style="width:14px;height:14px;accent-color:#22d3ee;cursor:pointer">
+      </td>
       <td class="font-mono text-[11px]">${localLabel(r)}</td>
       <td class="text-cyan-300 font-semibold text-xs">${r.operator||'—'}</td>
       <td class="text-center text-xs">${r.device_id!=null?`#${r.device_id}`:'—'}</td>
+      <td class="text-slate-400 text-xs">${r.location||'—'}</td>
+      <td class="text-slate-400 text-xs">${r.equipment||'—'}</td>
+      <td class="text-right font-mono text-xs">${r.load_kg!=null?r.load_kg:'—'}</td>
       <td><span style="color:${stc};font-size:11px;font-weight:700">${stt}</span></td>
       <td class="text-right font-mono ${r.rpm>0?'text-emerald-400':''}">${r.rpm??'—'}</td>
       <td class="text-right font-mono text-amber-400">${r.current_a!=null?(+r.current_a).toFixed(2):'—'}</td>
@@ -536,6 +583,52 @@ function changePage(d) {
   renderTable();
 }
 
+// ── 勾選 / 全選
+function toggleAll(chk) {
+  document.querySelectorAll('.row-chk').forEach(c => c.checked = chk.checked);
+  updateChkCount();
+}
+function updateChkCount() {
+  const sel = document.querySelectorAll('.row-chk:checked').length;
+  document.getElementById('chkInfo').textContent = `已選 ${sel} 筆`;
+  const btn = document.getElementById('deleteBtn');
+  btn.disabled = sel === 0;
+  btn.style.opacity = sel ? '1' : '.5';
+  // 同步全選框狀態
+  const all = document.querySelectorAll('.row-chk').length;
+  document.getElementById('chkAll').indeterminate = sel > 0 && sel < all;
+  document.getElementById('chkAll').checked = all > 0 && sel === all;
+}
+
+// ── 刪除選取
+async function deleteSelected() {
+  const ids = [...document.querySelectorAll('.row-chk:checked')].map(el => el.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`⚠ 確定永久刪除 ${ids.length} 筆資料？\n此操作不可復原！`)) return;
+  loading(true); setStatus('刪除中…','yellow');
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/motor_logs?id=in.(${ids.join(',')})`,
+      { method:'DELETE',
+        headers:{ 'apikey':SUPABASE_KEY, 'Authorization':`Bearer ${SUPABASE_KEY}`,
+                  'Prefer':'return=minimal' } }
+    );
+    if (resp.ok || resp.status===204) {
+      allData = allData.filter(r => !ids.includes(String(r.id)));
+      curPage = Math.max(0, Math.min(Math.ceil(allData.length/PAGE)-1, curPage));
+      renderAll();
+      setStatus(`✓ 已刪除 ${ids.length} 筆`, 'green');
+      document.getElementById('chkInfo').textContent = '已選 0 筆';
+    } else {
+      const t = await resp.text();
+      setStatus(`刪除失敗 HTTP ${resp.status}: ${t.slice(0,80)}`, 'red');
+      if (resp.status===403||resp.status===401)
+        alert('需在 Supabase SQL Editor 執行：\nGRANT DELETE ON motor_logs TO anon;');
+    }
+  } catch(e) { setStatus('刪除錯誤：'+e.message,'red'); }
+  loading(false);
+}
+
 // ══════════════════════════════════════════════════════
 // Section collapse
 // ══════════════════════════════════════════════════════
@@ -550,9 +643,10 @@ function toggleSec(id, arrowId) {
 // ══════════════════════════════════════════════════════
 function exportCSV() {
   if (!allData.length) { alert('請先查詢資料'); return; }
-  const hdr = 'local_time,timestamp_utc,operator,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event\n';
+  const hdr = 'local_time,timestamp_utc,operator,location,equipment,load_kg,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event\n';
   const body = allData.map(r =>
     `"${r.local_time||''}","${r.timestamp}","${r.operator||''}",` +
+    `"${r.location||''}","${r.equipment||''}",${r.load_kg??''},` +
     `${r.device_id??''},${r.session_id??''},${r.motor_state??''},${r.rpm??''},${r.current_a??''},` +
     `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},"${r.event??''}"`
   ).join('\n');

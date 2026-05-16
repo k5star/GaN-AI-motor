@@ -59,6 +59,14 @@ body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-s
   background:#34d399;box-shadow:0 0 6px #34d399;animation:logblink 2s infinite;margin-right:5px}
 .log-dot-off{display:inline-block;width:7px;height:7px;border-radius:50%;
   background:#64748b;margin-right:5px}
+/* 測試設定輸入框 */
+.meta-input{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;color:#e2e8f0;font-size:12px;padding:7px 10px;outline:none;
+  -webkit-user-select:text;user-select:text;transition:border-color .2s}
+.meta-input:focus{border-color:rgba(6,182,212,.45);box-shadow:0 0 0 2px rgba(6,182,212,.1)}
+.meta-input::placeholder{color:#475569}
+input[type="number"].meta-input::-webkit-outer-spin-button,
+input[type="number"].meta-input::-webkit-inner-spin-button{-webkit-appearance:none}
 /* 事件標記按鈕 */
 .evt-btn{font-size:10px;padding:5px 11px;border-radius:8px;
   border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
@@ -147,6 +155,36 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
     </div>
   </div>
   <div id="sessionInfo" class="text-[10px] text-slate-700 font-mono mt-1.5 truncate">尚無 Session</div>
+</div>
+
+<!-- ══ 測試設定 ══ -->
+<div class="card px-4 py-3">
+  <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleMetaPanel()">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">📍 測試設定（選填，套用至所有記錄）</div>
+    <span id="metaArrow" class="text-slate-600 text-xs ml-2">▼</span>
+  </div>
+  <div id="metaPanel" class="grid grid-cols-2 gap-2">
+    <div>
+      <div class="text-[9px] text-slate-600 mb-1">📍 地點</div>
+      <input id="metaLocation" type="text" class="meta-input" placeholder="例：試驗場A區、坡道B"
+        oninput="saveMeta()" autocomplete="off">
+    </div>
+    <div>
+      <div class="text-[9px] text-slate-600 mb-1">🔧 設備型號</div>
+      <input id="metaEquipment" type="text" class="meta-input" placeholder="例：GaN-60V-500W"
+        oninput="saveMeta()" autocomplete="off">
+    </div>
+    <div>
+      <div class="text-[9px] text-slate-600 mb-1">🏋 負重 (kg)</div>
+      <input id="metaLoad" type="number" class="meta-input" placeholder="0.0" step="0.5" min="0"
+        oninput="saveMeta()">
+    </div>
+    <div>
+      <div class="text-[9px] text-slate-600 mb-1">👤 操作人員（覆蓋登入帳號）</div>
+      <input id="metaOp" type="text" class="meta-input" placeholder="留空 = 使用登入帳號"
+        oninput="saveMeta()" autocomplete="off">
+    </div>
+  </div>
 </div>
 
 <!-- ══ 事件標記 ══ -->
@@ -474,6 +512,38 @@ async function ensureSession() {
   addLog(`📂 Session #${id} 已建立`, 'green');
 }
 
+// ══════════════════════════════════════
+// 測試設定（地點 / 設備 / 負重 / 操作人員）
+// ══════════════════════════════════════
+let sessionMeta = { location:'', equipment:'', load_kg:null, op:'' };
+
+function saveMeta() {
+  sessionMeta.location  = document.getElementById('metaLocation').value.trim();
+  sessionMeta.equipment = document.getElementById('metaEquipment').value.trim();
+  const lv = parseFloat(document.getElementById('metaLoad').value);
+  sessionMeta.load_kg   = isNaN(lv) ? null : lv;
+  sessionMeta.op        = document.getElementById('metaOp').value.trim();
+  localStorage.setItem('ganV6Meta', JSON.stringify(sessionMeta));
+}
+
+function loadMeta() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ganV6Meta') || '{}');
+    sessionMeta = { location:'', equipment:'', load_kg:null, op:'', ...saved };
+    document.getElementById('metaLocation').value  = sessionMeta.location  || '';
+    document.getElementById('metaEquipment').value = sessionMeta.equipment || '';
+    document.getElementById('metaLoad').value      = sessionMeta.load_kg ?? '';
+    document.getElementById('metaOp').value        = sessionMeta.op || '';
+  } catch(e) {}
+}
+
+function toggleMetaPanel() {
+  const p = document.getElementById('metaPanel');
+  const hidden = p.style.display === 'none';
+  p.style.display = hidden ? '' : 'none';
+  document.getElementById('metaArrow').textContent = hidden ? '▼' : '▶';
+}
+
 // 取得本地時間字串（台灣 UTC+8，格式：2026-05-16 18:08:13）
 function localTimeStr() {
   return new Date().toLocaleString('sv', {timeZone: 'Asia/Taipei'});
@@ -487,9 +557,12 @@ async function writeLog(dev, event) {
   const rec = {
     session_id:    currentSessionId,
     device_id:     dev.id,
-    operator:      currentOperator,            // 操作員識別
-    timestamp:     new Date().toISOString(),   // UTC（供資料庫時序排序用）
-    local_time:    localTimeStr(),             // 台灣本地時間（方便看）
+    operator:      sessionMeta.op || currentOperator,
+    location:      sessionMeta.location  || null,
+    equipment:     sessionMeta.equipment || null,
+    load_kg:       sessionMeta.load_kg,
+    timestamp:     new Date().toISOString(),
+    local_time:    localTimeStr(),
     rpm:           dev.currentValues[idx.rpm],
     current_a:     parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2)),
     voltage_v:     parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1)),
@@ -512,8 +585,11 @@ async function writeEventOnly(eventName) {
   await ensureSession();
   const rec = {
     session_id:currentSessionId, device_id:null,
-    operator:currentOperator,
-    timestamp:new Date().toISOString(),
+    operator:  sessionMeta.op || currentOperator,
+    location:  sessionMeta.location  || null,
+    equipment: sessionMeta.equipment || null,
+    load_kg:   sessionMeta.load_kg,
+    timestamp: new Date().toISOString(),
     local_time:localTimeStr(),
     rpm:null, current_a:null, voltage_v:null, power_w:null,
     temperature_c:null, fault_code:null, motor_state:null,
@@ -1574,6 +1650,8 @@ async function initApp() {
   // 顯示操作員帳號
   const ol = document.getElementById('operatorLabel');
   if (ol) ol.textContent = currentOperator;
+  // 還原測試設定
+  loadMeta();
 
   // 還原 Auto-LOG 狀態（預設 ON）
   const savedLog = localStorage.getItem('ganV6AutoLog');
