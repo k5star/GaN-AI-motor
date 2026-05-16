@@ -136,7 +136,7 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       style="display:flex;align-items:center;font-size:11px;font-weight:700;
              padding:5px 12px;border-radius:10px;border:1px solid rgba(52,211,153,.35);
              background:rgba(6,78,59,.4);color:#34d399;cursor:pointer;transition:.2s">
-      <span class="log-dot-on" id="logDot"></span>Auto LOG ON
+      <span class="log-dot-on" id="logDot"></span><span id="logBtnTxt">📹 自動記錄 開啟</span>
     </button>
     <div class="flex items-center gap-3 ml-auto text-[11px] flex-wrap">
       <span class="text-slate-500">Local&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
@@ -161,7 +161,11 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <div class="card px-4 py-3">
   <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleMetaPanel()">
     <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">📍 測試設定（選填，套用至所有記錄）</div>
-    <span id="metaArrow" class="text-slate-600 text-xs ml-2">▼</span>
+    <div class="flex items-center gap-2">
+      <span id="metaSaveHint"
+        style="font-size:9px;color:#34d399;opacity:0;transition:opacity .3s;pointer-events:none">✓ 已儲存</span>
+      <span id="metaArrow" class="text-slate-600 text-xs ml-1">▼</span>
+    </div>
   </div>
   <div id="metaPanel" class="grid grid-cols-2 gap-2">
     <div>
@@ -193,7 +197,6 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
   <div class="flex flex-wrap gap-1.5">
     <button class="evt-btn btn-press" onclick="markEvent('Motor Start')">▶ 啟動</button>
     <button class="evt-btn btn-press" onclick="markEvent('Motor Stop')">⏹ 停止</button>
-    <button class="evt-btn btn-press" onclick="markEvent('Fault')">⚠ 故障</button>
     <button class="evt-btn btn-press" onclick="markEvent('Load Test')">🏋 負載測試</button>
     <button class="evt-btn btn-press" onclick="markEvent('Uphill Test')">⛰ 爬坡測試</button>
     <button class="evt-btn btn-press" onclick="markEvent('Abnormal Noise')">🔊 異常噪音</button>
@@ -517,6 +520,7 @@ async function ensureSession() {
 // ══════════════════════════════════════
 let sessionMeta = { location:'', equipment:'', load_kg:null, op:'' };
 
+let _metaSaveTimer = null;
 function saveMeta() {
   sessionMeta.location  = document.getElementById('metaLocation').value.trim();
   sessionMeta.equipment = document.getElementById('metaEquipment').value.trim();
@@ -524,6 +528,12 @@ function saveMeta() {
   sessionMeta.load_kg   = isNaN(lv) ? null : lv;
   sessionMeta.op        = document.getElementById('metaOp').value.trim();
   localStorage.setItem('ganV6Meta', JSON.stringify(sessionMeta));
+  // 防抖提示
+  clearTimeout(_metaSaveTimer);
+  _metaSaveTimer = setTimeout(() => {
+    const si = document.getElementById('metaSaveHint');
+    if (si) { si.style.opacity='1'; setTimeout(()=>si.style.opacity='0',1200); }
+  }, 400);
 }
 
 function loadMeta() {
@@ -532,9 +542,10 @@ function loadMeta() {
     sessionMeta = { location:'', equipment:'', load_kg:null, op:'', ...saved };
     document.getElementById('metaLocation').value  = sessionMeta.location  || '';
     document.getElementById('metaEquipment').value = sessionMeta.equipment || '';
-    document.getElementById('metaLoad').value      = sessionMeta.load_kg ?? '';
+    if (sessionMeta.load_kg != null)
+      document.getElementById('metaLoad').value  = sessionMeta.load_kg;
     document.getElementById('metaOp').value        = sessionMeta.op || '';
-  } catch(e) {}
+  } catch(e) { console.warn('loadMeta error', e); }
 }
 
 function toggleMetaPanel() {
@@ -608,15 +619,15 @@ function toggleAutoLog() {
   localStorage.setItem('ganV6AutoLog', autoLogEnabled ? '1' : '0');  // 記住狀態
   applyAutoLogUI();
   if (autoLogEnabled) {
-    showToast('✅ Auto LOG 開啟');
+    showToast('✅ 自動記錄已開啟');
     // 若有連線裝置，立即確保 Session 並寫入
     devices.forEach(dev => {
       if (dev.isConnected)
         ensureSession().then(()=>writeLog(dev,'Auto LOG Resumed')).catch(()=>{});
     });
   } else {
-    showToast('⏹ Auto LOG 停止');
-    addLog('⚠ Auto LOG 已關閉，所有裝置數據暫停記錄', 'red');
+    showToast('⏸ 自動記錄已暫停');
+    addLog('⚠ 自動記錄已關閉，所有裝置數據暫停記錄', 'red');
   }
 }
 
@@ -629,13 +640,13 @@ function applyAutoLogUI() {
     btn.style.borderColor = 'rgba(52,211,153,.35)';
     btn.style.color = '#34d399';
     dot.className = 'log-dot-on';
-    btn.childNodes[1].textContent = 'Auto LOG ON';
+    document.getElementById('logBtnTxt').textContent = '📹 自動記錄 開啟';
   } else {
     btn.style.background = 'rgba(51,65,85,.3)';
     btn.style.borderColor = 'rgba(100,116,139,.25)';
     btn.style.color = '#64748b';
     dot.className = 'log-dot-off';
-    btn.childNodes[1].textContent = 'Auto LOG OFF';
+    document.getElementById('logBtnTxt').textContent = '⏸ 自動記錄 關閉';
   }
 }
 
@@ -1236,7 +1247,7 @@ function onDevConnected(id) {
   } else {
     // Auto LOG 關閉時，醒目警告
     addLog(`⚠ 裝置 #${id} 連線成功，但 Auto LOG 已關閉！數據不會記錄`, 'red');
-    showToast('⚠ Auto LOG 已關閉，請開啟後才會記錄數據');
+    showToast('⚠ 記錄已關閉，請先開啟自動記錄！');
   }
 }
 
