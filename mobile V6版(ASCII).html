@@ -129,6 +129,11 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <span class="text-slate-500">Local&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
       <span class="text-slate-500">Synced&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
       <span class="text-slate-500">Unsynced&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
+      <span class="flex items-center gap-1 text-slate-600" title="Supabase 同步狀態">
+        ☁<span id="syncStatusDot"
+          style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#64748b;transition:.4s"
+          title="同步待機"></span>
+      </span>
     </div>
   </div>
   <div id="sessionInfo" class="text-[10px] text-slate-700 font-mono mt-1.5 truncate">尚無 Session</div>
@@ -544,34 +549,82 @@ function submitNote() {
 }
 
 // ══════════════════════════════════════
-// 背景同步（設定 API 後自動補傳）
+// Supabase 雲端同步設定
 // ══════════════════════════════════════
-const SYNC_API = ''; // 填入後端 API URL，空白＝純本機模式
-let syncTimer  = null;
+const SUPABASE_URL   = '';           // 例：https://xxxx.supabase.co
+const SUPABASE_KEY   = '';           // anon public key
+const SUPABASE_TABLE = 'motor_logs'; // 資料表名稱
+const SYNC_BATCH     = 50;           // 每次批次上傳筆數
+const SYNC_INTERVAL  = 5000;         // 同步間隔 ms（5 秒）
+let syncTimer = null;
+let syncErrorCount = 0;
 
 function startBackgroundSync() {
-  if (syncTimer || !SYNC_API) return;
+  if (syncTimer || !SUPABASE_URL || !SUPABASE_KEY) {
+    if (!SUPABASE_URL) addLog('☁ Supabase 未設定，純本機模式');
+    return;
+  }
+  addLog('☁ Supabase 背景同步已啟動', 'green');
   syncTimer = setInterval(async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine) { updateSyncStatus('offline'); return; }
     try {
       const unsync = await dbGetAll('logs', 'synced', IDBKeyRange.only(false));
-      const batch  = unsync.slice(0, 50);
-      if (!batch.length) return;
-      const resp = await fetch(SYNC_API, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(batch),
-        signal:AbortSignal.timeout(6000)
+      const batch  = unsync.slice(0, SYNC_BATCH);
+      if (!batch.length) { updateSyncStatus('idle'); return; }
+
+      // 移除本機 id，讓 Supabase 自動產生主鍵
+      const payload = batch.map(({ id, ...rest }) => rest);
+
+      updateSyncStatus('syncing');
+      const resp = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
+        method: 'POST',
+        headers: {
+          'apikey':        SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type':  'application/json',
+          'Prefer':        'return=minimal'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(8000)
       });
+
       if (resp.ok) {
+        // 標記已同步
         const tx = db.transaction('logs', 'readwrite');
         const os = tx.objectStore('logs');
         batch.forEach(r => { r.synced = true; os.put(r); });
-        syncedTotal += batch.length;
+        syncedTotal  += batch.length;
+        syncErrorCount = 0;
         updateLogUI();
+        updateSyncStatus('ok');
+        addLog(`☁ 同步 ${batch.length} 筆 → Supabase`, 'green');
+      } else {
+        const errText = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${errText}`);
       }
-    } catch(e) { /* offline, retry */ }
-  }, 3000);
+    } catch(e) {
+      syncErrorCount++;
+      updateSyncStatus('error');
+      if (syncErrorCount <= 3)
+        addLog(`⚠ Supabase 同步失敗 (${syncErrorCount})：${e.message}`, 'red');
+    }
+  }, SYNC_INTERVAL);
+}
+
+function updateSyncStatus(state) {
+  const el = document.getElementById('syncStatusDot');
+  if (!el) return;
+  const map = {
+    idle:    { color:'#64748b', title:'同步待機' },
+    syncing: { color:'#fbbf24', title:'同步中…' },
+    ok:      { color:'#34d399', title:'已同步' },
+    error:   { color:'#f87171', title:'同步失敗' },
+    offline: { color:'#94a3b8', title:'離線中' },
+  };
+  const s = map[state] || map.idle;
+  el.style.background = s.color;
+  el.style.boxShadow  = `0 0 5px ${s.color}`;
+  el.title = s.title;
 }
 
 // ══════════════════════════════════════
@@ -780,7 +833,7 @@ function createDeviceObj() {
     pwrAccWh:0, pwrRunSec:0, pwrStartCount:0, pwrLastTime:null, pwrRunning:false,
     statMaxRpm:0, statMaxCur:0, statMaxVlt:0, statMaxPwr:0, statMaxTemp:-999,
     almCnt:0, trendRpm:[], chart:null,
-    _logTick:0   // throttle: 每 2 秒寫一次 DB
+    _logTick:0   // throttle: 每 1 秒寫一次 DB
   };
 }
 
@@ -1253,8 +1306,8 @@ function updateCard(dev) {
   updateDevTemp(dev);
   pushCombinedRpm(dev, rpm);
 
-  // Auto LOG 節流：每 2 秒一次（避免 500ms 輪詢塞滿 DB）
-  const tick=Math.floor(now/2000);
+  // Auto LOG 節流：每 1 秒一次
+  const tick=Math.floor(now/1000);
   if(tick!==dev._logTick){ dev._logTick=tick; writeLog(dev,null).catch(()=>{}); }
 }
 
