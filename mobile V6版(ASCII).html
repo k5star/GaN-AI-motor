@@ -468,6 +468,11 @@ async function ensureSession() {
   addLog(`📂 Session #${id} 已建立`, 'green');
 }
 
+// 取得本地時間字串（台灣 UTC+8，格式：2026-05-16 18:08:13）
+function localTimeStr() {
+  return new Date().toLocaleString('sv', {timeZone: 'Asia/Taipei'});
+}
+
 async function writeLog(dev, event) {
   if (!autoLogEnabled || !db) return;
   await ensureSession();
@@ -476,7 +481,8 @@ async function writeLog(dev, event) {
   const rec = {
     session_id:    currentSessionId,
     device_id:     dev.id,
-    timestamp:     new Date().toISOString(),
+    timestamp:     new Date().toISOString(),   // UTC（供資料庫時序排序用）
+    local_time:    localTimeStr(),             // 台灣本地時間（方便看）
     rpm:           dev.currentValues[idx.rpm],
     current_a:     parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2)),
     voltage_v:     parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1)),
@@ -500,6 +506,7 @@ async function writeEventOnly(eventName) {
   const rec = {
     session_id:currentSessionId, device_id:null,
     timestamp:new Date().toISOString(),
+    local_time:localTimeStr(),
     rpm:null, current_a:null, voltage_v:null, power_w:null,
     temperature_c:null, fault_code:null, motor_state:null,
     event:eventName, synced:false
@@ -696,11 +703,11 @@ async function exportSessionCSV() {
 }
 
 function downloadCSV(rows, prefix) {
-  const hdr = 'session_id,device_id,timestamp,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event,synced\n';
+  const hdr = 'session_id,device_id,local_time,timestamp_utc,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event\n';
   const body = rows.map(r =>
-    `${r.session_id??''},${r.device_id??''},${r.timestamp},${r.rpm??''},${r.current_a??''},` +
+    `${r.session_id??''},${r.device_id??''},"${r.local_time||''}",${r.timestamp},${r.rpm??''},${r.current_a??''},` +
     `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},` +
-    `${r.motor_state??''},${r.event??''},${r.synced}`
+    `${r.motor_state??''},"${r.event??''}"`
   ).join('\n');
   const blob = new Blob(['﻿'+hdr+body], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
