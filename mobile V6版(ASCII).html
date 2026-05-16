@@ -67,7 +67,7 @@ body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-s
 .meta-input::placeholder{color:#475569}
 input[type="number"].meta-input::-webkit-outer-spin-button,
 input[type="number"].meta-input::-webkit-inner-spin-button{-webkit-appearance:none}
-/* 事件標記按鈕 */
+/* 快速範圍按鈕 */
 .evt-btn{font-size:10px;padding:5px 11px;border-radius:8px;
   border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
   color:#94a3b8;cursor:pointer;transition:.15s;white-space:nowrap;
@@ -79,13 +79,12 @@ input[type="datetime-local"]{background:rgba(255,255,255,.05);
   color:#e2e8f0;padding:8px 10px;font-size:11px;width:100%;
   outline:none;color-scheme:dark;-webkit-user-select:text;user-select:text;}
 input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
-/* 手動備註 modal */
-#noteModal{display:none;position:fixed;inset:0;z-index:200;
-  background:rgba(0,0,0,.8);align-items:center;justify-content:center;padding:16px;}
-#noteModal.open{display:flex}
-#noteText{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
-  border-radius:10px;color:#e2e8f0;width:100%;padding:10px 12px;font-size:13px;
-  outline:none;resize:none;-webkit-user-select:text;user-select:text;}
+/* 備註 textarea */
+#metaNoteArea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;color:#e2e8f0;font-size:12px;padding:7px 10px;outline:none;
+  resize:none;width:100%;-webkit-user-select:text;user-select:text;transition:border-color .2s}
+#metaNoteArea:focus{border-color:rgba(6,182,212,.45);box-shadow:0 0 0 2px rgba(6,182,212,.1)}
+#metaNoteArea::placeholder{color:#475569}
 </style>
 </head>
 <body class="min-h-screen pb-6">
@@ -188,19 +187,11 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <input id="metaOp" type="text" class="meta-input" placeholder="留空 = 使用登入帳號"
         oninput="saveMeta()" autocomplete="off">
     </div>
-  </div>
-</div>
-
-<!-- ══ 事件標記 ══ -->
-<div class="card px-4 py-3">
-  <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-2">🏷 事件標記</div>
-  <div class="flex flex-wrap gap-1.5">
-    <button class="evt-btn btn-press" onclick="markEvent('Motor Start')">▶ 啟動</button>
-    <button class="evt-btn btn-press" onclick="markEvent('Motor Stop')">⏹ 停止</button>
-    <button class="evt-btn btn-press" onclick="markEvent('Load Test')">🏋 負載測試</button>
-    <button class="evt-btn btn-press" onclick="markEvent('Uphill Test')">⛰ 爬坡測試</button>
-    <button class="evt-btn btn-press" onclick="markEvent('Abnormal Noise')">🔊 異常噪音</button>
-    <button class="evt-btn btn-press" onclick="openNoteModal()">📝 手動備註</button>
+    <div class="col-span-2">
+      <div class="text-[9px] text-slate-600 mb-1">📝 備註</div>
+      <textarea id="metaNoteArea" rows="2" placeholder="測試說明、環境條件、觀察…"
+        oninput="saveMeta()"></textarea>
+    </div>
   </div>
 </div>
 
@@ -307,19 +298,6 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <!-- Toast -->
 <div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 text-slate-200 text-sm px-5 py-2.5 rounded-2xl shadow-xl transition-opacity"></div>
 
-<!-- 手動備註 Modal -->
-<div id="noteModal">
-  <div class="card p-5 w-full max-w-sm">
-    <div class="text-sm font-bold text-slate-200 mb-3">📝 手動備註</div>
-    <textarea id="noteText" rows="3" placeholder="輸入備註內容…"></textarea>
-    <div class="flex gap-2 mt-3">
-      <button onclick="submitNote()"
-        class="btn-press flex-1 py-2.5 bg-cyan-700 text-white font-bold rounded-xl text-sm transition">確認</button>
-      <button onclick="closeNoteModal()"
-        class="btn-press flex-1 py-2.5 bg-slate-700 text-slate-300 font-bold rounded-xl text-sm transition">取消</button>
-    </div>
-  </div>
-</div>
 
 <script>
 'use strict';
@@ -518,7 +496,7 @@ async function ensureSession() {
 // ══════════════════════════════════════
 // 測試設定（地點 / 設備 / 負重 / 操作人員）
 // ══════════════════════════════════════
-let sessionMeta = { location:'', equipment:'', load_kg:null, op:'' };
+let sessionMeta = { location:'', equipment:'', load_kg:null, op:'', note:'' };
 
 let _metaSaveTimer = null;
 function saveMeta() {
@@ -527,6 +505,7 @@ function saveMeta() {
   const lv = parseFloat(document.getElementById('metaLoad').value);
   sessionMeta.load_kg   = isNaN(lv) ? null : lv;
   sessionMeta.op        = document.getElementById('metaOp').value.trim();
+  sessionMeta.note      = document.getElementById('metaNoteArea').value.trim();
   localStorage.setItem('ganV6Meta', JSON.stringify(sessionMeta));
   // 防抖提示
   clearTimeout(_metaSaveTimer);
@@ -539,12 +518,13 @@ function saveMeta() {
 function loadMeta() {
   try {
     const saved = JSON.parse(localStorage.getItem('ganV6Meta') || '{}');
-    sessionMeta = { location:'', equipment:'', load_kg:null, op:'', ...saved };
+    sessionMeta = { location:'', equipment:'', load_kg:null, op:'', note:'', ...saved };
     document.getElementById('metaLocation').value  = sessionMeta.location  || '';
     document.getElementById('metaEquipment').value = sessionMeta.equipment || '';
     if (sessionMeta.load_kg != null)
       document.getElementById('metaLoad').value  = sessionMeta.load_kg;
-    document.getElementById('metaOp').value        = sessionMeta.op || '';
+    document.getElementById('metaOp').value        = sessionMeta.op  || '';
+    document.getElementById('metaNoteArea').value  = sessionMeta.note || '';
   } catch(e) { console.warn('loadMeta error', e); }
 }
 
@@ -582,6 +562,7 @@ async function writeLog(dev, event) {
     fault_code:    dev.currentValues[idx.alarm],
     motor_state:   dev.currentValues[idx.status],
     event:         event || null,
+    note:          sessionMeta.note  || null,
     synced:        false
   };
   try {
@@ -589,28 +570,6 @@ async function writeLog(dev, event) {
     localSavedTotal++;
     updateLogUI();
   } catch(e) { console.error('writeLog', e); }
-}
-
-async function writeEventOnly(eventName) {
-  if (!autoLogEnabled || !db) return;
-  await ensureSession();
-  const rec = {
-    session_id:currentSessionId, device_id:null,
-    operator:  sessionMeta.op || currentOperator,
-    location:  sessionMeta.location  || null,
-    equipment: sessionMeta.equipment || null,
-    load_kg:   sessionMeta.load_kg,
-    timestamp: new Date().toISOString(),
-    local_time:localTimeStr(),
-    rpm:null, current_a:null, voltage_v:null, power_w:null,
-    temperature_c:null, fault_code:null, motor_state:null,
-    event:eventName, synced:false
-  };
-  try {
-    await dbAdd('logs', rec);
-    localSavedTotal++;
-    updateLogUI();
-  } catch(e) {}
 }
 
 // ── Auto LOG 開關
@@ -648,27 +607,6 @@ function applyAutoLogUI() {
     dot.className = 'log-dot-off';
     document.getElementById('logBtnTxt').textContent = '⏸ 自動記錄 關閉';
   }
-}
-
-// ══════════════════════════════════════
-// 事件標記
-// ══════════════════════════════════════
-function markEvent(name) {
-  let marked = 0;
-  devices.forEach(dev => { if (dev.isConnected) { writeLog(dev, name); marked++; } });
-  if (!marked) writeEventOnly(name);
-  addLog(`🏷 事件：${name}`, 'green');
-  showToast(`🏷 ${name}`);
-}
-
-function openNoteModal()  { document.getElementById('noteModal').classList.add('open'); }
-function closeNoteModal() { document.getElementById('noteModal').classList.remove('open'); }
-function submitNote() {
-  const note = document.getElementById('noteText').value.trim();
-  if (!note) { showToast('備註不得為空'); return; }
-  markEvent(`Manual Note: ${note}`);
-  document.getElementById('noteText').value = '';
-  closeNoteModal();
 }
 
 // ══════════════════════════════════════
@@ -798,11 +736,12 @@ async function exportSessionCSV() {
 }
 
 function downloadCSV(rows, prefix) {
-  const hdr = 'operator,session_id,device_id,local_time,timestamp_utc,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event\n';
+  const hdr = 'operator,session_id,device_id,local_time,timestamp_utc,location,equipment,load_kg,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event,note\n';
   const body = rows.map(r =>
-    `"${r.operator||''}",${r.session_id??''},${r.device_id??''},"${r.local_time||''}",${r.timestamp},${r.rpm??''},${r.current_a??''},` +
-    `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},` +
-    `${r.motor_state??''},"${r.event??''}"`
+    `"${r.operator||''}",${r.session_id??''},${r.device_id??''},"${r.local_time||''}",${r.timestamp},` +
+    `"${r.location||''}","${r.equipment||''}",${r.load_kg??''},` +
+    `${r.rpm??''},${r.current_a??''},${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},` +
+    `${r.fault_code??''},${r.motor_state??''},"${r.event??''}","${r.note??''}"`
   ).join('\n');
   const blob = new Blob(['﻿'+hdr+body], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');

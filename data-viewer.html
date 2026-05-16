@@ -205,11 +205,11 @@ tr:hover td{background:rgba(255,255,255,.025)}
           <th>馬達狀態</th>
           <th class="text-right">RPM</th><th class="text-right">電流 A</th>
           <th class="text-right">電壓 V</th><th class="text-right">功率 W</th>
-          <th class="text-right">溫度 °C</th><th>事件</th>
+          <th class="text-right">溫度 °C</th><th>事件</th><th>備註</th>
         </tr>
       </thead>
       <tbody id="dataTbody">
-        <tr><td colspan="14" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
+        <tr><td colspan="15" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
       </tbody>
     </table>
     </div>
@@ -574,6 +574,7 @@ function renderTable() {
       <td class="text-right font-mono text-rose-400">${r.power_w??'—'}</td>
       <td class="text-right font-mono">${r.temperature_c!=null?(+r.temperature_c).toFixed(1):'—'}</td>
       <td>${r.event?evtBadge(r.event):''}</td>
+      <td class="text-slate-400 text-xs max-w-[120px] truncate" title="${r.note||''}">${r.note||''}</td>
     </tr>`;
   }).join('');
 }
@@ -643,12 +644,12 @@ function toggleSec(id, arrowId) {
 // ══════════════════════════════════════════════════════
 function exportCSV() {
   if (!allData.length) { alert('請先查詢資料'); return; }
-  const hdr = 'local_time,timestamp_utc,operator,location,equipment,load_kg,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event\n';
+  const hdr = 'local_time,timestamp_utc,operator,location,equipment,load_kg,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event,note\n';
   const body = allData.map(r =>
     `"${r.local_time||''}","${r.timestamp}","${r.operator||''}",` +
     `"${r.location||''}","${r.equipment||''}",${r.load_kg??''},` +
     `${r.device_id??''},${r.session_id??''},${r.motor_state??''},${r.rpm??''},${r.current_a??''},` +
-    `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},"${r.event??''}"`
+    `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},"${r.event??''}","${r.note??''}"`
   ).join('\n');
   const blob = new Blob(['﻿'+hdr+body], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
