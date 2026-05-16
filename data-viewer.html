@@ -269,14 +269,17 @@ async function loadOptions() {
     const rows = await sbFetch('select=operator%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
     const fill = (elId, vals, fmt) => {
       const sel = document.getElementById(elId);
+      // 清除舊選項（保留第一個「全部」）
+      while (sel.options.length > 1) sel.remove(1);
       vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
     };
     fill('fOperator',  [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort());
     fill('fDevice',    [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b), v=>`裝置 #${v}`);
     fill('fLocation',  [...new Set(rows.map(r=>r.location).filter(Boolean))].sort());
     fill('fEquipment', [...new Set(rows.map(r=>r.equipment).filter(Boolean))].sort());
-    setStatus(`已載入篩選選項`);
-  } catch(e) { setStatus('載入選項失敗：'+e.message,'red'); }
+    const opCount = document.getElementById('fOperator').options.length - 1;
+    setStatus(`已載入篩選選項（${opCount} 位操作員）`);
+  } catch(e) { setStatus('載入選項失敗：'+e.message,'red'); console.error('loadOptions',e); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -314,6 +317,7 @@ async function doQuery() {
     allData = await sbFetch(parts.join('&'));
     curPage = 0;
     renderAll();
+    loadOptions();   // 查詢後重新刷新下拉選單（確保新操作員出現）
     const n = allData.length;
     setStatus(`✓ 共 ${n} 筆`, 'green');
     document.getElementById('recInfo').textContent = `共 ${n} 筆`;

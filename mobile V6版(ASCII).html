@@ -507,6 +507,9 @@ function saveMeta() {
   sessionMeta.op        = document.getElementById('metaOp').value.trim();
   sessionMeta.note      = document.getElementById('metaNoteArea').value.trim();
   localStorage.setItem('ganV6Meta', JSON.stringify(sessionMeta));
+  // 即時更新標頭操作員顯示
+  const ol = document.getElementById('operatorLabel');
+  if (ol) ol.textContent = sessionMeta.op || currentOperator;
   // 防抖提示
   clearTimeout(_metaSaveTimer);
   _metaSaveTimer = setTimeout(() => {
@@ -525,6 +528,9 @@ function loadMeta() {
       document.getElementById('metaLoad').value  = sessionMeta.load_kg;
     document.getElementById('metaOp').value        = sessionMeta.op  || '';
     document.getElementById('metaNoteArea').value  = sessionMeta.note || '';
+    // 同步更新標頭操作員
+    const ol = document.getElementById('operatorLabel');
+    if (ol) ol.textContent = sessionMeta.op || currentOperator;
   } catch(e) { console.warn('loadMeta error', e); }
 }
 
