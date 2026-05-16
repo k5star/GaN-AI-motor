@@ -567,6 +567,9 @@ function localTimeStr() {
   return new Date().toLocaleString('sv', {timeZone: 'Asia/Taipei'});
 }
 
+// NaN → null 工具
+const nn = v => (typeof v === 'number' && isNaN(v)) ? null : v;
+
 async function writeLog(dev, event) {
   if (!autoLogEnabled || !db) return;
   await ensureSession();
@@ -581,13 +584,13 @@ async function writeLog(dev, event) {
     load_kg:       sessionMeta.load_kg,
     timestamp:     new Date().toISOString(),
     local_time:    localTimeStr(),
-    rpm:           dev.currentValues[idx.rpm],
-    current_a:     parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2)),
-    voltage_v:     parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1)),
-    power_w:       dev.currentValues[idx.power],
-    temperature_c: temp,
-    fault_code:    dev.currentValues[idx.alarm],
-    motor_state:   dev.currentValues[idx.status],
+    rpm:           nn(dev.currentValues[idx.rpm]),
+    current_a:     nn(parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2))),
+    voltage_v:     nn(parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1))),
+    power_w:       nn(dev.currentValues[idx.power]),
+    temperature_c: nn(temp),
+    fault_code:    nn(dev.currentValues[idx.alarm]),
+    motor_state:   nn(dev.currentValues[idx.status]),
     event:         event || null,
     note:          sessionMeta.note  || null,
     synced:        false
@@ -672,10 +675,11 @@ async function doSyncBatch() {
     if (!batch.length) { updateSyncStatus('idle'); return; }
 
     // 移除本機 id（GENERATED ALWAYS AS IDENTITY 不能插入）
-    // 也移除 synced 欄位 + 所有 null/undefined 欄位（避免 schema cache 錯誤）
+    // 過濾 null / undefined / NaN（NaN 送到 Supabase 數字欄會 400 拒絕）
+    const cleanVal = v => (v === null || v === undefined || (typeof v === 'number' && isNaN(v)));
     const payload = batch.map(({ id, synced, ...rest }) => {
       const out = {};
-      Object.entries(rest).forEach(([k, v]) => { if (v !== null && v !== undefined) out[k] = v; });
+      Object.entries(rest).forEach(([k, v]) => { if (!cleanVal(v)) out[k] = v; });
       return out;
     });
 
