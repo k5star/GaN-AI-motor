@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GaN Motor 數據分析儀表板</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+.card{background:rgba(22,27,34,.95);border:1px solid rgba(255,255,255,.07);border-radius:12px}
+.kpi-val{font-size:1.5rem;font-weight:900;font-family:monospace;line-height:1.2}
+select,input[type=datetime-local]{
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;
+  color:#e2e8f0;padding:7px 10px;font-size:13px;outline:none;color-scheme:dark;width:100%}
+select:focus,input:focus{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.12)}
+.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+  transition:.15s;border:none;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:#0891b2;color:#fff}.btn-primary:hover{background:#0e7490}
+.btn-sm{padding:4px 12px;font-size:11px;border-radius:6px}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.12);color:#94a3b8}
+.btn-ghost:hover{background:rgba(255,255,255,.08);color:#e2e8f0}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:rgba(255,255,255,.04);padding:8px 10px;text-align:left;font-size:10px;
+   text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:700;
+   border-bottom:1px solid rgba(255,255,255,.07);white-space:nowrap}
+td{padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.04);color:#cbd5e1;white-space:nowrap}
+tr:hover td{background:rgba(255,255,255,.025)}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700}
+.tab-btn{padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid transparent;background:transparent;color:#64748b;transition:.15s}
+.tab-btn.active{background:rgba(6,182,212,.15);border-color:rgba(6,182,212,.3);color:#22d3ee}
+.sec-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 0}
+.sec-header:hover h2{color:#e2e8f0}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+.loading-bar{height:3px;background:linear-gradient(90deg,#0891b2,#22d3ee,#0891b2);
+  background-size:200% 100%;animation:loadbar 1.2s linear infinite;border-radius:2px}
+@keyframes loadbar{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body class="p-3 md:p-6">
+<div class="max-w-screen-xl mx-auto space-y-4">
+
+<!-- ══ Header ══ -->
+<div class="flex items-center justify-between flex-wrap gap-3">
+  <div>
+    <h1 class="text-xl font-black text-slate-100 flex items-center gap-2">⚡ GaN Motor 數據分析</h1>
+    <p class="text-[10px] text-slate-500 font-mono mt-0.5">Supabase Cloud · public.motor_logs</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <div id="statusBadge" class="text-xs font-mono px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400">就緒</div>
+    <a href="mobile%20V6%E7%89%88(ASCII).html"
+       class="btn btn-sm btn-ghost">← 返回監控</a>
+  </div>
+</div>
+<div id="loadingBar" class="hidden loading-bar"></div>
+
+<!-- ══ Filter Panel ══ -->
+<div class="card p-4 space-y-3">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">👤 操作員</label>
+      <select id="fOperator"><option value="">全部操作員</option></select>
+    </div>
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">🔌 裝置 ID</label>
+      <select id="fDevice"><option value="">全部裝置</option></select>
+    </div>
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">📅 起始時間（台灣）</label>
+      <input type="datetime-local" id="fFrom">
+    </div>
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">📅 結束時間（台灣）</label>
+      <input type="datetime-local" id="fTo">
+    </div>
+  </div>
+  <div class="flex items-center gap-2 flex-wrap">
+    <span class="text-[10px] text-slate-600 font-semibold uppercase mr-1">快速範圍：</span>
+    <button class="btn btn-sm btn-ghost" onclick="setRange(1)">最近1小時</button>
+    <button class="btn btn-sm btn-ghost" onclick="setRange(6)">最近6小時</button>
+    <button class="btn btn-sm btn-ghost" onclick="setRange(24)">今天</button>
+    <button class="btn btn-sm btn-ghost" onclick="setRange(0)">全部資料</button>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="recInfo" class="text-xs text-slate-500 font-mono"></span>
+      <button class="btn btn-sm btn-ghost" onclick="exportCSV()">📥 匯出 CSV</button>
+      <button class="btn btn-primary" onclick="doQuery()">🔍 查詢</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ KPI Cards ══ -->
+<div class="grid grid-cols-3 md:grid-cols-6 gap-3">
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">總筆數</div>
+    <div class="kpi-val text-cyan-400" id="kTotal">—</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">均轉速</div>
+    <div class="kpi-val text-emerald-400" id="kRpm">—</div>
+    <div class="text-[9px] text-slate-600">RPM</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">最大電流</div>
+    <div class="kpi-val text-amber-400" id="kCur">—</div>
+    <div class="text-[9px] text-slate-600">A</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">均電壓</div>
+    <div class="kpi-val text-violet-400" id="kVolt">—</div>
+    <div class="text-[9px] text-slate-600">V</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">最大功率</div>
+    <div class="kpi-val text-rose-400" id="kPow">—</div>
+    <div class="text-[9px] text-slate-600">W</div></div>
+  <div class="card p-3"><div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">事件數</div>
+    <div class="kpi-val text-sky-400" id="kEvt">—</div>
+    <div class="text-[9px] text-slate-600">筆</div></div>
+</div>
+
+<!-- ══ Operator Summary Table ══ -->
+<div class="card p-4" id="opSumCard" style="display:none">
+  <div class="sec-header mb-3" onclick="toggleSec('opSumBody','opSumArrow')">
+    <h2 class="text-sm font-bold text-slate-300">👥 操作員 / 裝置 分類摘要</h2>
+    <span id="opSumArrow" class="text-slate-600">▼</span>
+  </div>
+  <div id="opSumBody" class="overflow-x-auto">
+    <table>
+      <thead>
+        <tr>
+          <th>操作員</th><th>裝置</th><th>筆數</th>
+          <th class="text-right">均 RPM</th><th class="text-right">最大 A</th>
+          <th class="text-right">均 V</th><th class="text-right">最大 W</th>
+          <th>最早記錄</th><th>最晚記錄</th>
+        </tr>
+      </thead>
+      <tbody id="opSumTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ Chart ══ -->
+<div class="card p-4">
+  <div class="flex items-center gap-2 flex-wrap mb-4">
+    <div class="flex gap-1">
+      <button class="tab-btn active" id="tab0" onclick="switchTab(0)">📈 轉速 + 電流</button>
+      <button class="tab-btn"        id="tab1" onclick="switchTab(1)">⚡ 電壓 + 功率</button>
+      <button class="tab-btn"        id="tab2" onclick="switchTab(2)">🌡 溫度</button>
+    </div>
+    <span class="ml-auto text-[10px] text-slate-600">超過 2000 筆時自動抽樣顯示</span>
+  </div>
+  <div style="height:340px;position:relative">
+    <canvas id="mainChart"></canvas>
+  </div>
+  <div class="mt-2 text-[10px] text-slate-600 font-mono" id="chartInfo"></div>
+</div>
+
+<!-- ══ Events ══ -->
+<div class="card p-4">
+  <div class="sec-header mb-3" onclick="toggleSec('evtBody','evtArrow')">
+    <h2 class="text-sm font-bold text-slate-300">🏷 事件記錄 <span id="evtCount" class="text-xs text-slate-500 font-normal"></span></h2>
+    <span id="evtArrow" class="text-slate-600">▼</span>
+  </div>
+  <div id="evtBody" class="overflow-x-auto">
+    <table>
+      <thead><tr><th>本地時間</th><th>操作員</th><th>裝置</th><th>事件</th><th>RPM</th><th>電流 A</th><th>電壓 V</th></tr></thead>
+      <tbody id="evtTbody"><tr><td colspan="7" class="text-slate-600 text-center py-4">查詢後顯示事件</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ Data Table ══ -->
+<div class="card p-4">
+  <div class="sec-header mb-3" onclick="toggleSec('tblBody','tblArrow')">
+    <h2 class="text-sm font-bold text-slate-300">📋 數據列表 <span id="tblInfo" class="text-xs text-slate-500 font-normal"></span></h2>
+    <span id="tblArrow" class="text-slate-600">▼</span>
+  </div>
+  <div id="tblBody" class="overflow-x-auto">
+    <table>
+      <thead>
+        <tr>
+          <th>本地時間</th><th>操作員</th><th>裝置</th><th>馬達狀態</th>
+          <th class="text-right">RPM</th><th class="text-right">電流 A</th>
+          <th class="text-right">電壓 V</th><th class="text-right">功率 W</th>
+          <th class="text-right">溫度 °C</th><th>事件</th>
+        </tr>
+      </thead>
+      <tbody id="dataTbody">
+        <tr><td colspan="10" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
+      </tbody>
+    </table>
+    <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/60">
+      <button class="btn btn-sm btn-ghost" id="prevBtn" onclick="changePage(-1)">◀ 上一頁</button>
+      <span id="pageInfo" class="text-xs text-slate-500 font-mono"></span>
+      <button class="btn btn-sm btn-ghost" id="nextBtn" onclick="changePage(1)">下一頁 ▶</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /max-w -->
+<script>
+// ══════════════════════════════════════════════════════
+// Supabase 設定
+// ══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://avnchhaavojwznahehyq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2bmNoaGFhdm9qd3puYWhlaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MTEyMDgsImV4cCI6MjA5NDQ4NzIwOH0.pUnvA6FyfQZNkGkreSuSFqdZLJ0jjO7e2ENs14iuzdY';
+
+// ══════════════════════════════════════════════════════
+// 狀態
+// ══════════════════════════════════════════════════════
+let allData  = [];
+let curTab   = 0;
+let curPage  = 0;
+const PAGE   = 50;
+let chart    = null;
+const secOpen = {};
+
+// ══════════════════════════════════════════════════════
+// Supabase REST 工具
+// ══════════════════════════════════════════════════════
+async function sbFetch(params) {
+  const resp = await fetch(`${SUPABASE_URL}/rest/v1/motor_logs?${params}`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+function setStatus(msg, c) {
+  const el = document.getElementById('statusBadge');
+  el.textContent = msg;
+  const m = { yellow:'text-amber-400 bg-amber-900/30', green:'text-emerald-400 bg-emerald-900/30',
+              red:'text-red-400 bg-red-900/30' };
+  el.className = `text-xs font-mono px-3 py-1.5 rounded-lg ${m[c]||'text-slate-400 bg-slate-800'}`;
+}
+function loading(on) {
+  document.getElementById('loadingBar').classList.toggle('hidden', !on);
+}
+
+// ══════════════════════════════════════════════════════
+// 載入篩選下拉選項
+// ══════════════════════════════════════════════════════
+async function loadOptions() {
+  try {
+    const rows = await sbFetch('select=operator%2Cdevice_id&limit=5000');
+    const ops  = [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort();
+    const devs = [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b);
+    const os = document.getElementById('fOperator');
+    ops.forEach(o => { const opt=document.createElement('option'); opt.value=o; opt.textContent=o; os.appendChild(opt); });
+    const ds = document.getElementById('fDevice');
+    devs.forEach(d => { const opt=document.createElement('option'); opt.value=d; opt.textContent=`裝置 #${d}`; ds.appendChild(opt); });
+    setStatus(`已載入（${ops.length} 操作員 · ${devs.length} 裝置）`);
+  } catch(e) { setStatus('載入選項失敗：'+e.message,'red'); }
+}
+
+// ══════════════════════════════════════════════════════
+// 快速日期範圍（台灣時間）
+// ══════════════════════════════════════════════════════
+function toLocalInput(d) {
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+function setRange(h) {
+  const now = new Date();
+  document.getElementById('fTo').value = toLocalInput(now);
+  document.getElementById('fFrom').value = h ? toLocalInput(new Date(now - h*3600000)) : '';
+}
+
+// ══════════════════════════════════════════════════════
+// 主查詢
+// ══════════════════════════════════════════════════════
+async function doQuery() {
+  loading(true); setStatus('查詢中…','yellow');
+  try {
+    const parts = ['select=*','order=timestamp.asc','limit=5000'];
+    const op  = document.getElementById('fOperator').value;
+    const dev = document.getElementById('fDevice').value;
+    const fr  = document.getElementById('fFrom').value;
+    const to  = document.getElementById('fTo').value;
+    if (op)  parts.push(`operator=eq.${encodeURIComponent(op)}`);
+    if (dev) parts.push(`device_id=eq.${dev}`);
+    if (fr)  parts.push(`timestamp=gte.${new Date(fr).toISOString()}`);
+    if (to)  parts.push(`timestamp=lte.${new Date(to).toISOString()}`);
+
+    allData = await sbFetch(parts.join('&'));
+    curPage = 0;
+    renderAll();
+    const n = allData.length;
+    setStatus(`✓ 共 ${n} 筆`, 'green');
+    document.getElementById('recInfo').textContent = `共 ${n} 筆`;
+    if (n >= 5000) {
+      setStatus(`⚠ 已達上限 5000 筆（嘗試縮短時間範圍）`, 'yellow');
+    }
+  } catch(e) { setStatus('查詢失敗：'+e.message,'red'); }
+  loading(false);
+}
+
+// ══════════════════════════════════════════════════════
+// 一次渲染全部
+// ══════════════════════════════════════════════════════
+function renderAll() {
+  renderKPIs();
+  renderOpSummary();
+  renderChart();
+  renderEvents();
+  renderTable();
+}
+
+// ══════════════════════════════════════════════════════
+// KPI
+// ══════════════════════════════════════════════════════
+function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null; }
+function renderKPIs() {
+  const n   = allData.length;
+  const rpm = allData.filter(r=>r.rpm!=null&&r.rpm>0).map(r=>r.rpm);
+  const cur = allData.filter(r=>r.current_a!=null).map(r=>+r.current_a);
+  const vol = allData.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
+  const pow = allData.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+  const evt = allData.filter(r=>r.event);
+
+  document.getElementById('kTotal').textContent = n.toLocaleString();
+  document.getElementById('kRpm').textContent   = rpm.length ? Math.round(avg(rpm)).toLocaleString() : '—';
+  document.getElementById('kCur').textContent   = cur.length ? Math.max(...cur).toFixed(2) : '—';
+  document.getElementById('kVolt').textContent  = vol.length ? avg(vol).toFixed(1) : '—';
+  document.getElementById('kPow').textContent   = pow.length ? Math.max(...pow).toLocaleString() : '—';
+  document.getElementById('kEvt').textContent   = evt.length;
+}
+
+// ══════════════════════════════════════════════════════
+// Operator Summary
+// ══════════════════════════════════════════════════════
+function renderOpSummary() {
+  // Group by operator + device_id
+  const groups = {};
+  allData.forEach(r => {
+    const key = `${r.operator||'Unknown'}__${r.device_id??'—'}`;
+    if (!groups[key]) groups[key] = { operator:r.operator||'Unknown', device:r.device_id, rows:[] };
+    groups[key].rows.push(r);
+  });
+  const list = Object.values(groups);
+  if (list.length < 2) { document.getElementById('opSumCard').style.display='none'; return; }
+  document.getElementById('opSumCard').style.display='';
+
+  const tbody = document.getElementById('opSumTbody');
+  tbody.innerHTML = list.map(g => {
+    const rows = g.rows;
+    const rpm  = rows.filter(r=>r.rpm>0).map(r=>r.rpm);
+    const cur  = rows.filter(r=>r.current_a!=null).map(r=>+r.current_a);
+    const vol  = rows.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
+    const pow  = rows.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+    const times = rows.map(r=>r.local_time||r.timestamp).filter(Boolean).sort();
+    return `<tr>
+      <td class="font-semibold text-cyan-300">${g.operator}</td>
+      <td class="text-center">${g.device!=null?`#${g.device}`:'—'}</td>
+      <td class="text-right font-mono font-bold">${rows.length.toLocaleString()}</td>
+      <td class="text-right font-mono text-emerald-400">${rpm.length?Math.round(avg(rpm)).toLocaleString():'—'}</td>
+      <td class="text-right font-mono text-amber-400">${cur.length?Math.max(...cur).toFixed(2):'—'}</td>
+      <td class="text-right font-mono text-violet-400">${vol.length?avg(vol).toFixed(1):'—'}</td>
+      <td class="text-right font-mono text-rose-400">${pow.length?Math.max(...pow).toLocaleString():'—'}</td>
+      <td class="font-mono text-[11px] text-slate-500">${times[0]?.slice(0,16)||'—'}</td>
+      <td class="font-mono text-[11px] text-slate-500">${times[times.length-1]?.slice(0,16)||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// Chart
+// ══════════════════════════════════════════════════════
+const TAB_CFG = [
+  { ds: [
+      { k:'rpm',       lbl:'轉速 RPM',   color:'#34d399', ax:'y'  },
+      { k:'current_a', lbl:'電流 A × 10',color:'#fbbf24', ax:'y2', scale:10 },
+    ],
+    y: {title:'RPM', color:'#34d399'}, y2:{title:'A×10', color:'#fbbf24'}
+  },
+  { ds: [
+      { k:'voltage_v', lbl:'電壓 V', color:'#a78bfa', ax:'y'  },
+      { k:'power_w',   lbl:'功率 W', color:'#f87171', ax:'y2' },
+    ],
+    y: {title:'V', color:'#a78bfa'}, y2:{title:'W', color:'#f87171'}
+  },
+  { ds: [
+      { k:'temperature_c', lbl:'溫度 °C', color:'#fb923c', ax:'y' },
+    ],
+    y: {title:'°C', color:'#fb923c'}, y2:null
+  },
+];
+
+function switchTab(t) {
+  curTab = t;
+  [0,1,2].forEach(i => document.getElementById(`tab${i}`).classList.toggle('active', i===t));
+  renderChart();
+}
+
+function localLabel(r) {
+  const s = r.local_time || new Date(r.timestamp).toLocaleString('sv',{timeZone:'Asia/Taipei'});
+  return s.slice(0,19); // YYYY-MM-DD HH:MM:SS
+}
+
+function renderChart() {
+  let pts = allData.filter(r=>r.timestamp);
+  const total = pts.length;
+  let step = 1;
+  if (pts.length > 2000) { step = Math.ceil(pts.length/2000); pts = pts.filter((_,i)=>i%step===0); }
+
+  const labels = pts.map(r => localLabel(r).slice(11,19)); // HH:MM:SS
+  const cfg = TAB_CFG[curTab];
+  const datasets = cfg.ds.map(ds => ({
+    label: ds.lbl,
+    data: pts.map(r => { const v=r[ds.k]; return v!=null?(ds.scale?v*ds.scale:v):null; }),
+    borderColor: ds.color,
+    backgroundColor: ds.color+'18',
+    borderWidth: 1.5,
+    pointRadius: pts.length > 300 ? 0 : 2,
+    tension: 0.15,
+    yAxisID: ds.ax,
+    spanGaps: true,
+  }));
+
+  // Event overlay markers (vertical lines via scatter)
+  const evtPts = pts.map((r,i)=>r.event?{x:i, y:null, evt:r.event}:null).filter(Boolean);
+  // Add event scatter dataset
+  if (evtPts.length && curTab < 2) {
+    const evtY = cfg.ds[0];
+    datasets.push({
+      type:'scatter', label:'事件',
+      data: pts.map((r,i)=>r.event? { x:labels[i], y: r[evtY.k]!=null?(evtY.scale?r[evtY.k]*evtY.scale:r[evtY.k]):0 } :null).filter(Boolean),
+      backgroundColor:'rgba(248,113,113,.9)',
+      pointRadius: 6, pointStyle:'triangle',
+      yAxisID: evtY.ax,
+    });
+  }
+
+  const scales = {
+    x: { ticks:{ color:'#64748b', maxTicksLimit:14, font:{size:10} }, grid:{ color:'rgba(255,255,255,.04)' } },
+    y: { position:'left',
+      title:{ display:true, text:cfg.y.title, color:cfg.y.color, font:{size:11} },
+      ticks:{ color:'#64748b', font:{size:10} }, grid:{ color:'rgba(255,255,255,.06)' }, min:0 },
+  };
+  if (cfg.y2) {
+    scales.y2 = { position:'right',
+      title:{ display:true, text:cfg.y2.title, color:cfg.y2.color, font:{size:11} },
+      ticks:{ color:'#64748b', font:{size:10} }, grid:{ drawOnChartArea:false }, min:0 };
+  }
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('mainChart'), {
+    type:'line', data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{ labels:{ color:'#94a3b8', font:{size:11}, boxWidth:12 } },
+        tooltip:{ mode:'index', intersect:false,
+          callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'—'}` }
+        }
+      },
+      scales,
+      interaction:{ mode:'nearest', axis:'x', intersect:false }
+    }
+  });
+  document.getElementById('chartInfo').textContent =
+    step > 1 ? `資料量 ${total} 筆，每 ${step} 筆取樣 1 點顯示（${pts.length} 點）` :
+               `顯示全部 ${pts.length} 點`;
+}
+
+// ══════════════════════════════════════════════════════
+// Events Table
+// ══════════════════════════════════════════════════════
+const EVT_COLORS = {
+  'Motor Start':'#34d399','Motor Stop':'#64748b','Fault':'#f87171',
+  'Auto LOG Resumed':'#22d3ee','Device Connected':'#0ea5e9',
+  'Device Disconnected':'#94a3b8','Load Test':'#fb923c',
+  'Uphill Test':'#a78bfa','Abnormal Noise':'#f87171',
+};
+function evtBadge(name) {
+  const c = EVT_COLORS[name] || '#94a3b8';
+  return `<span class="badge" style="background:${c}20;color:${c};border:1px solid ${c}40">${name}</span>`;
+}
+
+function renderEvents() {
+  const evts = allData.filter(r=>r.event);
+  document.getElementById('evtCount').textContent = `（${evts.length} 筆）`;
+  const tbody = document.getElementById('evtTbody');
+  if (!evts.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-slate-600 text-center py-4">無事件記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = evts.map(r => `<tr>
+    <td class="font-mono text-[11px]">${localLabel(r)}</td>
+    <td>${r.operator||'—'}</td>
+    <td class="text-center">${r.device_id!=null?`#${r.device_id}`:'—'}</td>
+    <td>${evtBadge(r.event)}</td>
+    <td class="text-right font-mono text-emerald-400">${r.rpm??'—'}</td>
+    <td class="text-right font-mono text-amber-400">${r.current_a!=null?(+r.current_a).toFixed(2):'—'}</td>
+    <td class="text-right font-mono text-violet-400">${r.voltage_v!=null?(+r.voltage_v).toFixed(1):'—'}</td>
+  </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// Data Table (paginated)
+// ══════════════════════════════════════════════════════
+const MOTOR_STATE_TXT = {0:'停止',2:'運轉中',3:'電子煞車',4:'自由',5:'故障',6:'禁止',7:'伺服',8:'位置保持'};
+const MOTOR_STATE_CLR = {0:'#64748b',2:'#34d399',3:'#fbbf24',5:'#f87171'};
+
+function renderTable() {
+  const total = allData.length;
+  const pages = Math.max(1, Math.ceil(total/PAGE));
+  curPage = Math.max(0, Math.min(pages-1, curPage));
+  const slice = allData.slice(curPage*PAGE, curPage*PAGE+PAGE);
+
+  document.getElementById('tblInfo').textContent  = `（第 ${curPage+1} / ${pages} 頁）`;
+  document.getElementById('pageInfo').textContent  = `第 ${curPage+1} / ${pages} 頁 · 共 ${total} 筆`;
+  document.getElementById('prevBtn').disabled = curPage === 0;
+  document.getElementById('nextBtn').disabled = curPage >= pages-1;
+
+  const tbody = document.getElementById('dataTbody');
+  if (!slice.length) {
+    tbody.innerHTML='<tr><td colspan="10" class="text-slate-600 text-center py-8">無資料</td></tr>';
+    return;
+  }
+  tbody.innerHTML = slice.map(r => {
+    const st  = r.motor_state;
+    const stc = MOTOR_STATE_CLR[st]||'#94a3b8';
+    const stt = MOTOR_STATE_TXT[st]??`${st}`;
+    return `<tr>
+      <td class="font-mono text-[11px]">${localLabel(r)}</td>
+      <td class="text-cyan-300 font-semibold text-xs">${r.operator||'—'}</td>
+      <td class="text-center text-xs">${r.device_id!=null?`#${r.device_id}`:'—'}</td>
+      <td><span style="color:${stc};font-size:11px;font-weight:700">${stt}</span></td>
+      <td class="text-right font-mono ${r.rpm>0?'text-emerald-400':''}">${r.rpm??'—'}</td>
+      <td class="text-right font-mono text-amber-400">${r.current_a!=null?(+r.current_a).toFixed(2):'—'}</td>
+      <td class="text-right font-mono text-violet-400">${r.voltage_v!=null?(+r.voltage_v).toFixed(1):'—'}</td>
+      <td class="text-right font-mono text-rose-400">${r.power_w??'—'}</td>
+      <td class="text-right font-mono">${r.temperature_c!=null?(+r.temperature_c).toFixed(1):'—'}</td>
+      <td>${r.event?evtBadge(r.event):''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function changePage(d) {
+  curPage = Math.max(0, Math.min(Math.ceil(allData.length/PAGE)-1, curPage+d));
+  renderTable();
+}
+
+// ══════════════════════════════════════════════════════
+// Section collapse
+// ══════════════════════════════════════════════════════
+function toggleSec(id, arrowId) {
+  secOpen[id] = !secOpen[id];
+  document.getElementById(id).style.display = secOpen[id] ? 'none' : '';
+  document.getElementById(arrowId).textContent = secOpen[id] ? '▶' : '▼';
+}
+
+// ══════════════════════════════════════════════════════
+// CSV export
+// ══════════════════════════════════════════════════════
+function exportCSV() {
+  if (!allData.length) { alert('請先查詢資料'); return; }
+  const hdr = 'local_time,timestamp_utc,operator,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event\n';
+  const body = allData.map(r =>
+    `"${r.local_time||''}","${r.timestamp}","${r.operator||''}",` +
+    `${r.device_id??''},${r.session_id??''},${r.motor_state??''},${r.rpm??''},${r.current_a??''},` +
+    `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},"${r.event??''}"`
+  ).join('\n');
+  const blob = new Blob(['﻿'+hdr+body], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `GaN_Motor_${new Date().toLocaleString('sv',{timeZone:'Asia/Taipei'}).slice(0,10)}.csv`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════════
+window.addEventListener('load', async () => {
+  renderChart(); // 空圖
+  setRange(24);
+  setStatus('載入篩選選項…');
+  await loadOptions();
+  doQuery();
+});
+</script>
+</body>
+</html>
