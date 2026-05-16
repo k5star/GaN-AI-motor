@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GaN 馬達監控 V6 (ASCII)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+body{background:#0d1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;
+     overscroll-behavior:none;-webkit-user-select:none;user-select:none;}
+@keyframes almblink{0%,100%{opacity:1}50%{opacity:.3}}
+.alarm-blink{animation:almblink .8s infinite}
+@keyframes slideup{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.slide-up{animation:slideup .2s ease}
+.btn-press:active{transform:scale(.93);transition:transform .07s}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+.card{background:rgba(22,27,34,.95);border:1px solid rgba(255,255,255,.07);border-radius:16px}
+.glass{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px}
+.badge-warn{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+.badge-crit{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+.badge-emer{background:rgba(239,68,68,.25);color:#fca5a5;border:1px solid rgba(239,68,68,.4);animation:almblink 1s infinite}
+.badge-ok  {background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25)}
+.status-run  {color:#34d399}
+.status-stop {color:#64748b}
+.status-fault{color:#f87171}
+.status-warn {color:#fbbf24}
+.dev-card-run {border-color:rgba(52,211,153,.3)!important}
+.dev-card-fault{border-color:rgba(239,68,68,.4)!important}
+/* 登入 */
+#loginOverlay{position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#0d1117 0%,#0f1923 50%,#0d1117 100%);
+  display:flex;align-items:center;justify-content:center;}
+#loginOverlay.fade-out{animation:fadeOut .4s ease forwards}
+@keyframes fadeOut{to{opacity:0;pointer-events:none}}
+.login-card{width:min(340px,90vw);background:rgba(22,27,34,.98);
+  border:1px solid rgba(255,255,255,.1);border-radius:20px;
+  padding:32px 28px;box-shadow:0 0 60px rgba(0,0,0,.6);}
+.login-input{width:100%;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;
+  color:#e2e8f0;font-size:15px;padding:11px 14px;outline:none;
+  transition:border-color .2s;-webkit-user-select:text;user-select:text;}
+.login-input:focus{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.15)}
+.login-btn{width:100%;padding:13px;border-radius:12px;
+  background:linear-gradient(135deg,#0891b2,#0e7490);
+  color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;
+  transition:opacity .15s,transform .1s;margin-top:4px;}
+.login-btn:active{opacity:.85;transform:scale(.97)}
+#loginErr{color:#f87171;font-size:12px;text-align:center;min-height:18px;margin-top:6px;}
+/* LOG 狀態 */
+@keyframes logblink{0%,100%{opacity:1}50%{opacity:.4}}
+.log-dot-on{display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:#34d399;box-shadow:0 0 6px #34d399;animation:logblink 2s infinite;margin-right:5px}
+.log-dot-off{display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:#64748b;margin-right:5px}
+/* 事件標記按鈕 */
+.evt-btn{font-size:10px;padding:5px 11px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
+  color:#94a3b8;cursor:pointer;transition:.15s;white-space:nowrap;
+  -webkit-user-select:none;user-select:none;}
+.evt-btn:active{transform:scale(.91);background:rgba(255,255,255,.12)}
+/* datetime input */
+input[type="datetime-local"]{background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;
+  color:#e2e8f0;padding:8px 10px;font-size:11px;width:100%;
+  outline:none;color-scheme:dark;-webkit-user-select:text;user-select:text;}
+input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
+/* 手動備註 modal */
+#noteModal{display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,.8);align-items:center;justify-content:center;padding:16px;}
+#noteModal.open{display:flex}
+#noteText{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;color:#e2e8f0;width:100%;padding:10px 12px;font-size:13px;
+  outline:none;resize:none;-webkit-user-select:text;user-select:text;}
+</style>
+</head>
+<body class="min-h-screen pb-6">
+
+<!-- ══════════ 登入畫面（帳號only，無密碼）══════════ -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="text-center mb-6">
+      <div class="text-3xl mb-2">⚡</div>
+      <div class="text-lg font-black text-slate-100 leading-tight">GaN 馬達監控 V6</div>
+      <div class="text-[11px] text-slate-500 mt-1 font-mono">ASCII 多裝置 BLE 監控系統</div>
+    </div>
+    <div class="mb-5">
+      <label class="block text-[11px] text-slate-500 uppercase tracking-widest font-semibold mb-1.5">帳號</label>
+      <input id="loginUser" type="text" class="login-input"
+        placeholder="Username" autocomplete="username"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn btn-press" onclick="doLogin()">登入</button>
+    <div id="loginErr"></div>
+    <div class="text-center mt-5 text-[10px] text-slate-700">ITRI · GaN Motor Control System</div>
+  </div>
+</div>
+
+<!-- ══════════ 標題列 ══════════ -->
+<header class="sticky top-0 z-40 bg-slate-900/97 backdrop-blur border-b border-slate-700/40 px-4 py-2.5 flex items-center justify-between">
+  <div>
+    <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V6</div>
+    <div class="text-[9px] text-slate-500 font-mono">ASCII 多裝置 BLE · <span id="activeCount">0</span> 台連線中</div>
+  </div>
+  <button onclick="addDevice()"
+    class="btn-press flex items-center gap-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold px-3 py-1.5 rounded-xl text-sm transition-all">
+    <span class="text-base leading-none">+</span> 新增裝置
+  </button>
+</header>
+
+<main class="px-3 py-3 space-y-3">
+
+<!-- ══ Auto LOG 狀態列 ══ -->
+<div class="card px-4 py-2.5">
+  <div class="flex items-center gap-2 flex-wrap">
+    <button id="autoLogBtn" onclick="toggleAutoLog()"
+      style="display:flex;align-items:center;font-size:11px;font-weight:700;
+             padding:5px 12px;border-radius:10px;border:1px solid rgba(52,211,153,.35);
+             background:rgba(6,78,59,.4);color:#34d399;cursor:pointer;transition:.2s">
+      <span class="log-dot-on" id="logDot"></span>Auto LOG ON
+    </button>
+    <div class="flex items-center gap-3 ml-auto text-[11px] flex-wrap">
+      <span class="text-slate-500">Local&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">Synced&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">Unsynced&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
+    </div>
+  </div>
+  <div id="sessionInfo" class="text-[10px] text-slate-700 font-mono mt-1.5 truncate">尚無 Session</div>
+</div>
+
+<!-- ══ 事件標記 ══ -->
+<div class="card px-4 py-3">
+  <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-2">🏷 事件標記</div>
+  <div class="flex flex-wrap gap-1.5">
+    <button class="evt-btn btn-press" onclick="markEvent('Motor Start')">▶ 啟動</button>
+    <button class="evt-btn btn-press" onclick="markEvent('Motor Stop')">⏹ 停止</button>
+    <button class="evt-btn btn-press" onclick="markEvent('Fault')">⚠ 故障</button>
+    <button class="evt-btn btn-press" onclick="markEvent('Load Test')">🏋 負載測試</button>
+    <button class="evt-btn btn-press" onclick="markEvent('Uphill Test')">⛰ 爬坡測試</button>
+    <button class="evt-btn btn-press" onclick="markEvent('Abnormal Noise')">🔊 異常噪音</button>
+    <button class="evt-btn btn-press" onclick="openNoteModal()">📝 手動備註</button>
+  </div>
+</div>
+
+<!-- ══ 記錄操作列 ══ -->
+<div class="card px-4 py-3">
+  <div class="flex gap-2">
+    <button onclick="resetAllStats()"
+      class="btn-press px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-lg transition">↺</button>
+    <button onclick="exportSessionCSV()"
+      class="btn-press flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-sm font-bold transition">
+      📥 匯出 Session CSV
+    </button>
+    <button onclick="clearDBConfirm()"
+      class="btn-press px-3 py-2.5 bg-slate-800 hover:bg-red-900/40 text-slate-600 hover:text-red-400 rounded-xl text-sm transition"
+      title="清除本機 DB">🗑</button>
+  </div>
+</div>
+
+<div id="emptyHint" class="card px-5 py-10 text-center">
+  <div class="text-4xl mb-3">📡</div>
+  <div class="text-slate-400 font-bold mb-1">尚無裝置</div>
+  <div class="text-slate-600 text-sm">點右上角「+ 新增裝置」開始連線</div>
+</div>
+
+<div id="deviceList" class="space-y-3"></div>
+
+<!-- ══ 共享趨勢圖 ══ -->
+<div id="combinedChartWrap" class="hidden card p-4">
+  <div class="flex items-center justify-between mb-2">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">轉速比較 (最近 3 分鐘)</div>
+    <button id="trendPauseBtn" onclick="toggleTrendPause()"
+      class="btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 border border-slate-600 transition-colors">
+      ⏸ 暫停
+    </button>
+  </div>
+  <div style="position:relative;height:160px"><canvas id="combinedChart"></canvas></div>
+  <div id="trendPausedBar" class="hidden mt-2 text-center text-[10px] text-amber-400 font-semibold">⏸ 已暫停 — 點按鈕繼續</div>
+</div>
+
+<!-- ══ 區段選取分析 ══ -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-2">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">🔍 區段選取分析</div>
+    <button onclick="toggleSegPanel()" id="segArrow"
+      class="text-[10px] text-slate-600 hover:text-slate-400 btn-press transition-colors">▾</button>
+  </div>
+  <div id="segPanel">
+    <!-- 快速範圍 -->
+    <div class="flex gap-1.5 mb-2">
+      <button class="evt-btn btn-press flex-1" onclick="setQuickRange(5)">最近 5 分</button>
+      <button class="evt-btn btn-press flex-1" onclick="setQuickRange(30)">最近 30 分</button>
+      <button class="evt-btn btn-press flex-1" onclick="setQuickRange(60)">最近 1 小時</button>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-2">
+      <div>
+        <div class="text-[9px] text-slate-600 mb-1">起始時間</div>
+        <input type="datetime-local" id="segStart" step="1">
+      </div>
+      <div>
+        <div class="text-[9px] text-slate-600 mb-1">結束時間</div>
+        <input type="datetime-local" id="segEnd" step="1">
+      </div>
+    </div>
+    <button onclick="analyzeSegment()"
+      class="btn-press w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm transition mb-2">
+      分析區段
+    </button>
+    <!-- 分析結果（動態顯示） -->
+    <div id="segResult" class="hidden">
+      <div id="segStats" class="grid grid-cols-2 gap-1.5 mb-3"></div>
+      <div style="position:relative;height:150px" class="mb-2">
+        <canvas id="segChart"></canvas>
+      </div>
+      <button onclick="exportSegCSV()"
+        class="btn-press w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition">
+        📥 匯出區段 CSV
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 共享警報事件 ══ -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">警報事件</div>
+    <span id="almCntBadge" class="text-[10px] text-slate-500">0 次</span>
+  </div>
+  <div id="almEventList"><div class="text-slate-600 text-xs text-center py-3">無警報記錄</div></div>
+</div>
+
+<!-- ══ 事件紀錄 ══ -->
+<div class="card p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">事件紀錄</div>
+    <button onclick="clearLog()" class="text-[10px] text-slate-600 hover:text-red-400 btn-press transition-colors">清除</button>
+  </div>
+  <div id="sysLogList" class="font-mono text-[11px] leading-relaxed space-y-0.5 max-h-52 overflow-y-auto">
+    <div class="text-slate-600 text-center py-3">尚無紀錄</div>
+  </div>
+</div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 text-slate-200 text-sm px-5 py-2.5 rounded-2xl shadow-xl transition-opacity"></div>
+
+<!-- 手動備註 Modal -->
+<div id="noteModal">
+  <div class="card p-5 w-full max-w-sm">
+    <div class="text-sm font-bold text-slate-200 mb-3">📝 手動備註</div>
+    <textarea id="noteText" rows="3" placeholder="輸入備註內容…"></textarea>
+    <div class="flex gap-2 mt-3">
+      <button onclick="submitNote()"
+        class="btn-press flex-1 py-2.5 bg-cyan-700 text-white font-bold rounded-xl text-sm transition">確認</button>
+      <button onclick="closeNoteModal()"
+        class="btn-press flex-1 py-2.5 bg-slate-700 text-slate-300 font-bold rounded-xl text-sm transition">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════
+// 登入（帳號only，無密碼）
+// ══════════════════════════════════════
+const VALID_USER = 'ITRI';
+
+function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const errEl = document.getElementById('loginErr');
+  if (user !== VALID_USER) {
+    errEl.textContent = '帳號錯誤，請重新輸入';
+    return;
+  }
+  errEl.textContent = '';
+  const overlay = document.getElementById('loginOverlay');
+  overlay.classList.add('fade-out');
+  setTimeout(() => overlay.remove(), 420);
+  initApp();
+}
+
+// ══════════════════════════════════════
+// 馬達狀態碼 / 警報碼
+// ══════════════════════════════════════
+const MOTOR_STATUS = {
+  0:{txt:'停止',icon:'⬛',clr:'status-stop'},
+  2:{txt:'運轉中',icon:'🟢',clr:'status-run'},
+  3:{txt:'電子煞車',icon:'🟠',clr:'status-warn'},
+  4:{txt:'自由運轉',icon:'⚪',clr:'status-stop'},
+  5:{txt:'故障',icon:'🔴',clr:'status-fault'},
+  6:{txt:'禁止輸入',icon:'🟡',clr:'status-warn'},
+  7:{txt:'伺服啟動',icon:'🟣',clr:'status-run'},
+  8:{txt:'位置保持',icon:'🔵',clr:'status-run'},
+};
+const ALARM_CODE = {
+  0:{txt:'正常',sev:'ok'},
+  1:{txt:'過電流 (OC)',sev:'crit',hint:'⚡ 負載過重或馬達堵轉，檢查機械負載'},
+  2:{txt:'過電壓 (OV)',sev:'crit',hint:'🔋 電源電壓過高或制動能量回充'},
+  3:{txt:'低電壓 (UV)',sev:'warn',hint:'🔋 電源不穩或電池電量不足'},
+  4:{txt:'MOS 過溫',sev:'crit',hint:'🌡 散熱不足，降低負載或改善散熱'},
+  5:{txt:'馬達過溫',sev:'crit',hint:'🌡 馬達持續高負荷，需冷卻或降速'},
+  6:{txt:'IPM 過溫',sev:'crit',hint:'🌡 驅動模組溫度過高，減少佔空比'},
+  7:{txt:'霍爾感測異常',sev:'crit',hint:'🔌 感測器接線問題或磁場干擾'},
+  8:{txt:'超速',sev:'crit',hint:'⚠ 轉速超過額定上限，降低目標轉速'},
+  9:{txt:'位置偏差',sev:'warn',hint:'📐 位置誤差過大，檢查機械阻力'},
+  10:{txt:'編碼器異常',sev:'crit',hint:'🔌 編碼器接線或訊號異常'},
+  11:{txt:'通訊逾時',sev:'warn',hint:'📡 BLE 訊號不穩定，靠近設備'},
+  12:{txt:'EEPROM 錯誤',sev:'crit',hint:'💾 設定儲存失敗，重新上電'},
+  13:{txt:'參數錯誤',sev:'warn',hint:'⚙ 參數超出範圍，重設驅動器'},
+  14:{txt:'硬體過流',sev:'crit',hint:'⚡ 硬體層級過流，立即停機'},
+  15:{txt:'軟體過流',sev:'warn',hint:'⚡ 電流超過軟體限制值'},
+  16:{txt:'U 相斷路',sev:'crit',hint:'🔌 U 相接線或 MOS 開路'},
+  17:{txt:'V 相斷路',sev:'crit',hint:'🔌 V 相接線或 MOS 開路'},
+  18:{txt:'W 相斷路',sev:'crit',hint:'🔌 W 相接線或 MOS 開路'},
+  19:{txt:'電流感測異常',sev:'crit',hint:'🔌 電流感測器接線或損壞'},
+  20:{txt:'制動電阻過熱',sev:'warn',hint:'🌡 制動過於頻繁，加大制動電阻'},
+  21:{txt:'接地故障',sev:'crit',hint:'⚡ 馬達或線路接地，立即停機'},
+  22:{txt:'失速',sev:'warn',hint:'⚙ 無法達到目標轉速，檢查負載'},
+  2048:{txt:'系統故障',sev:'crit',hint:'🔧 驅動器內部錯誤，重新上電'},
+  2056:{txt:'IO 故障',sev:'warn',hint:'🔌 數位 IO 異常'},
+};
+const alarmDesc = c => (ALARM_CODE[c]||{txt:`故障 ${c}`}).txt;
+const alarmSev  = c => (ALARM_CODE[c]||{sev:'warn'}).sev;
+const alarmHint = c => (ALARM_CODE[c]||{}).hint;
+
+// ══════════════════════════════════════
+// 裝置設定檔
+// ══════════════════════════════════════
+const PROFILE = {
+  label:'ASCII 連接', protocol:'ASCII', slaveId:0x11,
+  startReg:0x4600, regCount:16, hasPage10:true,
+  idx:{status:0,alarm:1,rpm:4,power:6,voltage:7,duty:8,current:9},
+  scale:{voltage:0.01,duty:0.1,current:0.01}
+};
+const DEV_COLORS = ['#22d3ee','#fbbf24','#34d399','#fb7185','#a78bfa','#f97316'];
+
+// ══════════════════════════════════════
+// IndexedDB
+// ══════════════════════════════════════
+const DB_NAME    = 'GaNMotorDB_V6';
+const DB_VERSION = 1;
+let db = null;
+
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('sessions')) {
+        const ss = d.createObjectStore('sessions', {keyPath:'id', autoIncrement:true});
+        ss.createIndex('start_time','start_time');
+        ss.createIndex('synced','synced');
+      }
+      if (!d.objectStoreNames.contains('logs')) {
+        const ls = d.createObjectStore('logs', {keyPath:'id', autoIncrement:true});
+        ls.createIndex('session_id','session_id');
+        ls.createIndex('device_id','device_id');
+        ls.createIndex('timestamp','timestamp');
+        ls.createIndex('synced','synced');
+      }
+    };
+    req.onsuccess  = e => { db = e.target.result; resolve(db); };
+    req.onerror    = e => reject(e);
+  });
+}
+
+function dbAdd(store, rec) {
+  return new Promise((res, rej) => {
+    const tx  = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).add(rec);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e);
+  });
+}
+function dbPut(store, rec) {
+  return new Promise((res, rej) => {
+    const tx  = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(rec);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e);
+  });
+}
+function dbGetAll(store, idxName, query) {
+  return new Promise((res, rej) => {
+    const tx  = db.transaction(store, 'readonly');
+    const os  = tx.objectStore(store);
+    const req = idxName ? os.index(idxName).getAll(query) : os.getAll();
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e);
+  });
+}
+function dbGetRange(store, idxName, lower, upper) {
+  return new Promise((res, rej) => {
+    const tx  = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).index(idxName)
+      .getAll(IDBKeyRange.bound(lower, upper));
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e);
+  });
+}
+function dbClearAll() {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(['logs','sessions'], 'readwrite');
+    tx.objectStore('logs').clear();
+    tx.objectStore('sessions').clear();
+    tx.oncomplete = res;
+    tx.onerror    = rej;
+  });
+}
+
+// ══════════════════════════════════════
+// Session 管理 & Auto LOG
+// ══════════════════════════════════════
+let currentSessionId = null;
+let autoLogEnabled   = true;
+let localSavedTotal  = 0;
+let syncedTotal      = 0;
+
+function updateLogUI() {
+  _s('localCount',    localSavedTotal);
+  _s('syncedCount',   syncedTotal);
+  _s('unsyncedCount', Math.max(0, localSavedTotal - syncedTotal));
+}
+
+async function restoreFromDB() {
+  try {
+    const allLogs = await dbGetAll('logs', null, null);
+    localSavedTotal = allLogs.length;
+    syncedTotal     = allLogs.filter(r => r.synced).length;
+    const sessions  = await dbGetAll('sessions', null, null);
+    if (sessions.length) {
+      const last = sessions[sessions.length - 1];
+      if (!last.end_time) {
+        currentSessionId = last.id;
+        _s('sessionInfo',
+          `Session #${last.id} · 已恢復 · 開始 ${new Date(last.start_time).toLocaleTimeString('zh-TW')}`);
+      }
+    }
+    updateLogUI();
+    addLog(`💾 DB 還原：${localSavedTotal} 筆 / ${sessions.length} Session`, 'green');
+  } catch(e) { console.error('restoreFromDB', e); }
+}
+
+async function ensureSession() {
+  if (currentSessionId) return;
+  const now = new Date().toISOString();
+  const id  = await dbAdd('sessions', {start_time:now, end_time:null, device_ids:[], synced:false});
+  currentSessionId = id;
+  _s('sessionInfo', `Session #${id} · 開始 ${new Date(now).toLocaleTimeString('zh-TW')}`);
+  addLog(`📂 Session #${id} 已建立`, 'green');
+}
+
+async function writeLog(dev, event) {
+  if (!autoLogEnabled || !db) return;
+  await ensureSession();
+  const {idx, scale} = PROFILE;
+  const temp = dev.tempD09 !== null ? dev.tempD09 : (dev.tempD10 !== null ? dev.tempD10 : null);
+  const rec = {
+    session_id:    currentSessionId,
+    device_id:     dev.id,
+    timestamp:     new Date().toISOString(),
+    rpm:           dev.currentValues[idx.rpm],
+    current_a:     parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2)),
+    voltage_v:     parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1)),
+    power_w:       dev.currentValues[idx.power],
+    temperature_c: temp,
+    fault_code:    dev.currentValues[idx.alarm],
+    motor_state:   dev.currentValues[idx.status],
+    event:         event || null,
+    synced:        false
+  };
+  try {
+    await dbAdd('logs', rec);
+    localSavedTotal++;
+    updateLogUI();
+  } catch(e) { console.error('writeLog', e); }
+}
+
+async function writeEventOnly(eventName) {
+  if (!autoLogEnabled || !db) return;
+  await ensureSession();
+  const rec = {
+    session_id:currentSessionId, device_id:null,
+    timestamp:new Date().toISOString(),
+    rpm:null, current_a:null, voltage_v:null, power_w:null,
+    temperature_c:null, fault_code:null, motor_state:null,
+    event:eventName, synced:false
+  };
+  try {
+    await dbAdd('logs', rec);
+    localSavedTotal++;
+    updateLogUI();
+  } catch(e) {}
+}
+
+// ── Auto LOG 開關
+function toggleAutoLog() {
+  autoLogEnabled = !autoLogEnabled;
+  const btn = document.getElementById('autoLogBtn');
+  const dot = document.getElementById('logDot');
+  if (autoLogEnabled) {
+    btn.style.background = 'rgba(6,78,59,.4)';
+    btn.style.borderColor = 'rgba(52,211,153,.35)';
+    btn.style.color = '#34d399';
+    dot.className = 'log-dot-on';
+    btn.childNodes[1].textContent = 'Auto LOG ON';
+    showToast('✅ Auto LOG 開啟');
+  } else {
+    btn.style.background = 'rgba(51,65,85,.3)';
+    btn.style.borderColor = 'rgba(100,116,139,.25)';
+    btn.style.color = '#64748b';
+    dot.className = 'log-dot-off';
+    btn.childNodes[1].textContent = 'Auto LOG OFF';
+    showToast('⏹ Auto LOG 停止');
+  }
+}
+
+// ══════════════════════════════════════
+// 事件標記
+// ══════════════════════════════════════
+function markEvent(name) {
+  let marked = 0;
+  devices.forEach(dev => { if (dev.isConnected) { writeLog(dev, name); marked++; } });
+  if (!marked) writeEventOnly(name);
+  addLog(`🏷 事件：${name}`, 'green');
+  showToast(`🏷 ${name}`);
+}
+
+function openNoteModal()  { document.getElementById('noteModal').classList.add('open'); }
+function closeNoteModal() { document.getElementById('noteModal').classList.remove('open'); }
+function submitNote() {
+  const note = document.getElementById('noteText').value.trim();
+  if (!note) { showToast('備註不得為空'); return; }
+  markEvent(`Manual Note: ${note}`);
+  document.getElementById('noteText').value = '';
+  closeNoteModal();
+}
+
+// ══════════════════════════════════════
+// 背景同步（設定 API 後自動補傳）
+// ══════════════════════════════════════
+const SYNC_API = ''; // 填入後端 API URL，空白＝純本機模式
+let syncTimer  = null;
+
+function startBackgroundSync() {
+  if (syncTimer || !SYNC_API) return;
+  syncTimer = setInterval(async () => {
+    if (!navigator.onLine) return;
+    try {
+      const unsync = await dbGetAll('logs', 'synced', IDBKeyRange.only(false));
+      const batch  = unsync.slice(0, 50);
+      if (!batch.length) return;
+      const resp = await fetch(SYNC_API, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(batch),
+        signal:AbortSignal.timeout(6000)
+      });
+      if (resp.ok) {
+        const tx = db.transaction('logs', 'readwrite');
+        const os = tx.objectStore('logs');
+        batch.forEach(r => { r.synced = true; os.put(r); });
+        syncedTotal += batch.length;
+        updateLogUI();
+      }
+    } catch(e) { /* offline, retry */ }
+  }, 3000);
+}
+
+// ══════════════════════════════════════
+// CSV 匯出（當前 Session）
+// ══════════════════════════════════════
+async function exportSessionCSV() {
+  if (!db) { showToast('資料庫未就緒'); return; }
+  try {
+    const rows = currentSessionId
+      ? await dbGetAll('logs', 'session_id', IDBKeyRange.only(currentSessionId))
+      : await dbGetAll('logs', null, null);
+    if (!rows.length) { showToast('尚無記錄'); return; }
+    downloadCSV(rows, `session_${currentSessionId||'all'}_`);
+    showToast(`✅ CSV 匯出 ${rows.length} 筆`);
+  } catch(e) { showToast('匯出失敗: ' + e); }
+}
+
+function downloadCSV(rows, prefix) {
+  const hdr = 'session_id,device_id,timestamp,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event,synced\n';
+  const body = rows.map(r =>
+    `${r.session_id??''},${r.device_id??''},${r.timestamp},${r.rpm??''},${r.current_a??''},` +
+    `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},` +
+    `${r.motor_state??''},${r.event??''},${r.synced}`
+  ).join('\n');
+  const blob = new Blob(['﻿'+hdr+body], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${prefix}${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── 清除 DB（雙擊確認）
+let clearPending = false;
+function clearDBConfirm() {
+  if (!clearPending) {
+    clearPending = true;
+    showToast('⚠ 再按一次確認清除所有本機資料');
+    setTimeout(() => { clearPending = false; }, 3000);
+    return;
+  }
+  clearPending = false;
+  if (!db) return;
+  dbClearAll().then(() => {
+    localSavedTotal = 0; syncedTotal = 0; currentSessionId = null;
+    updateLogUI();
+    _s('sessionInfo', '尚無 Session');
+    showToast('🗑 已清除所有本機資料');
+    addLog('🗑 DB 已清除');
+  });
+}
+
+// ══════════════════════════════════════
+// 區段分析
+// ══════════════════════════════════════
+let segVisible = true;
+let segChartInst = null;
+let segRows = [];
+
+function toggleSegPanel() {
+  segVisible = !segVisible;
+  document.getElementById('segPanel').style.display = segVisible ? '' : 'none';
+  document.getElementById('segArrow').textContent = segVisible ? '▾' : '▸';
+}
+
+function setQuickRange(minutes) {
+  const end   = new Date();
+  const start = new Date(end - minutes * 60000);
+  const fmt = d => {
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+  document.getElementById('segStart').value = fmt(start);
+  document.getElementById('segEnd').value   = fmt(end);
+}
+
+async function analyzeSegment() {
+  const sv = document.getElementById('segStart').value;
+  const ev = document.getElementById('segEnd').value;
+  if (!sv || !ev) { showToast('請選擇起始與結束時間'); return; }
+  const si = new Date(sv).toISOString();
+  const ei = new Date(ev).toISOString();
+  if (si >= ei) { showToast('起始時間需早於結束時間'); return; }
+  if (!db) { showToast('DB 未就緒'); return; }
+  try {
+    const rows = await dbGetRange('logs', 'timestamp', si, ei);
+    if (!rows.length) { showToast(`無資料（${sv} ~ ${ev}）`); return; }
+    segRows = rows;
+    renderSegResult(rows, sv, ev);
+    showToast(`✅ 分析完成：${rows.length} 筆`);
+  } catch(e) { showToast('分析失敗: ' + e); }
+}
+
+function renderSegResult(rows, sv, ev) {
+  const result = document.getElementById('segResult');
+  result.classList.remove('hidden');
+
+  const nums = k => rows.map(r => r[k]).filter(v => v !== null && v !== undefined);
+  const avg  = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const max  = arr => arr.length ? Math.max(...arr) : null;
+  const f1   = v => v !== null ? v.toFixed(1) : '--';
+  const f2   = v => v !== null ? v.toFixed(2) : '--';
+  const fi   = v => v !== null ? Math.round(v) : '--';
+
+  const rpmA = nums('rpm'),  curA = nums('current_a');
+  const vltA = nums('voltage_v'), tmpA = nums('temperature_c'), pwrA = nums('power_w');
+  const faultCnt = rows.filter(r => r.fault_code && r.fault_code !== 0).length;
+
+  // 能耗（梯形積分）
+  let wh = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].power_w != null && rows[i-1].power_w != null) {
+      const dt = (new Date(rows[i].timestamp) - new Date(rows[i-1].timestamp)) / 3600000;
+      wh += (rows[i].power_w + rows[i-1].power_w) / 2 * dt;
+    }
+  }
+
+  document.getElementById('segStats').innerHTML = `
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-cyan-400">${fi(max(rpmA))} <span class="text-[10px] text-slate-600">/ avg ${fi(avg(rpmA))}</span></div>
+      <div class="text-[9px] text-slate-600 mt-0.5">RPM 最大 / 平均</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-amber-400">${f2(max(curA))} <span class="text-[10px] text-slate-600">/ avg ${f2(avg(curA))}</span></div>
+      <div class="text-[9px] text-slate-600 mt-0.5">電流 A 最大 / 平均</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-emerald-400">${f1(max(vltA))} <span class="text-[10px] text-slate-600">/ avg ${f1(avg(vltA))}</span></div>
+      <div class="text-[9px] text-slate-600 mt-0.5">電壓 V 最大 / 平均</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-sky-400">${f1(max(tmpA))} <span class="text-[10px] text-slate-600">/ avg ${f1(avg(tmpA))}</span></div>
+      <div class="text-[9px] text-slate-600 mt-0.5">溫度°C 最大 / 平均</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-red-400">${faultCnt} 次</div>
+      <div class="text-[9px] text-slate-600 mt-0.5">Fault 次數</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2">
+      <div class="text-sm font-black font-mono text-purple-400">${wh.toFixed(4)} Wh</div>
+      <div class="text-[9px] text-slate-600 mt-0.5">能耗</div>
+    </div>
+    <div class="bg-black/25 rounded-xl px-3 py-2 col-span-2 text-center">
+      <div class="text-[10px] font-mono text-slate-500">${rows.length} 筆 · ${sv.replace('T',' ')} → ${ev.replace('T',' ')}</div>
+    </div>`;
+
+  // 下採樣（最多 120 點）
+  const step    = Math.max(1, Math.floor(rows.length / 120));
+  const sampled = rows.filter((_,i) => i % step === 0);
+  const labels  = sampled.map(r =>
+    new Date(r.timestamp).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+
+  if (segChartInst) { segChartInst.destroy(); segChartInst = null; }
+  segChartInst = new Chart(document.getElementById('segChart'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'RPM',    data:sampled.map(r=>r.rpm),         borderColor:'#22d3ee',yAxisID:'y', borderWidth:1.5,pointRadius:0,tension:0.3,fill:false},
+      {label:'A×10',   data:sampled.map(r=>r.current_a!=null?r.current_a*10:null), borderColor:'#fbbf24',yAxisID:'y', borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
+      {label:'°C',     data:sampled.map(r=>r.temperature_c), borderColor:'#f87171',yAxisID:'y2',borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
+      {label:'V',      data:sampled.map(r=>r.voltage_v),   borderColor:'#34d399',yAxisID:'y2',borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:0},
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x: {ticks:{color:'#94a3b8',font:{size:8},maxTicksLimit:4,maxRotation:0,autoSkip:true},grid:{color:'rgba(255,255,255,.04)'}},
+        y: {position:'left', ticks:{color:'#94a3b8',font:{size:8}}, grid:{color:'rgba(255,255,255,.04)'},
+            title:{display:true,text:'RPM / A×10',color:'#94a3b8',font:{size:8}}},
+        y2:{position:'right',ticks:{color:'#94a3b8',font:{size:8}}, grid:{display:false},
+            title:{display:true,text:'V / °C',color:'#94a3b8',font:{size:8}}}
+      },
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:8},boxWidth:8,padding:5}},
+        tooltip:{backgroundColor:'rgba(13,17,23,.95)',titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:6}
+      }
+    }
+  });
+}
+
+function exportSegCSV() {
+  if (!segRows.length) { showToast('尚無分析資料'); return; }
+  downloadCSV(segRows, 'segment_');
+  showToast(`✅ 區段 CSV 匯出 ${segRows.length} 筆`);
+}
+
+// ══════════════════════════════════════
+// 裝置管理
+// ══════════════════════════════════════
+const devices = new Map();
+let nextId = 1;
+
+function createDeviceObj() {
+  const id    = nextId++;
+  const color = DEV_COLORS[(id-1) % DEV_COLORS.length];
+  return {
+    id, color, bleName:'',
+    bleDevice:null, bleTxChar:null, bleRxChar:null,
+    isConnected:false, asciiBuffer:'',
+    bleQueue:[], bleQueueRunning:false,
+    currentValues: new Array(16).fill(0),
+    page0Values:   new Array(16).fill(0),
+    page0ReadPending:false, page0PollTimer:null,
+    tempD09:null, tempD10:null,
+    page10Pending:false, page10ReadingReg:10,
+    pollTimer:null, tempPollTimer:null,
+    lastAlmCode:0,
+    pwrAccWh:0, pwrRunSec:0, pwrStartCount:0, pwrLastTime:null, pwrRunning:false,
+    statMaxRpm:0, statMaxCur:0, statMaxVlt:0, statMaxPwr:0, statMaxTemp:-999,
+    almCnt:0, trendRpm:[], chart:null,
+    _logTick:0   // throttle: 每 2 秒寫一次 DB
+  };
+}
+
+function addDevice() {
+  if (devices.size >= 6) { showToast('最多支援 6 台裝置'); return; }
+  const dev = createDeviceObj();
+  devices.set(dev.id, dev);
+  renderDeviceCard(dev);
+  document.getElementById('emptyHint').classList.add('hidden');
+  addLog(`+ 新增裝置 #${dev.id}`);
+}
+
+function removeDevice(id) {
+  const dev = devices.get(id);
+  if (!dev) return;
+  if (dev.isConnected) disconnectDevice(id);
+  devices.delete(id);
+  document.getElementById(`devcard-${id}`)?.remove();
+  removeCombinedDataset(id);
+  updateActiveCount();
+  if (devices.size === 0) document.getElementById('emptyHint').classList.remove('hidden');
+  if (devices.size < 2)  document.getElementById('combinedChartWrap').classList.add('hidden');
+  addLog(`✕ 移除裝置 #${id}`);
+}
+
+// ══════════════════════════════════════
+// 裝置卡片 HTML
+// ══════════════════════════════════════
+function renderDeviceCard(dev) {
+  const list = document.getElementById('deviceList');
+  const wrap = document.createElement('div');
+  wrap.id        = `devcard-${dev.id}`;
+  wrap.className = 'card p-3 slide-up transition-all duration-300';
+  wrap.style.cssText = `border-left:3px solid ${dev.color}`;
+  wrap.innerHTML = `
+    <div class="flex items-center gap-2 mb-2.5">
+      <div id="dot-${dev.id}" class="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500"></div>
+      <div class="flex-1 min-w-0">
+        <span class="text-xs font-bold text-slate-300">裝置 #${dev.id}</span>
+        <span id="devname-${dev.id}" class="ml-1.5 text-[10px] text-slate-500 font-mono truncate hidden"></span>
+      </div>
+      <span class="text-[10px] text-slate-600 border border-slate-700 rounded px-1.5 py-0.5">ASCII</span>
+      <button id="connbtn-${dev.id}" onclick="connectDevice(${dev.id})"
+        class="btn-press text-[11px] font-bold px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition-all">連線</button>
+      <button onclick="removeDevice(${dev.id})"
+        class="btn-press text-slate-600 hover:text-red-400 text-lg leading-none px-1 transition-colors">✕</button>
+    </div>
+    <div class="flex items-center gap-2 mb-2">
+      <span id="sicon-${dev.id}" class="text-xl">⬛</span>
+      <span id="stxt-${dev.id}"  class="text-sm font-black status-stop">等待連線</span>
+      <div id="almbadge-${dev.id}" class="hidden ml-auto">
+        <span id="almtxt-${dev.id}" class="badge-crit text-[10px] font-black px-2 py-0.5 rounded-lg alarm-blink"></span>
+      </div>
+    </div>
+    <div class="grid grid-cols-4 gap-1.5 mb-2">
+      <div class="glass p-2 text-center">
+        <div id="rpm-${dev.id}" class="text-sm font-black font-mono" style="color:${dev.color}">--</div>
+        <div class="text-[9px] text-slate-600">RPM</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="cur-${dev.id}" class="text-sm font-black font-mono text-amber-400">--</div>
+        <div class="text-[9px] text-slate-600">電流 A</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="pwr-${dev.id}" class="text-sm font-black font-mono text-purple-400">--</div>
+        <div class="text-[9px] text-slate-600">功率 W</div>
+      </div>
+      <div class="glass p-2 text-center">
+        <div id="vlt-${dev.id}" class="text-sm font-black font-mono text-emerald-400">--</div>
+        <div class="text-[9px] text-slate-600">電壓 V</div>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-2">
+      <button onclick="devSendRun(${dev.id})"
+        class="btn-press py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-1.5">
+        <span>▶</span> 啟動
+      </button>
+      <button onclick="devSendStop(${dev.id})"
+        class="btn-press py-3 bg-red-800 hover:bg-red-700 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-1.5">
+        <span>⏹</span> 關閉
+      </button>
+    </div>
+    <button onclick="devSendReset(${dev.id})"
+      class="btn-press w-full py-2.5 mb-2 bg-amber-700 hover:bg-amber-600 text-white font-black rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+      <span>⚠</span> 異常復規 (Fault Reset)
+    </button>
+    <div id="almhint-${dev.id}" class="hidden text-[11px] text-slate-400 bg-red-950/30 border border-red-900/40 rounded-xl px-3 py-2 mb-2 leading-snug"></div>
+    <div style="height:48px;position:relative"><canvas id="spark-${dev.id}"></canvas></div>
+    <div class="text-[9px] text-slate-700 text-right mt-0.5 mb-2">RPM 趨勢 (60s)</div>
+    <div>
+      <button onclick="toggleStats(${dev.id})"
+        class="w-full flex items-center justify-between text-[10px] text-slate-600 hover:text-slate-400 py-1 transition-colors">
+        <span class="uppercase tracking-widest font-semibold">本次連線統計</span>
+        <span id="statsarrow-${dev.id}">▾</span>
+      </button>
+      <div id="statsbox-${dev.id}" class="mt-1.5 grid grid-cols-2 gap-1.5">
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxrpm-${dev.id}"  class="text-sm font-black font-mono text-cyan-400">-- RPM</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最高轉速</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxcur-${dev.id}"  class="text-sm font-black font-mono text-amber-400">-- A</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最大電流</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="salmcnt-${dev.id}"  class="text-sm font-black font-mono text-red-400">0 次</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">警報次數</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxtemp-${dev.id}" class="text-sm font-black font-mono text-sky-400">-- °C</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">溫度 °C</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxvlt-${dev.id}"  class="text-sm font-black font-mono text-emerald-400">-- V</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最高電壓</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2">
+          <div id="smaxpwr-${dev.id}"  class="text-sm font-black font-mono text-purple-400">-- W</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">最大功率</div>
+        </div>
+        <div class="bg-black/25 rounded-xl px-3 py-2 col-span-2">
+          <div id="swh-${dev.id}" class="text-sm font-black font-mono text-cyan-300">0.000 Wh</div>
+          <div class="text-[9px] text-slate-600 mt-0.5">累積電能 / 運轉時間</div>
+        </div>
+      </div>
+    </div>`;
+  list.appendChild(wrap);
+  // Spark chart
+  dev.chart = new Chart(document.getElementById(`spark-${dev.id}`), {
+    type:'line',
+    data:{labels:[],datasets:[{data:dev.trendRpm,borderColor:dev.color,borderWidth:1.5,
+      pointRadius:0,tension:0.4,fill:true,backgroundColor:dev.color+'22'}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},
+      scales:{x:{display:false},y:{display:false}},
+      plugins:{legend:{display:false},tooltip:{enabled:false}}}
+  });
+}
+
+// ══════════════════════════════════════
+// Modbus ASCII helpers
+// ══════════════════════════════════════
+function crc16(buf) {
+  let crc=0xFFFF;
+  for(const b of buf){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?(crc>>>1)^0xA001:crc>>>1;}
+  return crc;
+}
+function buildFC03(slaveId, reg, cnt) {
+  const b=[slaveId,0x03,(reg>>8)&0xFF,reg&0xFF,(cnt>>8)&0xFF,cnt&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function buildFC06(slaveId, reg, val) {
+  const b=[slaveId,0x06,(reg>>8)&0xFF,reg&0xFF,(val>>8)&0xFF,val&0xFF];
+  const c=crc16(b); return new Uint8Array([...b,c&0xFF,(c>>8)&0xFF]);
+}
+function rtuToAscii(frame) {
+  const data=frame.slice(0,-2);
+  let sum=0; for(const b of data) sum=(sum+b)&0xFF;
+  const lrc=((~sum)+1)&0xFF;
+  return ':'+[...data,lrc].map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join('')+'\r\n';
+}
+function ganAdcToTemp(raw) {
+  if(raw<=0||raw>5000) return null;
+  return parseFloat((25+(1.337-raw/1000)/0.00818).toFixed(1));
+}
+
+// ══════════════════════════════════════
+// BLE 佇列
+// ══════════════════════════════════════
+function devSend(dev, rtuFrame) {
+  if(!dev.isConnected||!dev.bleTxChar) return;
+  dev.bleQueue.push(rtuToAscii(rtuFrame));
+  devProcessQueue(dev);
+}
+async function devProcessQueue(dev) {
+  if(dev.bleQueueRunning||!dev.bleQueue.length) return;
+  dev.bleQueueRunning=true;
+  while(dev.bleQueue.length){
+    const item=dev.bleQueue.shift();
+    try{
+      const bytes=new TextEncoder().encode(item);
+      for(let i=0;i<bytes.length;i+=20){
+        await dev.bleTxChar.writeValueWithoutResponse(bytes.slice(i,i+20));
+        if(bytes.length>20) await new Promise(r=>setTimeout(r,30));
+      }
+    }catch(e){console.error(e);}
+    await new Promise(r=>setTimeout(r,40));
+  }
+  dev.bleQueueRunning=false;
+}
+
+// ══════════════════════════════════════
+// BLE 連線 / 斷線
+// ══════════════════════════════════════
+const HM10_SVC='0000ffe0-0000-1000-8000-00805f9b34fb';
+
+async function connectDevice(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  if(dev.isConnected){disconnectDevice(id);return;}
+  const btn=document.getElementById(`connbtn-${id}`);
+  btn.textContent='搜尋…'; btn.disabled=true;
+  try{
+    dev.bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[HM10_SVC]}], optionalServices:[HM10_SVC]
+    });
+    dev.bleDevice.addEventListener('gattserverdisconnected',()=>onDevDisconnected(id));
+    const server=await dev.bleDevice.gatt.connect();
+    const svc=await server.getPrimaryService(HM10_SVC);
+    const chars=await svc.getCharacteristics();
+    for(const c of chars){
+      const p=c.properties;
+      if(p.notify||p.indicate) dev.bleRxChar=c;
+      if(p.write||p.writeWithoutResponse) dev.bleTxChar=c;
+    }
+    if(!dev.bleRxChar||!dev.bleTxChar) throw new Error('找不到 FFE1 特徵值');
+    await dev.bleRxChar.startNotifications();
+    dev.bleRxChar.addEventListener('characteristicvaluechanged', e=>onDevBleData(id,e));
+    dev.bleName=dev.bleDevice.name||'';
+    dev.isConnected=true;
+    onDevConnected(id);
+  }catch(e){
+    btn.textContent='連線'; btn.disabled=false;
+    showToast(`#${id} 連線失敗：${e.message}`);
+  }
+}
+
+function onDevConnected(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  const btn=document.getElementById(`connbtn-${id}`);
+  btn.textContent='斷線'; btn.disabled=false;
+  btn.className='btn-press text-[11px] font-bold px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-all';
+  document.getElementById(`dot-${id}`).className='w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 transition-colors duration-500';
+  const nameEl=document.getElementById(`devname-${id}`);
+  if(nameEl&&dev.bleName){
+    nameEl.textContent=dev.bleName;
+    nameEl.className='ml-1.5 text-xs font-bold text-white bg-cyan-800/60 border border-cyan-600/50 rounded-md px-1.5 py-0.5';
+  }
+  devSend(dev, buildFC06(PROFILE.slaveId,0x090A,0));
+  setTimeout(()=>{
+    const pkt=buildFC03(PROFILE.slaveId,PROFILE.startReg,PROFILE.regCount);
+    dev.pollTimer     =setInterval(()=>devSend(dev,pkt),500);
+    dev.tempPollTimer =setInterval(()=>doPage10Read(id),8000);
+    dev.page0PollTimer=setInterval(()=>doPage0Read(id),3000);
+    setTimeout(()=>doPage0Read(id),1000);
+  },500);
+  updateActiveCount();
+  addCombinedDataset(dev);
+  if(devices.size>=2) document.getElementById('combinedChartWrap').classList.remove('hidden');
+  const ns=dev.bleName?` [${dev.bleName}]`:'';
+  addLog(`● 裝置 #${id}${ns} 連線成功`,'green');
+  showToast(`✅ 裝置 #${id}${dev.bleName?' · '+dev.bleName:''} 連線`);
+  // 自動建立 Session & 寫入 DB
+  ensureSession().then(()=>writeLog(dev,'Device Connected')).catch(console.error);
+}
+
+function disconnectDevice(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  clearInterval(dev.pollTimer); clearInterval(dev.tempPollTimer); clearInterval(dev.page0PollTimer);
+  dev.pollTimer=dev.tempPollTimer=dev.page0PollTimer=null;
+  if(dev.bleDevice?.gatt.connected) dev.bleDevice.gatt.disconnect();
+}
+
+function onDevDisconnected(id) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  writeLog(dev,'Device Disconnected').catch(()=>{});
+  dev.isConnected=false;
+  clearInterval(dev.pollTimer); clearInterval(dev.tempPollTimer); clearInterval(dev.page0PollTimer);
+  dev.pollTimer=dev.tempPollTimer=dev.page0PollTimer=null; dev.page0ReadPending=false;
+  const btn=document.getElementById(`connbtn-${id}`);
+  if(btn){btn.textContent='連線';btn.disabled=false;
+    btn.className='btn-press text-[11px] font-bold px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition-all';}
+  const dot=document.getElementById(`dot-${id}`);
+  if(dot) dot.className='w-2 h-2 rounded-full bg-slate-600 flex-shrink-0 transition-colors duration-500';
+  const stxt=document.getElementById(`stxt-${id}`);
+  if(stxt){stxt.textContent='已斷線';stxt.className='text-sm font-black status-stop';}
+  const ne=document.getElementById(`devname-${id}`);
+  if(ne) ne.className='ml-1.5 text-[10px] text-slate-500 font-mono truncate hidden';
+  const card=document.getElementById(`devcard-${id}`);
+  if(card) card.classList.remove('dev-card-run','dev-card-fault');
+  updateActiveCount();
+  if([...devices.values()].filter(d=>d.isConnected).length<2)
+    document.getElementById('combinedChartWrap').classList.add('hidden');
+  const ns=dev.bleName?` [${dev.bleName}]`:'';
+  addLog(`○ 裝置 #${id}${ns} 已斷線`,'red');
+  showToast(`⚠ 裝置 #${id} 斷線`);
+}
+
+// ══════════════════════════════════════
+// BLE 接收 / ASCII 解析
+// ══════════════════════════════════════
+function onDevBleData(id, e) {
+  const dev=devices.get(id);
+  if(!dev) return;
+  dev.asciiBuffer+=new TextDecoder().decode(e.target.value);
+  let idx;
+  while((idx=dev.asciiBuffer.indexOf('\n'))!==-1){
+    const line=dev.asciiBuffer.slice(0,idx+1).trim();
+    dev.asciiBuffer=dev.asciiBuffer.slice(idx+1);
+    if(line.startsWith(':')) parsePacket(dev,line);
+  }
+}
+
+function parsePacket(dev, pkt) {
+  if(pkt.length<7) return;
+  const fc=pkt.substr(3,2);
+  if(fc==='03'){
+    if(dev.page0ReadPending&&pkt.length>=19&&pkt.length<=25){
+      dev.page0ReadPending=false;
+      const dh=pkt.substr(7,12);
+      const swOcpRaw=parseInt(dh.substr(0,4),16);
+      const tempRaw =parseInt(dh.substr(8,4),16);
+      if(swOcpRaw>0) dev.page0Values[13]=swOcpRaw;
+      if(tempRaw>0){
+        dev.page0Values[15]=tempRaw;
+        const ganT=ganAdcToTemp(tempRaw);
+        if(ganT!==null){dev.tempD09=ganT;updateDevTemp(dev);}
+      }
+      return;
+    }
+    if(dev.page10Pending&&pkt.length>=13&&pkt.length<20){
+      dev.page10Pending=false;
+      dev.tempD10=parseInt(pkt.substr(7,4),16);
+      updateDevTemp(dev);
+      devSend(dev,buildFC06(PROFILE.slaveId,0x090A,0));
+      updateCard(dev); return;
+    }
+    if(!dev.page10Pending&&pkt.length>=71){
+      const dh=pkt.substr(7,64);
+      for(let i=0;i<16;i++){
+        let v=parseInt(dh.substr(i*4,4),16);
+        if(v>32767) v-=65536;
+        dev.currentValues[i]=v;
+      }
+      updateCard(dev);
+    }
+  }
+  if(fc==='06'){
+    const addr=parseInt(pkt.substr(5,4),16),val=parseInt(pkt.substr(9,4),16);
+    if(addr===0x090A&&val===0&&!dev.pollTimer){
+      const p2=buildFC03(PROFILE.slaveId,PROFILE.startReg,PROFILE.regCount);
+      dev.pollTimer=setInterval(()=>devSend(dev,p2),500);
+    }
+  }
+}
+
+async function doPage10Read(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected||dev.page10Pending) return;
+  dev.page10Pending=true; dev.page10ReadingReg=10;
+  devSend(dev,buildFC06(PROFILE.slaveId,0x090A,10));
+  await new Promise(r=>setTimeout(r,800));
+  devSend(dev,buildFC03(PROFILE.slaveId,dev.page10ReadingReg,1));
+  setTimeout(()=>{if(dev.page10Pending){dev.page10Pending=false;devSend(dev,buildFC06(PROFILE.slaveId,0x090A,0));}},2500);
+}
+
+async function doPage0Read(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected||dev.page0ReadPending) return;
+  dev.page0ReadPending=true;
+  devSend(dev,buildFC03(PROFILE.slaveId,0x000D,3));
+  setTimeout(()=>{if(dev.page0ReadPending)dev.page0ReadPending=false;},3000);
+}
+
+// ══════════════════════════════════════
+// 溫度顯示
+// ══════════════════════════════════════
+function updateDevTemp(dev) {
+  const t=dev.tempD09!==null?dev.tempD09:dev.tempD10;
+  if(t==null) return;
+  const el=document.getElementById(`smaxtemp-${dev.id}`);
+  if(!el) return;
+  const clr=t>=60?'text-red-400 alarm-blink':t>=45?'text-amber-400':'text-sky-400';
+  el.textContent=t+' °C';
+  el.className=`text-sm font-black font-mono ${clr}`;
+  if(t>dev.statMaxTemp) dev.statMaxTemp=t;
+}
+
+// ══════════════════════════════════════
+// 裝置卡片資料更新 + Auto LOG
+// ══════════════════════════════════════
+function updateCard(dev) {
+  const {idx,scale}=PROFILE, id=dev.id;
+  const st  = dev.currentValues[idx.status];
+  const alm = dev.currentValues[idx.alarm];
+  const rpm = dev.currentValues[idx.rpm];
+  const pwr = dev.currentValues[idx.power];
+  const vlt = (dev.currentValues[idx.voltage]*scale.voltage).toFixed(1);
+  const cur = (dev.currentValues[idx.current]*scale.current).toFixed(2);
+  const s   = MOTOR_STATUS[st]||{txt:`狀態 ${st}`,icon:'❓',clr:'status-stop'};
+  const $   = k => document.getElementById(`${k}-${id}`);
+
+  $('sicon').textContent=s.icon;
+  const se=$('stxt'); se.textContent=s.txt; se.className=`text-sm font-black ${s.clr}`;
+  $('rpm').textContent=rpm; $('cur').textContent=cur;
+  $('pwr').textContent=pwr; $('vlt').textContent=vlt;
+
+  const card=document.getElementById(`devcard-${id}`);
+  card.classList.remove('dev-card-run','dev-card-fault');
+  if(st===2)          card.classList.add('dev-card-run');
+  else if(st===5||alm!==0) card.classList.add('dev-card-fault');
+
+  const badge=$('almbadge'), hintEl=$('almhint');
+  if(alm!==0||st===5){
+    const sev=alarmSev(alm);
+    badge.classList.remove('hidden');
+    $('almtxt').textContent=`⚠ ${alm} ${alarmDesc(alm)}`;
+    $('almtxt').className=`badge-${sev} text-[10px] font-black px-2 py-0.5 rounded-lg alarm-blink`;
+    const h=alarmHint(alm);
+    if(h){hintEl.textContent=h;hintEl.classList.remove('hidden');}
+  } else { badge.classList.add('hidden'); hintEl.classList.add('hidden'); }
+
+  // Spark chart
+  dev.trendRpm.push(rpm);
+  if(dev.trendRpm.length>120) dev.trendRpm.shift();
+  if(dev.chart){
+    dev.chart.data.labels=dev.trendRpm.map((_,i)=>i);
+    dev.chart.data.datasets[0].data=dev.trendRpm;
+    dev.chart.update('none');
+  }
+
+  // 功率累積 / 運轉時間
+  const now=Date.now(), isRunning=(st===2);
+  if(isRunning&&!dev.pwrRunning){
+    dev.pwrStartCount++; dev.pwrRunning=true;
+    addLog(`▶ #${id}${dev.bleName?' ['+dev.bleName+']':''} 啟動 #${dev.pwrStartCount}  ${rpm} RPM`,'green');
+    writeLog(dev,'Motor Start').catch(()=>{});
+  }
+  if(!isRunning&&dev.pwrRunning){
+    dev.pwrRunning=false;
+    addLog(`■ #${id} 停止  累積 ${dev.pwrAccWh.toFixed(3)} Wh`);
+    writeLog(dev,'Motor Stop').catch(()=>{});
+  }
+  if(isRunning&&dev.pwrLastTime){
+    const dt=(now-dev.pwrLastTime)/3600000;
+    dev.pwrAccWh+=pwr*dt; dev.pwrRunSec+=(now-dev.pwrLastTime)/1000;
+  }
+  dev.pwrLastTime=now;
+
+  // 統計
+  if(rpm>dev.statMaxRpm){dev.statMaxRpm=rpm;_s(`smaxrpm-${id}`,rpm+' RPM');}
+  if(parseFloat(cur)>dev.statMaxCur){dev.statMaxCur=parseFloat(cur);_s(`smaxcur-${id}`,cur+' A');}
+  if(parseFloat(vlt)>dev.statMaxVlt){dev.statMaxVlt=parseFloat(vlt);_s(`smaxvlt-${id}`,vlt+' V');}
+  if(pwr>dev.statMaxPwr){dev.statMaxPwr=pwr;_s(`smaxpwr-${id}`,pwr+' W');}
+  const mm=String(Math.floor(dev.pwrRunSec/60)).padStart(2,'0');
+  const ss=String(Math.floor(dev.pwrRunSec%60)).padStart(2,'0');
+  _s(`swh-${id}`,dev.pwrAccWh.toFixed(3)+` Wh  (${mm}:${ss})`);
+
+  // 警報事件
+  const t=new Date().toLocaleTimeString('zh-TW');
+  if(alm!==0&&alm!==dev.lastAlmCode){
+    dev.almCnt++; _s(`salmcnt-${id}`,dev.almCnt+' 次');
+    const hint=alarmHint(alm)||'';
+    almEvents.unshift({time:t,devId:id,devName:dev.bleName,code:alm,
+      desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
+    totalAlmCnt++;
+    document.getElementById('almCntBadge').textContent=totalAlmCnt+' 次';
+    renderAlmEvents();
+    addLog(`⚠ #${id} 警報 ${alm}：${alarmDesc(alm)}${hint?' — '+hint:''}`, 'red');
+    writeLog(dev, `Fault:${alm}`).catch(()=>{});
+  }
+  if(alm===0&&dev.lastAlmCode!==0){
+    const found=almEvents.find(e=>e.devId===id&&e.code===dev.lastAlmCode&&!e.resolvedAt);
+    if(found){found.resolvedAt=t;renderAlmEvents();}
+    addLog(`✓ #${id} 警報 ${dev.lastAlmCode} 解除`,'green');
+  }
+  dev.lastAlmCode=alm;
+  updateDevTemp(dev);
+  pushCombinedRpm(dev, rpm);
+
+  // Auto LOG 節流：每 2 秒一次（避免 500ms 輪詢塞滿 DB）
+  const tick=Math.floor(now/2000);
+  if(tick!==dev._logTick){ dev._logTick=tick; writeLog(dev,null).catch(()=>{}); }
+}
+
+// ══════════════════════════════════════
+// 合併趨勢圖
+// ══════════════════════════════════════
+const COMBINED_MAX=180, combinedLabels=[];
+let combinedChart=null, trendPaused=false;
+
+function initCombinedChart() {
+  combinedChart=new Chart(document.getElementById('combinedChart'),{
+    type:'line',
+    data:{labels:combinedLabels,datasets:[]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{ticks:{color:'#94a3b8',font:{size:9,weight:'600'},maxRotation:0,autoSkip:true,maxTicksLimit:3},grid:{color:'rgba(255,255,255,.06)'}},
+        y:{ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'},
+           title:{display:true,text:'RPM',color:'#94a3b8',font:{size:9}}}
+      },
+      plugins:{
+        legend:{labels:{color:'#94a3b8',font:{size:9},boxWidth:10,padding:8}},
+        tooltip:{backgroundColor:'rgba(13,17,23,.95)',titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:8}
+      }
+    }
+  });
+}
+
+function addCombinedDataset(dev) {
+  if(!combinedChart||combinedChart.data.datasets.find(d=>d.devId===dev.id)) return;
+  combinedChart.data.datasets.push({
+    devId:dev.id, label:dev.bleName?`#${dev.id} ${dev.bleName}`:`#${dev.id} RPM`,
+    data:[],borderColor:dev.color,backgroundColor:dev.color+'22',
+    borderWidth:1.5,pointRadius:0,tension:0.3,fill:false
+  });
+  combinedChart.update('none');
+}
+
+function removeCombinedDataset(id) {
+  if(!combinedChart) return;
+  combinedChart.data.datasets=combinedChart.data.datasets.filter(d=>d.devId!==id);
+  combinedChart.update('none');
+}
+
+function pushCombinedRpm(dev, rpm) {
+  if(trendPaused||!combinedChart) return;
+  const t=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const ds=combinedChart.data.datasets.find(d=>d.devId===dev.id);
+  if(!ds) return;
+  combinedLabels.push(t);
+  if(combinedLabels.length>COMBINED_MAX) combinedLabels.shift();
+  combinedChart.data.labels=combinedLabels;
+  ds.data.push(rpm);
+  if(ds.data.length>COMBINED_MAX) ds.data.shift();
+  combinedChart.data.datasets.forEach(d=>{
+    while(d.data.length<combinedLabels.length) d.data.unshift(null);
+    if(d.data.length>COMBINED_MAX) d.data.shift();
+  });
+  combinedChart.update('none');
+}
+
+function toggleTrendPause() {
+  trendPaused=!trendPaused;
+  const btn=document.getElementById('trendPauseBtn');
+  const bar=document.getElementById('trendPausedBar');
+  if(trendPaused){
+    btn.textContent='▶ 繼續';
+    btn.className='btn-press text-[10px] px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white border border-amber-600 transition-colors';
+    bar.classList.remove('hidden');
+  }else{
+    btn.textContent='⏸ 暫停';
+    btn.className='btn-press text-[10px] px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 border border-slate-600 transition-colors';
+    bar.classList.add('hidden');
+  }
+}
+
+// ══════════════════════════════════════
+// 警報事件 / 事件紀錄
+// ══════════════════════════════════════
+let almEvents=[], totalAlmCnt=0;
+const bg  = s=>s==='crit'||s==='emer'?'bg-red-900/30 border-red-800/40':'bg-amber-900/20 border-amber-700/30';
+const icon2= s=>s==='crit'||s==='emer'?'🔴':'🟡';
+
+function renderAlmEvents() {
+  const el=document.getElementById('almEventList');
+  if(!almEvents.length){el.innerHTML='<div class="text-slate-600 text-xs text-center py-3">無警報記錄</div>';return;}
+  el.innerHTML=almEvents.map(a=>`
+    <div class="${bg(a.sev)} border rounded-xl px-3 py-2.5 mb-2">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-base leading-none">${icon2(a.sev)}</span>
+        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-current" style="color:${DEV_COLORS[(a.devId-1)%DEV_COLORS.length]}">#${a.devId}${a.devName?' '+a.devName:''}</span>
+        <span class="badge-${a.sev} text-[10px] font-black px-2 py-0.5 rounded-lg">警報 ${a.code}</span>
+        <span class="text-xs font-bold text-slate-200">${a.desc}</span>
+        <span class="ml-auto text-[10px] text-slate-600 font-mono shrink-0">${a.time}</span>
+      </div>
+      ${a.hint?`<div class="text-[11px] text-slate-400 pl-7 leading-snug">${a.hint}</div>`:''}
+      ${a.resolvedAt?`<div class="text-[10px] text-emerald-500 pl-7 mt-1">✓ 解除於 ${a.resolvedAt}</div>`:''}
+    </div>`).join('');
+}
+
+let sysLog=[];
+function addLog(msg, color='') {
+  const t=new Date().toLocaleTimeString('zh-TW');
+  sysLog.unshift({t,msg,color});
+  if(sysLog.length>300) sysLog.pop();
+  renderLog();
+}
+function renderLog() {
+  const el=document.getElementById('sysLogList');
+  if(!sysLog.length){el.innerHTML='<div class="text-slate-600 text-center py-3">尚無紀錄</div>';return;}
+  el.innerHTML=sysLog.map(l=>{
+    const clr=l.color==='red'?'text-red-400':l.color==='green'?'text-emerald-400':'text-slate-500';
+    return `<div class="${clr}"><span class="text-slate-700">${l.t}</span>  ${l.msg}</div>`;
+  }).join('');
+}
+function clearLog(){sysLog=[];renderLog();}
+
+// ══════════════════════════════════════
+// 馬達控制（啟動 / 停止 / 復規）
+// ══════════════════════════════════════
+function devSendRun(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  devSend(dev,buildFC06(PROFILE.slaveId,0x1400,1));
+  if(navigator.vibrate) navigator.vibrate(30);
+  addLog(`▶ #${id} 發送啟動指令`,'green');
+}
+function devSendStop(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  devSend(dev,buildFC06(PROFILE.slaveId,0x1400,0));
+  if(navigator.vibrate) navigator.vibrate(30);
+  addLog(`⏹ #${id} 發送停止指令`);
+}
+function devSendReset(id) {
+  const dev=devices.get(id);
+  if(!dev||!dev.isConnected){showToast(`#${id} 尚未連線`);return;}
+  devSend(dev,buildFC06(PROFILE.slaveId,0x1400,0));
+  setTimeout(()=>devSend(dev,buildFC06(PROFILE.slaveId,0x1400,0x06)),200);
+  setTimeout(()=>devSend(dev,buildFC06(PROFILE.slaveId,0x1400,0)),500);
+  if(navigator.vibrate) navigator.vibrate([30,50,30]);
+  showToast(`🔄 #${id} 異常復規指令已送出`);
+  addLog(`🔄 #${id} 發送異常復規指令`,'green');
+  writeLog(devices.get(id),'Fault Reset').catch(()=>{});
+}
+
+function toggleStats(id) {
+  const box=document.getElementById(`statsbox-${id}`);
+  const arrow=document.getElementById(`statsarrow-${id}`);
+  const h=box.classList.toggle('hidden');
+  arrow.textContent=h?'▸':'▾';
+}
+
+function resetAllStats() {
+  devices.forEach(dev=>{
+    dev.statMaxRpm=0;dev.statMaxCur=0;dev.statMaxVlt=0;
+    dev.statMaxPwr=0;dev.statMaxTemp=-999;dev.almCnt=0;
+    dev.pwrAccWh=0;dev.pwrRunSec=0;dev.pwrStartCount=0;
+    dev.pwrLastTime=null;dev.pwrRunning=false;
+    const id=dev.id;
+    _s(`smaxrpm-${id}`,'-- RPM');_s(`smaxcur-${id}`,'-- A');
+    _s(`smaxvlt-${id}`,'-- V'); _s(`smaxpwr-${id}`,'-- W');
+    _s(`smaxtemp-${id}`,'-- °C');_s(`salmcnt-${id}`,'0 次');
+    _s(`swh-${id}`,'0.000 Wh');
+  });
+  almEvents=[];totalAlmCnt=0;
+  document.getElementById('almCntBadge').textContent='0 次';
+  renderAlmEvents();
+  addLog('↺ 所有統計已重置');
+}
+
+// ══════════════════════════════════════
+// 工具
+// ══════════════════════════════════════
+const _s=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+function updateActiveCount(){
+  _s('activeCount',[...devices.values()].filter(d=>d.isConnected).length);
+}
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.remove('hidden');t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.classList.add('hidden'),400);},2500);
+}
+
+// ══════════════════════════════════════
+// 初始化
+// ══════════════════════════════════════
+async function initApp() {
+  try {
+    await initDB();
+    await restoreFromDB();
+  } catch(e) {
+    addLog('⚠ IndexedDB 初始化失敗：'+e,'red');
+  }
+  initCombinedChart();
+  startBackgroundSync();
+  setQuickRange(30); // 預設 30 分
+}
+
+window.addEventListener('load', () => {
+  // 登入畫面等使用者動作，不自動 initApp
+});
+</script>
+</body>
+</html>
