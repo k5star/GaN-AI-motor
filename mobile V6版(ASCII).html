@@ -128,8 +128,9 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 
 <main class="px-3 py-3 space-y-3">
 
-<!-- ══ Auto LOG 狀態列 ══ -->
-<div class="card px-4 py-3">
+<!-- ══ 控制列（合併）══ -->
+<div class="card px-4 py-3 space-y-2.5">
+  <!-- 第一行：自動記錄 + 同步狀態 -->
   <div class="flex items-center gap-2 flex-wrap">
     <button id="autoLogBtn" onclick="toggleAutoLog()"
       style="display:flex;align-items:center;font-size:14px;font-weight:800;
@@ -141,19 +142,31 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <span class="text-slate-500">本機&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
       <span class="text-slate-500">已同步&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
       <span class="text-slate-500">未同步&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
-      <span class="flex items-center gap-1 text-slate-600" title="Supabase 同步狀態">
+      <span class="flex items-center gap-1 text-slate-600">
         ☁<span id="syncStatusDot"
-          style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#64748b;transition:.4s"
-          title="同步待機"></span>
+          style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#64748b;transition:.4s"></span>
       </span>
-      <button onclick="doSyncNow()" title="立即同步到 Supabase"
-        style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(6,182,212,.35);
-               background:rgba(6,182,212,.08);color:#22d3ee;cursor:pointer;line-height:1.6">
-        ↑ 立即同步
-      </button>
     </div>
   </div>
-  <div id="sessionInfo" class="text-[10px] text-slate-700 font-mono mt-1.5 truncate">尚無 Session</div>
+  <div id="sessionInfo" class="text-[10px] text-slate-700 font-mono truncate">尚無 Session</div>
+  <!-- 第二行：操作按鈕 -->
+  <div class="flex gap-2">
+    <button onclick="resetAllStats()"
+      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1"
+      style="padding:12px 0;font-size:13px;background:rgba(51,65,85,.6);border:1px solid rgba(100,116,139,.3);color:#cbd5e1">
+      ↺ 本次歸零
+    </button>
+    <button onclick="doSyncNow()"
+      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
+      style="padding:12px 0;font-size:13px;background:rgba(6,78,59,.4);border:1px solid rgba(6,182,212,.35);color:#22d3ee">
+      ☁ 立即同步至雲端
+    </button>
+    <button onclick="clearDBConfirm()"
+      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
+      style="padding:12px 0;font-size:13px;background:rgba(127,29,29,.4);border:1px solid rgba(239,68,68,.3);color:#f87171">
+      🗑 清除本地端資料
+    </button>
+  </div>
 </div>
 
 <!-- ══ 測試設定 ══ -->
@@ -203,26 +216,6 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
   </div>
 </div>
 
-<!-- ══ 記錄操作列 ══ -->
-<div class="card px-4 py-3">
-  <div class="flex gap-2">
-    <button onclick="resetAllStats()"
-      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1"
-      style="padding:12px 0;font-size:13px;background:rgba(51,65,85,.6);border:1px solid rgba(100,116,139,.3);color:#cbd5e1">
-      ↺ 記錄重製
-    </button>
-    <button onclick="doSyncNow()"
-      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
-      style="padding:12px 0;font-size:13px;background:rgba(6,78,59,.4);border:1px solid rgba(6,182,212,.35);color:#22d3ee">
-      ☁ 立即同步至雲端
-    </button>
-    <button onclick="clearDBConfirm()"
-      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
-      style="padding:12px 0;font-size:13px;background:rgba(127,29,29,.4);border:1px solid rgba(239,68,68,.3);color:#f87171">
-      🗑 清除本地端資料
-    </button>
-  </div>
-</div>
 
 <div id="emptyHint" class="card px-5 py-10 text-center">
   <div class="text-4xl mb-3">📡</div>
@@ -1692,9 +1685,9 @@ async function initApp() {
   // 還原測試設定
   loadMeta();
 
-  // 還原 Auto-LOG 狀態（預設 ON）
-  const savedLog = localStorage.getItem('ganV6AutoLog');
-  autoLogEnabled = (savedLog !== '0');   // 只有明確儲存'0'才是 OFF
+  // 每次開啟強制 Auto-LOG = ON、雲端同步啟動
+  autoLogEnabled = true;
+  localStorage.setItem('ganV6AutoLog', '1');
   applyAutoLogUI();
 
   try {
