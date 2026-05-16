@@ -1700,9 +1700,27 @@ async function initApp() {
   startBackgroundSync();
   setQuickRange(30); // 預設 30 分
 
+  // 開啟時有網路 → 自動立即同步一次（補傳離線時累積的資料）
+  if (navigator.onLine) {
+    setTimeout(() => doSyncBatch(), 2000); // 延遲 2 秒等 DB 初始化完成
+    addLog('🌐 網路連線中，自動同步至雲端…', 'green');
+  } else {
+    addLog('📴 目前無網路，資料儲存本地端；有網路後按「立即同步至雲端」', 'red');
+  }
+
   if (!autoLogEnabled)
     addLog('⚠ Auto LOG 目前為關閉狀態，點上方按鈕開啟', 'red');
 }
+
+// 網路恢復時自動同步
+window.addEventListener('online', () => {
+  addLog('🌐 網路已恢復，自動同步至雲端…', 'green');
+  setTimeout(() => doSyncBatch(), 1000);
+});
+window.addEventListener('offline', () => {
+  addLog('📴 網路已中斷，資料繼續儲存本地端', 'red');
+  updateSyncStatus('offline');
+});
 
 window.addEventListener('load', () => {
   const savedUser = localStorage.getItem('ganV6User');
