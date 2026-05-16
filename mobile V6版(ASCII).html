@@ -91,10 +91,13 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <div class="text-[11px] text-slate-500 mt-1 font-mono">ASCII 多裝置 BLE 監控系統</div>
     </div>
     <div class="mb-5">
-      <label class="block text-[11px] text-slate-500 uppercase tracking-widest font-semibold mb-1.5">帳號</label>
+      <label class="block text-[11px] text-slate-500 uppercase tracking-widest font-semibold mb-1.5">操作員帳號</label>
       <input id="loginUser" type="text" class="login-input"
-        placeholder="Username" autocomplete="username"
+        placeholder="例：ITRI-右輪 / 工程師A" autocomplete="username"
         onkeydown="if(event.key==='Enter')doLogin()">
+      <div class="text-[10px] text-slate-600 mt-1.5">
+        輸入任意名稱作為識別（資料將以此帳號標記）
+      </div>
     </div>
     <button class="login-btn btn-press" onclick="doLogin()">登入</button>
     <div id="loginErr"></div>
@@ -106,7 +109,9 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <header class="sticky top-0 z-40 bg-slate-900/97 backdrop-blur border-b border-slate-700/40 px-4 py-2.5 flex items-center justify-between">
   <div>
     <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V6</div>
-    <div class="text-[9px] text-slate-500 font-mono">ASCII 多裝置 BLE · <span id="activeCount">0</span> 台連線中</div>
+    <div class="text-[9px] text-slate-500 font-mono">ASCII 多裝置 BLE · <span id="activeCount">0</span> 台連線中
+      · 👤 <span id="operatorLabel" class="text-cyan-400"></span>
+    </div>
   </div>
   <button onclick="addDevice()"
     class="btn-press flex items-center gap-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold px-3 py-1.5 rounded-xl text-sm transition-all">
@@ -278,18 +283,19 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <script>
 'use strict';
 // ══════════════════════════════════════
-// 登入（帳號only，無密碼）
+// 登入（任意帳號，作為 operator 識別）
 // ══════════════════════════════════════
-const VALID_USER = 'ITRI';
+let currentOperator = 'Unknown';
 
 function doLogin() {
   const user = document.getElementById('loginUser').value.trim();
   const errEl = document.getElementById('loginErr');
-  if (user !== VALID_USER) {
-    errEl.textContent = '帳號錯誤，請重新輸入';
+  if (!user) {
+    errEl.textContent = '請輸入帳號名稱';
     return;
   }
   errEl.textContent = '';
+  currentOperator = user;
   localStorage.setItem('ganV6User', user);   // 記住帳號
   const overlay = document.getElementById('loginOverlay');
   overlay.classList.add('fade-out');
@@ -481,6 +487,7 @@ async function writeLog(dev, event) {
   const rec = {
     session_id:    currentSessionId,
     device_id:     dev.id,
+    operator:      currentOperator,            // 操作員識別
     timestamp:     new Date().toISOString(),   // UTC（供資料庫時序排序用）
     local_time:    localTimeStr(),             // 台灣本地時間（方便看）
     rpm:           dev.currentValues[idx.rpm],
@@ -505,6 +512,7 @@ async function writeEventOnly(eventName) {
   await ensureSession();
   const rec = {
     session_id:currentSessionId, device_id:null,
+    operator:currentOperator,
     timestamp:new Date().toISOString(),
     local_time:localTimeStr(),
     rpm:null, current_a:null, voltage_v:null, power_w:null,
@@ -703,9 +711,9 @@ async function exportSessionCSV() {
 }
 
 function downloadCSV(rows, prefix) {
-  const hdr = 'session_id,device_id,local_time,timestamp_utc,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event\n';
+  const hdr = 'operator,session_id,device_id,local_time,timestamp_utc,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,motor_state,event\n';
   const body = rows.map(r =>
-    `${r.session_id??''},${r.device_id??''},"${r.local_time||''}",${r.timestamp},${r.rpm??''},${r.current_a??''},` +
+    `"${r.operator||''}",${r.session_id??''},${r.device_id??''},"${r.local_time||''}",${r.timestamp},${r.rpm??''},${r.current_a??''},` +
     `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},` +
     `${r.motor_state??''},"${r.event??''}"`
   ).join('\n');
@@ -1563,6 +1571,10 @@ function showToast(msg) {
 // 初始化
 // ══════════════════════════════════════
 async function initApp() {
+  // 顯示操作員帳號
+  const ol = document.getElementById('operatorLabel');
+  if (ol) ol.textContent = currentOperator;
+
   // 還原 Auto-LOG 狀態（預設 ON）
   const savedLog = localStorage.getItem('ganV6AutoLog');
   autoLogEnabled = (savedLog !== '0');   // 只有明確儲存'0'才是 OFF
@@ -1583,14 +1595,12 @@ async function initApp() {
 }
 
 window.addEventListener('load', () => {
-  // 若曾成功登入，直接自動跳過登入畫面
   const savedUser = localStorage.getItem('ganV6User');
-  if (savedUser === VALID_USER) {
+  if (savedUser) {
+    // 曾登入過 → 自動登入（任意帳號皆可）
+    currentOperator = savedUser;
     document.getElementById('loginOverlay').remove();
     initApp();
-  } else if (savedUser) {
-    // 預填帳號（非 ITRI 帳號只預填，仍需按登入）
-    document.getElementById('loginUser').value = savedUser;
   }
 });
 </script>
