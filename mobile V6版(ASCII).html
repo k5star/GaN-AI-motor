@@ -129,25 +129,25 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <main class="px-3 py-3 space-y-3">
 
 <!-- ══ Auto LOG 狀態列 ══ -->
-<div class="card px-4 py-2.5">
+<div class="card px-4 py-3">
   <div class="flex items-center gap-2 flex-wrap">
     <button id="autoLogBtn" onclick="toggleAutoLog()"
-      style="display:flex;align-items:center;font-size:11px;font-weight:700;
-             padding:5px 12px;border-radius:10px;border:1px solid rgba(52,211,153,.35);
+      style="display:flex;align-items:center;font-size:14px;font-weight:800;
+             padding:9px 18px;border-radius:12px;border:1px solid rgba(52,211,153,.35);
              background:rgba(6,78,59,.4);color:#34d399;cursor:pointer;transition:.2s">
       <span class="log-dot-on" id="logDot"></span><span id="logBtnTxt">📹 自動記錄 開啟</span>
     </button>
     <div class="flex items-center gap-3 ml-auto text-[11px] flex-wrap">
-      <span class="text-slate-500">Local&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
-      <span class="text-slate-500">Synced&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
-      <span class="text-slate-500">Unsynced&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">本機&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">已同步&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">未同步&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
       <span class="flex items-center gap-1 text-slate-600" title="Supabase 同步狀態">
         ☁<span id="syncStatusDot"
           style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#64748b;transition:.4s"
           title="同步待機"></span>
       </span>
       <button onclick="doSyncNow()" title="立即同步到 Supabase"
-        style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(6,182,212,.35);
+        style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid rgba(6,182,212,.35);
                background:rgba(6,182,212,.08);color:#22d3ee;cursor:pointer;line-height:1.6">
         ↑ 立即同步
       </button>
@@ -199,22 +199,18 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 <div class="card px-4 py-3">
   <div class="flex gap-2">
     <button onclick="resetAllStats()"
-      class="btn-press py-3 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-sm font-bold transition flex items-center gap-1.5">
-      ↺ 重製
+      class="btn-press rounded-xl font-bold transition flex items-center justify-center gap-1"
+      style="padding:12px 14px;font-size:13px;background:rgba(51,65,85,.6);border:1px solid rgba(100,116,139,.3);color:#cbd5e1">
+      ↺ 記錄重製
     </button>
     <button onclick="doSyncNow()"
-      class="btn-press flex-1 py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-1.5"
-      style="background:rgba(6,78,59,.35);border:1px solid rgba(6,182,212,.3);color:#22d3ee">
+      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
+      style="padding:12px 0;font-size:13px;background:rgba(6,78,59,.4);border:1px solid rgba(6,182,212,.35);color:#22d3ee">
       ☁ 立即同步
     </button>
-    <button onclick="clearSyncedConfirm()"
-      class="btn-press flex-1 py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-1.5"
-      style="background:rgba(120,53,15,.35);border:1px solid rgba(251,191,36,.25);color:#fbbf24">
-      ☁🗑 清除已同步
-    </button>
     <button onclick="clearDBConfirm()"
-      class="btn-press flex-1 py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-1.5"
-      style="background:rgba(127,29,29,.35);border:1px solid rgba(239,68,68,.25);color:#f87171">
+      class="btn-press flex-1 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
+      style="padding:12px 0;font-size:13px;background:rgba(127,29,29,.4);border:1px solid rgba(239,68,68,.3);color:#f87171">
       🗑 清除全部
     </button>
   </div>
