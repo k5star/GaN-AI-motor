@@ -142,6 +142,7 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
       <span class="text-slate-500">本機&nbsp;<span id="localCount" class="text-cyan-300 font-mono font-bold">0</span></span>
       <span class="text-slate-500">已同步&nbsp;<span id="syncedCount" class="text-emerald-400 font-mono font-bold">0</span></span>
       <span class="text-slate-500">未同步&nbsp;<span id="unsyncedCount" class="text-amber-400 font-mono font-bold">0</span></span>
+      <span class="text-slate-500">大小&nbsp;<span id="dbSizeLabel" class="text-slate-400 font-mono font-bold">—</span></span>
       <span class="flex items-center gap-1 text-slate-600">
         ☁<span id="syncStatusDot"
           style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#64748b;transition:.4s"></span>
@@ -470,6 +471,14 @@ function updateLogUI() {
   _s('localCount',    localSavedTotal);
   _s('syncedCount',   syncedTotal);
   _s('unsyncedCount', Math.max(0, localSavedTotal - syncedTotal));
+  // 估算 DB 大小（每筆約 200 bytes）
+  const estBytes = localSavedTotal * 200;
+  const sizeEl = document.getElementById('dbSizeLabel');
+  if (sizeEl) {
+    if (estBytes < 1024) sizeEl.textContent = `${estBytes} B`;
+    else if (estBytes < 1024*1024) sizeEl.textContent = `${(estBytes/1024).toFixed(1)} KB`;
+    else sizeEl.textContent = `${(estBytes/(1024*1024)).toFixed(2)} MB`;
+  }
 }
 
 async function restoreFromDB() {
