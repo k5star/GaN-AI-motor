@@ -290,6 +290,7 @@ function doLogin() {
     return;
   }
   errEl.textContent = '';
+  localStorage.setItem('ganV6User', user);   // 記住帳號
   const overlay = document.getElementById('loginOverlay');
   overlay.classList.add('fade-out');
   setTimeout(() => overlay.remove(), 420);
@@ -513,22 +514,37 @@ async function writeEventOnly(eventName) {
 // ── Auto LOG 開關
 function toggleAutoLog() {
   autoLogEnabled = !autoLogEnabled;
+  localStorage.setItem('ganV6AutoLog', autoLogEnabled ? '1' : '0');  // 記住狀態
+  applyAutoLogUI();
+  if (autoLogEnabled) {
+    showToast('✅ Auto LOG 開啟');
+    // 若有連線裝置，立即確保 Session 並寫入
+    devices.forEach(dev => {
+      if (dev.isConnected)
+        ensureSession().then(()=>writeLog(dev,'Auto LOG Resumed')).catch(()=>{});
+    });
+  } else {
+    showToast('⏹ Auto LOG 停止');
+    addLog('⚠ Auto LOG 已關閉，所有裝置數據暫停記錄', 'red');
+  }
+}
+
+function applyAutoLogUI() {
   const btn = document.getElementById('autoLogBtn');
   const dot = document.getElementById('logDot');
+  if (!btn) return;
   if (autoLogEnabled) {
     btn.style.background = 'rgba(6,78,59,.4)';
     btn.style.borderColor = 'rgba(52,211,153,.35)';
     btn.style.color = '#34d399';
     dot.className = 'log-dot-on';
     btn.childNodes[1].textContent = 'Auto LOG ON';
-    showToast('✅ Auto LOG 開啟');
   } else {
     btn.style.background = 'rgba(51,65,85,.3)';
     btn.style.borderColor = 'rgba(100,116,139,.25)';
     btn.style.color = '#64748b';
     dot.className = 'log-dot-off';
     btn.childNodes[1].textContent = 'Auto LOG OFF';
-    showToast('⏹ Auto LOG 停止');
   }
 }
 
@@ -1124,7 +1140,13 @@ function onDevConnected(id) {
   addLog(`● 裝置 #${id}${ns} 連線成功`,'green');
   showToast(`✅ 裝置 #${id}${dev.bleName?' · '+dev.bleName:''} 連線`);
   // 自動建立 Session & 寫入 DB
-  ensureSession().then(()=>writeLog(dev,'Device Connected')).catch(console.error);
+  if (autoLogEnabled) {
+    ensureSession().then(()=>writeLog(dev,'Device Connected')).catch(console.error);
+  } else {
+    // Auto LOG 關閉時，醒目警告
+    addLog(`⚠ 裝置 #${id} 連線成功，但 Auto LOG 已關閉！數據不會記錄`, 'red');
+    showToast('⚠ Auto LOG 已關閉，請開啟後才會記錄數據');
+  }
 }
 
 function disconnectDevice(id) {
@@ -1534,6 +1556,11 @@ function showToast(msg) {
 // 初始化
 // ══════════════════════════════════════
 async function initApp() {
+  // 還原 Auto-LOG 狀態（預設 ON）
+  const savedLog = localStorage.getItem('ganV6AutoLog');
+  autoLogEnabled = (savedLog !== '0');   // 只有明確儲存'0'才是 OFF
+  applyAutoLogUI();
+
   try {
     await initDB();
     await restoreFromDB();
@@ -1543,10 +1570,21 @@ async function initApp() {
   initCombinedChart();
   startBackgroundSync();
   setQuickRange(30); // 預設 30 分
+
+  if (!autoLogEnabled)
+    addLog('⚠ Auto LOG 目前為關閉狀態，點上方按鈕開啟', 'red');
 }
 
 window.addEventListener('load', () => {
-  // 登入畫面等使用者動作，不自動 initApp
+  // 若曾成功登入，直接自動跳過登入畫面
+  const savedUser = localStorage.getItem('ganV6User');
+  if (savedUser === VALID_USER) {
+    document.getElementById('loginOverlay').remove();
+    initApp();
+  } else if (savedUser) {
+    // 預填帳號（非 ITRI 帳號只預填，仍需按登入）
+    document.getElementById('loginUser').value = savedUser;
+  }
 });
 </script>
 </body>
