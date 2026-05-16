@@ -134,7 +134,7 @@ tr:hover td{background:rgba(255,255,255,.025)}
     <table>
       <thead>
         <tr>
-          <th>操作員</th><th>裝置</th><th>筆數</th>
+          <th>操作員</th><th>裝置</th><th>筆數</th><th></th>
           <th class="text-right">均 RPM</th><th class="text-right">最大 A</th>
           <th class="text-right">均 V</th><th class="text-right">最大 W</th>
           <th>最早記錄</th><th>最晚記錄</th>
@@ -392,6 +392,8 @@ function renderOpSummary() {
     const vol  = rows.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
     const pow  = rows.filter(r=>r.power_w!=null).map(r=>+r.power_w);
     const times = rows.map(r=>r.local_time||r.timestamp).filter(Boolean).sort();
+    const opEsc = encodeURIComponent(JSON.stringify(g.operator));
+    const devVal = g.device != null ? g.device : '__null__';
     return `<tr>
       <td class="font-semibold text-cyan-300">${g.operator}</td>
       <td class="text-center">${g.device!=null?`#${g.device}`:'—'}</td>
@@ -402,8 +404,51 @@ function renderOpSummary() {
       <td class="text-right font-mono text-rose-400">${pow.length?Math.max(...pow).toLocaleString():'—'}</td>
       <td class="font-mono text-[11px] text-slate-500">${times[0]?.slice(0,16)||'—'}</td>
       <td class="font-mono text-[11px] text-slate-500">${times[times.length-1]?.slice(0,16)||'—'}</td>
+      <td>
+        <button onclick="deleteByGroup('${g.operator}',${g.device!=null?g.device:'null'})"
+          style="font-size:10px;padding:3px 9px;border-radius:7px;border:1px solid rgba(239,68,68,.35);
+                 background:rgba(239,68,68,.1);color:#f87171;cursor:pointer;white-space:nowrap"
+          title="刪除此操作員/裝置的全部 ${rows.length} 筆">🗑 全刪</button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+// ── 按操作員+裝置刪除全部
+async function deleteByGroup(operator, device) {
+  const ids = allData
+    .filter(r => (r.operator||'Unknown') === operator && (r.device_id??null) === device)
+    .map(r => r.id);
+  if (!ids.length) return;
+  const label = device != null ? `操作員「${operator}」裝置 #${device}` : `操作員「${operator}」`;
+  if (!confirm(`⚠ 確定永久刪除 ${label} 的全部 ${ids.length} 筆資料？\n此操作不可復原！`)) return;
+  loading(true); setStatus('刪除中…','yellow');
+  try {
+    // 分批刪除（避免 URL 過長，每批 200 筆）
+    const BATCH = 200;
+    let deleted = 0;
+    for (let i=0; i<ids.length; i+=BATCH) {
+      const chunk = ids.slice(i, i+BATCH);
+      const resp = await fetch(
+        `${SUPABASE_URL}/rest/v1/motor_logs?id=in.(${chunk.join(',')})`,
+        { method:'DELETE', headers:{ 'apikey':SUPABASE_KEY,
+            'Authorization':`Bearer ${SUPABASE_KEY}`, 'Prefer':'return=minimal' } }
+      );
+      if (!resp.ok && resp.status!==204) {
+        const t = await resp.text();
+        setStatus(`刪除失敗 HTTP ${resp.status}: ${t.slice(0,80)}`, 'red');
+        loading(false); return;
+      }
+      deleted += chunk.length;
+    }
+    allData = allData.filter(r =>
+      !((r.operator||'Unknown') === operator && (r.device_id??null) === device)
+    );
+    curPage = Math.max(0, Math.min(Math.ceil(allData.length/PAGE)-1, curPage));
+    renderAll();
+    setStatus(`✓ 已刪除 ${deleted} 筆（${label}）`, 'green');
+  } catch(e) { setStatus('刪除錯誤：'+e.message,'red'); }
+  loading(false);
 }
 
 // ══════════════════════════════════════════════════════
