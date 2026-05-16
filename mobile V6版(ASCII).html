@@ -713,7 +713,8 @@ async function doSyncBatch() {
 
       if (isColError) {
         // ── 自動重試：拿掉選填欄位，只送核心欄位
-        addLog(`⚠ 欄位錯誤，自動移除擴充欄位重試…`, 'red');
+        if (syncErrorCount === 0)
+          addLog(`⚠ Supabase 欄位不存在（${hint.slice(0,60)}），自動以核心欄位重試…`, 'red');
         const CORE = ['session_id','device_id','operator','timestamp','local_time',
                       'rpm','current_a','voltage_v','power_w','temperature_c',
                       'fault_code','motor_state','event'];
@@ -733,11 +734,14 @@ async function doSyncBatch() {
           batch.forEach(r => { r.synced = true; os.put(r); });
           syncedTotal += batch.length; syncErrorCount = 0;
           updateLogUI(); updateSyncStatus('ok');
-          addLog(`☁ 重試成功，同步 ${batch.length} 筆（擴充欄未寫入，請在 Supabase 執行 ALTER TABLE）`, 'green');
+          addLog(`☁ 核心欄位重試成功，已同步 ${batch.length} 筆`, 'green');
+          if (syncErrorCount === 0)
+            addLog('💡 location/equipment/note 欄位未寫入，請在 Supabase SQL Editor 執行 ALTER TABLE + NOTIFY pgrst,\'reload schema\';', 'red');
         } else {
           syncErrorCount++;
           updateSyncStatus('error');
-          addLog(`⚠ 重試仍失敗 HTTP ${resp2.status}`, 'red');
+          let errText2=''; try{errText2=await resp2.text();}catch(_){}
+          addLog(`⚠ 重試仍失敗 HTTP ${resp2.status}：${errText2.slice(0,80)}`, 'red');
         }
       } else {
         syncErrorCount++;
