@@ -583,9 +583,9 @@ const nn = v => (typeof v === 'number' && isNaN(v)) ? null : v;
 // 合理範圍守衛：超出物理可能範圍 → null（避免 Modbus 暫存器雜訊污染資料）
 // 根據系統規格調整：48V 匯流排，GaN 馬達
 const PLAUSIBLE = {
-  voltage_v:  [0,   80],   // 48V 系統，容許暫態至 80V
-  current_a:  [0,   80],   // 最大合理電流 80A
-  power_w:    [0, 8000],   // 最大功率 8000W（負值一律排除）
+  voltage_v:  [0,   60],   // 48V 系統，容許暫態至 60V
+  current_a:  [0,   70],   // 最大 60A + 安全餘量
+  power_w:    [0, 8000],   // 最大功率 8000W
   rpm:        [0, 6000],   // 最高轉速 6000 RPM
 };
 const plausible = (val, key) => {
@@ -1062,6 +1062,8 @@ function createDeviceObj() {
     almDbCode:0, almDbCount:0,
     // 防抖：RPM 連續讀到 0 才視為真正停止
     rpmDbZeroCount:0,
+    // 防抖：電流統計 — 連續 2 次相近值才更新最大值
+    curDbLast:0, curDbCount:0,
     pwrAccWh:0, pwrRunSec:0, pwrStartCount:0, pwrLastTime:null, pwrRunning:false,
     statMaxRpm:0, statMaxCur:0, statMaxVlt:0, statMaxPwr:0, statMaxTemp:-999,
     almCnt:0, trendRpm:[], chart:null,
@@ -1529,7 +1531,19 @@ function updateCard(dev) {
   const rpmV=plausible(rpm,'rpm'), curV=plausible(parseFloat(cur),'current_a');
   const vltV=plausible(parseFloat(vlt),'voltage_v'), pwrV=plausible(pwr,'power_w');
   if(rpmV!==null&&rpmV>dev.statMaxRpm){dev.statMaxRpm=rpmV;_s(`smaxrpm-${id}`,rpmV+' RPM');}
-  if(curV!==null&&curV>dev.statMaxCur){dev.statMaxCur=curV;_s(`smaxcur-${id}`,curV.toFixed(2)+' A');}
+  // 電流防抖：同方向連續 2 次才更新最大值（排除單次雜訊彈跳）
+  if(curV!==null){
+    const diff=Math.abs(curV-(dev.curDbLast||0));
+    if(diff < Math.max(curV*0.5, 2)){    // 與上次相差 < 50% 或 < 2A → 視為穩定
+      dev.curDbCount=(dev.curDbCount||0)+1;
+      if(dev.curDbCount>=2 && curV>dev.statMaxCur){
+        dev.statMaxCur=curV;_s(`smaxcur-${id}`,curV.toFixed(2)+' A');
+      }
+    } else {
+      dev.curDbCount=1;                   // 突然跳變 → 重新計數
+    }
+    dev.curDbLast=curV;
+  }
   if(vltV!==null&&vltV>dev.statMaxVlt){dev.statMaxVlt=vltV;_s(`smaxvlt-${id}`,vltV.toFixed(1)+' V');}
   if(pwrV!==null&&pwrV>dev.statMaxPwr){dev.statMaxPwr=pwrV;_s(`smaxpwr-${id}`,pwrV+' W');}
   const mm=String(Math.floor(dev.pwrRunSec/60)).padStart(2,'0');
