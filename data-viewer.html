@@ -254,6 +254,22 @@ async function sbFetch(params) {
   return resp.json();
 }
 
+// 自動分頁：突破 1000 筆限制，分批抓完全部資料
+async function sbFetchAll(filterParts) {
+  const BATCH = 1000;
+  let offset = 0;
+  let all = [];
+  while (true) {
+    const parts = [...filterParts, `limit=${BATCH}`, `offset=${offset}`, 'order=timestamp.asc'];
+    const rows = await sbFetch(parts.join('&'));
+    all = all.concat(rows);
+    if (rows.length < BATCH) break;   // 最後一頁
+    offset += BATCH;
+    setStatus(`讀取中… 已取 ${all.length} 筆`, 'yellow');
+  }
+  return all;
+}
+
 function setStatus(msg, c) {
   const el = document.getElementById('statusBadge');
   el.textContent = msg;
@@ -275,21 +291,13 @@ async function loadOptions() {
     vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
   };
   // 先嘗試完整欄位；若某欄位不存在（HTTP 400）則退回只取基本欄位
-  // Supabase 免費版 max-rows=1000；分兩批抓（最舊 + 最新）取聯集，確保新帳號不遺漏
+  // 自動分頁抓完所有紀錄的 operator/personnel/device_id/location/equipment
   let rows = null;
   try {
-    const [asc, desc] = await Promise.all([
-      sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&order=timestamp.asc&limit=1000'),
-      sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&order=timestamp.desc&limit=1000'),
-    ]);
-    rows = [...asc, ...desc];
+    rows = await sbFetchAll(['select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment']);
   } catch(e) {
     try {
-      const [asc, desc] = await Promise.all([
-        sbFetch('select=operator%2Cdevice_id&order=timestamp.asc&limit=1000'),
-        sbFetch('select=operator%2Cdevice_id&order=timestamp.desc&limit=1000'),
-      ]);
-      rows = [...asc, ...desc];
+      rows = await sbFetchAll(['select=operator%2Cdevice_id']);
       setStatus('⚠ Supabase 缺少欄位，請執行 ALTER TABLE + NOTIFY pgrst', 'yellow');
     } catch(e2) { setStatus('載入選項失敗：'+e2.message,'red'); return; }
   }
@@ -321,7 +329,7 @@ function setRange(h) {
 async function doQuery() {
   loading(true); setStatus('查詢中…','yellow');
   try {
-    const parts = ['select=*','order=timestamp.asc','limit=5000'];
+    const filterParts = ['select=*'];
     const op  = document.getElementById('fOperator').value;
     const prs = document.getElementById('fPersonnel').value;
     const dev = document.getElementById('fDevice').value;
@@ -329,25 +337,22 @@ async function doQuery() {
     const eq  = document.getElementById('fEquipment').value;
     const fr  = document.getElementById('fFrom').value;
     const to  = document.getElementById('fTo').value;
-    if (op)  parts.push(`operator=eq.${encodeURIComponent(op)}`);
-    if (prs) parts.push(`personnel=eq.${encodeURIComponent(prs)}`);
-    if (dev) parts.push(`device_id=eq.${dev}`);
-    if (loc) parts.push(`location=eq.${encodeURIComponent(loc)}`);
-    if (eq)  parts.push(`equipment=eq.${encodeURIComponent(eq)}`);
-    if (fr)  parts.push(`timestamp=gte.${new Date(fr).toISOString()}`);
-    if (to)  parts.push(`timestamp=lte.${new Date(to).toISOString()}`);
+    if (op)  filterParts.push(`operator=eq.${encodeURIComponent(op)}`);
+    if (prs) filterParts.push(`personnel=eq.${encodeURIComponent(prs)}`);
+    if (dev) filterParts.push(`device_id=eq.${dev}`);
+    if (loc) filterParts.push(`location=eq.${encodeURIComponent(loc)}`);
+    if (eq)  filterParts.push(`equipment=eq.${encodeURIComponent(eq)}`);
+    if (fr)  filterParts.push(`timestamp=gte.${new Date(fr).toISOString()}`);
+    if (to)  filterParts.push(`timestamp=lte.${new Date(to).toISOString()}`);
 
-    // Supabase 免費版 max-rows=1000，取最新 1000 筆（order desc 後反轉）
-    const descParts = [...parts.filter(p=>!p.startsWith('order=')), 'order=timestamp.desc'];
-    const rawDesc = await sbFetch(descParts.join('&'));
-    allData = rawDesc.slice().reverse();   // 還原成時間正序
+    // 自動分頁抓完全部資料（突破 Supabase max-rows=1000 限制）
+    allData = await sbFetchAll(filterParts);
     curPage = 0;
     renderAll();
     loadOptions();   // 查詢後重新刷新下拉選單（確保新帳號出現）
     const n = allData.length;
-    const limitHit = n >= 1000;
-    setStatus(limitHit ? `⚠ 顯示最新 1000 筆（縮短時間範圍可看更早資料）` : `✓ 共 ${n} 筆`, limitHit?'yellow':'green');
-    document.getElementById('recInfo').textContent = limitHit ? `最新 ${n} 筆` : `共 ${n} 筆`;
+    setStatus(`✓ 共 ${n} 筆（全部載入）`, 'green');
+    document.getElementById('recInfo').textContent = `共 ${n} 筆`;
   } catch(e) { setStatus('查詢失敗：'+e.message,'red'); }
   loading(false);
 }
