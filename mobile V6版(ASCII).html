@@ -118,6 +118,10 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
     <div class="text-sm font-black text-slate-100 leading-tight">GaN 馬達監控 V6</div>
     <div class="text-[9px] text-slate-500 font-mono">ASCII 多裝置 BLE · <span id="activeCount">0</span> 台連線中
       · 👤 <span id="operatorLabel" class="text-cyan-400"></span>
+      <button onclick="switchAccount()" title="切換帳號"
+        style="margin-left:4px;font-size:9px;padding:1px 6px;border-radius:6px;
+               border:1px solid rgba(148,163,184,.25);background:rgba(148,163,184,.08);
+               color:#94a3b8;cursor:pointer;vertical-align:middle">切換</button>
     </div>
   </div>
   <button onclick="addDevice()"
@@ -314,6 +318,12 @@ input[type="datetime-local"]:focus{border-color:rgba(6,182,212,.5)}
 // 登入（任意帳號，作為 operator 識別）
 // ══════════════════════════════════════
 let currentOperator = 'Unknown';
+
+function switchAccount() {
+  if (!confirm('切換帳號將重新載入頁面，BLE 連線會中斷，確定繼續？')) return;
+  localStorage.removeItem('ganV6User');
+  location.reload();
+}
 
 function doLogin() {
   const user = document.getElementById('loginUser').value.trim();
