@@ -580,6 +580,20 @@ function localTimeStr() {
 // NaN → null 工具
 const nn = v => (typeof v === 'number' && isNaN(v)) ? null : v;
 
+// 合理範圍守衛：超出物理可能範圍 → null（避免 Modbus 暫存器雜訊污染資料）
+// 根據系統規格調整：48V 匯流排，GaN 馬達
+const PLAUSIBLE = {
+  voltage_v:  [0,   80],   // 48V 系統，容許暫態至 80V
+  current_a:  [0,   80],   // 最大合理電流 80A
+  power_w:    [0, 8000],   // 最大功率 8000W（負值一律排除）
+  rpm:        [0, 6000],   // 最高轉速 6000 RPM
+};
+const plausible = (val, key) => {
+  if (val === null || val === undefined) return null;
+  const [lo, hi] = PLAUSIBLE[key] || [-Infinity, Infinity];
+  return (val >= lo && val <= hi) ? val : null;
+};
+
 async function writeLog(dev, event) {
   if (!autoLogEnabled || !db) return;
   await ensureSession();
@@ -595,10 +609,10 @@ async function writeLog(dev, event) {
     load_kg:       sessionMeta.load_kg,
     timestamp:     new Date().toISOString(),
     local_time:    localTimeStr(),
-    rpm:           nn(dev.currentValues[idx.rpm]),
-    current_a:     nn(parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2))),
-    voltage_v:     nn(parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1))),
-    power_w:       nn(dev.currentValues[idx.power]),
+    rpm:           plausible(nn(dev.currentValues[idx.rpm]),                                        'rpm'),
+    current_a:     plausible(nn(parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2))), 'current_a'),
+    voltage_v:     plausible(nn(parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1))), 'voltage_v'),
+    power_w:       plausible(nn(dev.currentValues[idx.power]),                                     'power_w'),
     temperature_c: nn(temp),
     fault_code:    nn(dev.currentValues[idx.alarm]),
     motor_state:   nn(dev.currentValues[idx.status]),

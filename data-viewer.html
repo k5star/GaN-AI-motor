@@ -372,25 +372,28 @@ function renderAll() {
 // KPI
 // ══════════════════════════════════════════════════════
 function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null; }
+
+// 顯示用範圍守衛（與 mobile V6 一致，排除 Modbus 雜訊）
+const KPI_RANGE = { rpm:[0,6000], current_a:[0,80], voltage_v:[0,80], power_w:[0,8000] };
+const inRange = (v, key) => { const [lo,hi]=KPI_RANGE[key]||[-Infinity,Infinity]; return v>=lo&&v<=hi; };
+
 function renderKPIs() {
   const n   = allData.length;
-  const rpm = allData.filter(r=>r.rpm!=null&&r.rpm>0).map(r=>r.rpm);
-  const cur = allData.filter(r=>r.current_a!=null).map(r=>+r.current_a);
-  const vol = allData.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
-  const pow    = allData.filter(r=>r.power_w!=null).map(r=>+r.power_w);
-  // 只取 ≥ 0 的功率計算電能（負值為 Modbus 有號整數異常或再生煞車，排除避免負電能）
-  const powPos = pow.filter(v=>v>=0);
+  const rpm = allData.filter(r=>r.rpm!=null&&r.rpm>0&&inRange(r.rpm,'rpm')).map(r=>+r.rpm);
+  const cur = allData.filter(r=>r.current_a!=null&&inRange(+r.current_a,'current_a')).map(r=>+r.current_a);
+  const vol = allData.filter(r=>r.voltage_v!=null&&inRange(+r.voltage_v,'voltage_v')).map(r=>+r.voltage_v);
+  const pow = allData.filter(r=>r.power_w!=null&&inRange(+r.power_w,'power_w')).map(r=>+r.power_w);
   const evt = allData.filter(r=>r.event);
 
-  // 累積電能 Wh（每筆 ≈ 1 秒，∑power_w / 3600，只累正值）
-  const wh = powPos.reduce((s,v)=>s+v, 0) / 3600;
+  // 累積電能 Wh（每筆 ≈ 1 秒，只計合理正值）
+  const wh = pow.reduce((s,v)=>s+v, 0) / 3600;
 
   document.getElementById('kTotal').textContent = n.toLocaleString();
   document.getElementById('kRpm').textContent   = rpm.length ? Math.round(avg(rpm)).toLocaleString() : '—';
   document.getElementById('kCur').textContent   = cur.length ? Math.max(...cur).toFixed(2) : '—';
   document.getElementById('kVolt').textContent  = vol.length ? avg(vol).toFixed(1) : '—';
-  document.getElementById('kPow').textContent   = powPos.length ? Math.max(...powPos).toLocaleString() : '—';
-  document.getElementById('kWh').textContent    = powPos.length ? wh.toFixed(3) : '—';
+  document.getElementById('kPow').textContent   = pow.length ? Math.max(...pow).toLocaleString() : '—';
+  document.getElementById('kWh').textContent    = pow.length ? wh.toFixed(3) : '—';
   document.getElementById('kEvt').textContent   = evt.length;
 }
 
@@ -412,11 +415,11 @@ function renderOpSummary() {
   const tbody = document.getElementById('opSumTbody');
   tbody.innerHTML = list.map(g => {
     const rows = g.rows;
-    const rpm  = rows.filter(r=>r.rpm>0).map(r=>r.rpm);
-    const cur  = rows.filter(r=>r.current_a!=null).map(r=>+r.current_a);
-    const vol  = rows.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
-    const pow    = rows.filter(r=>r.power_w!=null).map(r=>+r.power_w);
-    const powPos = pow.filter(v=>v>=0);
+    const rpm = rows.filter(r=>r.rpm>0&&inRange(r.rpm,'rpm')).map(r=>+r.rpm);
+    const cur = rows.filter(r=>r.current_a!=null&&inRange(+r.current_a,'current_a')).map(r=>+r.current_a);
+    const vol = rows.filter(r=>r.voltage_v!=null&&inRange(+r.voltage_v,'voltage_v')).map(r=>+r.voltage_v);
+    const pow = rows.filter(r=>r.power_w!=null&&inRange(+r.power_w,'power_w')).map(r=>+r.power_w);
+    const powPos = pow; // inRange already excludes negatives
     const times = rows.map(r=>r.local_time||r.timestamp).filter(Boolean).sort();
     const opEsc = encodeURIComponent(JSON.stringify(g.operator));
     const devVal = g.device != null ? g.device : '__null__';
