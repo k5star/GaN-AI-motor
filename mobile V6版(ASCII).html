@@ -610,7 +610,7 @@ async function writeLog(dev, event) {
     timestamp:     new Date().toISOString(),
     local_time:    localTimeStr(),
     rpm:           plausible(nn(dev.currentValues[idx.rpm]),                                        'rpm'),
-    current_a:     plausible(nn(parseFloat((dev.currentValues[idx.current]*scale.current).toFixed(2))), 'current_a'),
+    current_a:     plausible(nn(dev.stableCur),                                                    'current_a'), // 防抖確認值
     voltage_v:     plausible(nn(parseFloat((dev.currentValues[idx.voltage]*scale.voltage).toFixed(1))), 'voltage_v'),
     power_w:       plausible(nn(dev.currentValues[idx.power]),                                     'power_w'),
     temperature_c: nn(temp),
@@ -1062,8 +1062,9 @@ function createDeviceObj() {
     almDbCode:0, almDbCount:0,
     // 防抖：RPM 連續讀到 0 才視為真正停止
     rpmDbZeroCount:0,
-    // 防抖：電流統計 — 連續 2 次相近值才更新最大值
+    // 防抖：電流統計 + 資料庫寫入 — 連續 2 次相近值才視為有效
     curDbLast:0, curDbCount:0,
+    stableCur:null,   // 防抖確認後的穩定電流值（用於 DB 寫入）
     pwrAccWh:0, pwrRunSec:0, pwrStartCount:0, pwrLastTime:null, pwrRunning:false,
     statMaxRpm:0, statMaxCur:0, statMaxVlt:0, statMaxPwr:0, statMaxTemp:-999,
     almCnt:0, trendRpm:[], chart:null,
@@ -1534,8 +1535,11 @@ function updateCard(dev) {
     const diff=Math.abs(curNum-(dev.curDbLast||0));
     if(diff < Math.max(curNum*0.5, 2)){
       dev.curDbCount=(dev.curDbCount||0)+1;
-      if(dev.curDbCount>=2 && curNum>dev.statMaxCur){
-        dev.statMaxCur=curNum; _s(`smaxcur-${id}`,curNum.toFixed(2)+' A');
+      if(dev.curDbCount>=2){
+        dev.stableCur=curNum;              // ← 防抖確認：更新 DB 寫入用穩定值
+        if(curNum>dev.statMaxCur){
+          dev.statMaxCur=curNum; _s(`smaxcur-${id}`,curNum.toFixed(2)+' A');
+        }
       }
     } else {
       dev.curDbCount=1;   // 突然跳變 → 重置，不更新
