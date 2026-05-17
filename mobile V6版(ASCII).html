@@ -1058,6 +1058,10 @@ function createDeviceObj() {
     page10Pending:false, page10ReadingReg:10,
     pollTimer:null, tempPollTimer:null,
     lastAlmCode:0,
+    // 防抖：連續 ALM_DEBOUNCE 次相同值才觸發/解除警報
+    almDbCode:0, almDbCount:0,
+    // 防抖：RPM 連續讀到 0 才視為真正停止
+    rpmDbZeroCount:0,
     pwrAccWh:0, pwrRunSec:0, pwrStartCount:0, pwrLastTime:null, pwrRunning:false,
     statMaxRpm:0, statMaxCur:0, statMaxVlt:0, statMaxPwr:0, statMaxTemp:-999,
     almCnt:0, trendRpm:[], chart:null,
@@ -1399,11 +1403,22 @@ function parsePacket(dev, pkt) {
     }
     if(!dev.page10Pending&&pkt.length>=71){
       const dh=pkt.substr(7,64);
+      const newVals=[];
       for(let i=0;i<16;i++){
         let v=parseInt(dh.substr(i*4,4),16);
         if(v>32767) v-=65536;
-        dev.currentValues[i]=v;
+        newVals[i]=v;
       }
+      // RPM 防抖：running 狀態下 RPM=0 需連續 3 次才更新（排除單筆雜訊封包）
+      const {idx}=PROFILE;
+      const newRpm=newVals[idx.rpm], newSt=newVals[idx.status];
+      if(newRpm===0 && dev.currentValues[idx.rpm]>100 && newSt===2){
+        dev.rpmDbZeroCount=(dev.rpmDbZeroCount||0)+1;
+        if(dev.rpmDbZeroCount < 3) newVals[idx.rpm]=dev.currentValues[idx.rpm]; // 保留舊值
+      } else {
+        dev.rpmDbZeroCount=0;
+      }
+      dev.currentValues=newVals;
       updateCard(dev);
     }
   }
@@ -1521,25 +1536,36 @@ function updateCard(dev) {
   const ss=String(Math.floor(dev.pwrRunSec%60)).padStart(2,'0');
   _s(`swh-${id}`,dev.pwrAccWh.toFixed(3)+` Wh  (${mm}:${ss})`);
 
-  // 警報事件
+  // ── 警報防抖：連續 3 次相同碼才觸發 / 連續 3 次 0 才解除 ──
+  const ALM_DEBOUNCE = 3;
   const t=new Date().toLocaleTimeString('zh-TW');
-  if(!isNaN(alm)&&alm!==0&&alm!==dev.lastAlmCode){   // NaN 警報碼不觸發
-    dev.almCnt++; _s(`salmcnt-${id}`,dev.almCnt+' 次');
-    const hint=alarmHint(alm)||'';
-    almEvents.unshift({time:t,devId:id,devName:dev.bleName,code:alm,
-      desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
-    totalAlmCnt++;
-    document.getElementById('almCntBadge').textContent=totalAlmCnt+' 次';
-    renderAlmEvents();
-    addLog(`⚠ #${id} 警報 ${alm}：${alarmDesc(alm)}${hint?' — '+hint:''}`, 'red');
-    writeLog(dev, `Fault:${alm}`).catch(()=>{});
+  if(!isNaN(alm)){
+    if(alm === dev.almDbCode){
+      dev.almDbCount = Math.min(dev.almDbCount + 1, ALM_DEBOUNCE + 1);
+    } else {
+      dev.almDbCode  = alm;
+      dev.almDbCount = 1;
+    }
+    const confirmed = dev.almDbCount >= ALM_DEBOUNCE;
+    if(confirmed && alm!==0 && alm!==dev.lastAlmCode){
+      dev.almCnt++; _s(`salmcnt-${id}`,dev.almCnt+' 次');
+      const hint=alarmHint(alm)||'';
+      almEvents.unshift({time:t,devId:id,devName:dev.bleName,code:alm,
+        desc:alarmDesc(alm),sev:alarmSev(alm),hint,resolvedAt:null});
+      totalAlmCnt++;
+      document.getElementById('almCntBadge').textContent=totalAlmCnt+' 次';
+      renderAlmEvents();
+      addLog(`⚠ #${id} 警報 ${alm}：${alarmDesc(alm)}${hint?' — '+hint:''}`, 'red');
+      writeLog(dev, `Fault:${alm}`).catch(()=>{});
+      dev.lastAlmCode = alm;
+    }
+    if(confirmed && alm===0 && dev.lastAlmCode!==0){
+      const found=almEvents.find(e=>e.devId===id&&e.code===dev.lastAlmCode&&!e.resolvedAt);
+      if(found){found.resolvedAt=t;renderAlmEvents();}
+      addLog(`✓ #${id} 警報 ${dev.lastAlmCode} 解除`,'green');
+      dev.lastAlmCode = 0;
+    }
   }
-  if(!isNaN(alm)&&alm===0&&dev.lastAlmCode!==0&&!isNaN(dev.lastAlmCode)){
-    const found=almEvents.find(e=>e.devId===id&&e.code===dev.lastAlmCode&&!e.resolvedAt);
-    if(found){found.resolvedAt=t;renderAlmEvents();}
-    addLog(`✓ #${id} 警報 ${dev.lastAlmCode} 解除`,'green');
-  }
-  if(!isNaN(alm)) dev.lastAlmCode=alm;   // NaN 不更新 lastAlmCode
   updateDevTemp(dev);
   pushCombinedRpm(dev, rpm);
 
