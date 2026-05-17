@@ -62,8 +62,12 @@ tr:hover td{background:rgba(255,255,255,.025)}
 <div class="card p-4 space-y-3">
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
     <div>
-      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">👤 操作員</label>
-      <select id="fOperator"><option value="">全部操作員</option></select>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">🔐 系統帳號 (operator)</label>
+      <select id="fOperator"><option value="">全部帳號</option></select>
+    </div>
+    <div>
+      <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">👷 現場人員 (personnel)</label>
+      <select id="fPersonnel"><option value="">全部人員</option></select>
     </div>
     <div>
       <label class="block text-[10px] text-slate-500 uppercase font-semibold mb-1.5">🔌 裝置 ID</label>
@@ -273,19 +277,21 @@ async function loadOptions() {
   // 先嘗試完整欄位；若某欄位不存在（HTTP 400）則退回只取基本欄位
   let rows = null;
   try {
-    rows = await sbFetch('select=operator%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
+    rows = await sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
   } catch(e) {
     try {
       rows = await sbFetch('select=operator%2Cdevice_id&limit=5000');
-      setStatus('⚠ Supabase 缺少 location/equipment 欄位，請執行 ALTER TABLE', 'yellow');
+      setStatus('⚠ Supabase 缺少欄位，請執行 ALTER TABLE + NOTIFY pgrst', 'yellow');
     } catch(e2) { setStatus('載入選項失敗：'+e2.message,'red'); return; }
   }
   fill('fOperator',  [...new Set(rows.map(r=>r.operator).filter(Boolean))].sort());
+  fill('fPersonnel', [...new Set(rows.map(r=>r.personnel).filter(Boolean))].sort());
   fill('fDevice',    [...new Set(rows.map(r=>r.device_id).filter(v=>v!=null))].sort((a,b)=>a-b), v=>`裝置 #${v}`);
   fill('fLocation',  [...new Set(rows.map(r=>r.location).filter(Boolean))].sort());
   fill('fEquipment', [...new Set(rows.map(r=>r.equipment).filter(Boolean))].sort());
   const opCount = document.getElementById('fOperator').options.length - 1;
-  if (opCount > 0) setStatus(`已載入篩選選項（${opCount} 位操作員）`);
+  const pCount  = document.getElementById('fPersonnel').options.length - 1;
+  if (opCount > 0) setStatus(`已載入篩選選項（${opCount} 個帳號 / ${pCount} 位現場人員）`);
 }
 
 // ══════════════════════════════════════════════════════
@@ -308,12 +314,14 @@ async function doQuery() {
   try {
     const parts = ['select=*','order=timestamp.asc','limit=5000'];
     const op  = document.getElementById('fOperator').value;
+    const prs = document.getElementById('fPersonnel').value;
     const dev = document.getElementById('fDevice').value;
     const loc = document.getElementById('fLocation').value;
     const eq  = document.getElementById('fEquipment').value;
     const fr  = document.getElementById('fFrom').value;
     const to  = document.getElementById('fTo').value;
     if (op)  parts.push(`operator=eq.${encodeURIComponent(op)}`);
+    if (prs) parts.push(`personnel=eq.${encodeURIComponent(prs)}`);
     if (dev) parts.push(`device_id=eq.${dev}`);
     if (loc) parts.push(`location=eq.${encodeURIComponent(loc)}`);
     if (eq)  parts.push(`equipment=eq.${encodeURIComponent(eq)}`);
