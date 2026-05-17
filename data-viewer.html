@@ -275,12 +275,21 @@ async function loadOptions() {
     vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=fmt?fmt(v):v; sel.appendChild(o); });
   };
   // 先嘗試完整欄位；若某欄位不存在（HTTP 400）則退回只取基本欄位
+  // Supabase 免費版 max-rows=1000；分兩批抓（最舊 + 最新）取聯集，確保新帳號不遺漏
   let rows = null;
   try {
-    rows = await sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&limit=5000');
+    const [asc, desc] = await Promise.all([
+      sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&order=timestamp.asc&limit=1000'),
+      sbFetch('select=operator%2Cpersonnel%2Cdevice_id%2Clocation%2Cequipment&order=timestamp.desc&limit=1000'),
+    ]);
+    rows = [...asc, ...desc];
   } catch(e) {
     try {
-      rows = await sbFetch('select=operator%2Cdevice_id&limit=5000');
+      const [asc, desc] = await Promise.all([
+        sbFetch('select=operator%2Cdevice_id&order=timestamp.asc&limit=1000'),
+        sbFetch('select=operator%2Cdevice_id&order=timestamp.desc&limit=1000'),
+      ]);
+      rows = [...asc, ...desc];
       setStatus('⚠ Supabase 缺少欄位，請執行 ALTER TABLE + NOTIFY pgrst', 'yellow');
     } catch(e2) { setStatus('載入選項失敗：'+e2.message,'red'); return; }
   }
@@ -328,16 +337,17 @@ async function doQuery() {
     if (fr)  parts.push(`timestamp=gte.${new Date(fr).toISOString()}`);
     if (to)  parts.push(`timestamp=lte.${new Date(to).toISOString()}`);
 
-    allData = await sbFetch(parts.join('&'));
+    // Supabase 免費版 max-rows=1000，取最新 1000 筆（order desc 後反轉）
+    const descParts = [...parts.filter(p=>!p.startsWith('order=')), 'order=timestamp.desc'];
+    const rawDesc = await sbFetch(descParts.join('&'));
+    allData = rawDesc.slice().reverse();   // 還原成時間正序
     curPage = 0;
     renderAll();
-    loadOptions();   // 查詢後重新刷新下拉選單（確保新操作員出現）
+    loadOptions();   // 查詢後重新刷新下拉選單（確保新帳號出現）
     const n = allData.length;
-    setStatus(`✓ 共 ${n} 筆`, 'green');
-    document.getElementById('recInfo').textContent = `共 ${n} 筆`;
-    if (n >= 5000) {
-      setStatus(`⚠ 已達上限 5000 筆（嘗試縮短時間範圍）`, 'yellow');
-    }
+    const limitHit = n >= 1000;
+    setStatus(limitHit ? `⚠ 顯示最新 1000 筆（縮短時間範圍可看更早資料）` : `✓ 共 ${n} 筆`, limitHit?'yellow':'green');
+    document.getElementById('recInfo').textContent = limitHit ? `最新 ${n} 筆` : `共 ${n} 筆`;
   } catch(e) { setStatus('查詢失敗：'+e.message,'red'); }
   loading(false);
 }
