@@ -675,12 +675,20 @@ async function doSyncBatch() {
     if (!batch.length) { updateSyncStatus('idle'); return; }
 
     // 移除本機 id（GENERATED ALWAYS AS IDENTITY 不能插入）
-    // 過濾 null / undefined / NaN（NaN 送到 Supabase 數字欄會 400 拒絕）
-    const cleanVal = v => (v === null || v === undefined || (typeof v === 'number' && isNaN(v)));
-    const payload = batch.map(({ id, synced, ...rest }) => {
+    // PostgREST 要求批次中每筆 key 集合完全一致；NaN→null，但保留 null 欄位
+    const nanToNull = v => (typeof v === 'number' && isNaN(v)) ? null : v;
+    // 先 pass 1：清 NaN，收集所有欄位名
+    const allKeys = new Set();
+    const cleaned = batch.map(({ id, synced, ...rest }) => {
       const out = {};
-      Object.entries(rest).forEach(([k, v]) => { if (!cleanVal(v)) out[k] = v; });
+      Object.entries(rest).forEach(([k, v]) => { out[k] = nanToNull(v); allKeys.add(k); });
       return out;
+    });
+    // pass 2：補齊每筆缺少的 key（填 null），確保 key 集合一致
+    const payload = cleaned.map(r => {
+      const norm = {};
+      allKeys.forEach(k => { norm[k] = (r[k] !== undefined) ? r[k] : null; });
+      return norm;
     });
 
     updateSyncStatus('syncing');
@@ -732,9 +740,10 @@ async function doSyncBatch() {
         const CORE = ['session_id','device_id','operator','timestamp','local_time',
                       'rpm','current_a','voltage_v','power_w','temperature_c',
                       'fault_code','motor_state','event'];
+        // 核心欄位重試：每筆保持相同 key 集合（NaN→null，缺少的填 null）
         const fallback = batch.map(({ id, synced, ...rest }) => {
           const out = {};
-          CORE.forEach(k => { if (rest[k] !== null && rest[k] !== undefined) out[k] = rest[k]; });
+          CORE.forEach(k => { out[k] = nanToNull(rest[k] !== undefined ? rest[k] : null); });
           return out;
         });
         const resp2 = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
