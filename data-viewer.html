@@ -406,7 +406,7 @@ function renderOpSummary() {
     groups[key].rows.push(r);
   });
   const list = Object.values(groups);
-  if (list.length < 2) { document.getElementById('opSumCard').style.display='none'; return; }
+  if (list.length < 1) { document.getElementById('opSumCard').style.display='none'; return; }
   document.getElementById('opSumCard').style.display='';
 
   const tbody = document.getElementById('opSumTbody');
