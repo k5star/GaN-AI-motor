@@ -200,7 +200,7 @@ tr:hover td{background:rgba(255,255,255,.025)}
       <thead>
         <tr>
           <th style="width:32px"></th>
-          <th>本地時間</th><th>操作員</th><th>裝置</th>
+          <th>本地時間</th><th>操作員</th><th>現場人員</th><th>裝置</th>
           <th>📍地點</th><th>🔧設備</th><th class="text-right">🏋負重kg</th>
           <th>馬達狀態</th>
           <th class="text-right">RPM</th><th class="text-right">電流 A</th>
@@ -209,7 +209,7 @@ tr:hover td{background:rgba(255,255,255,.025)}
         </tr>
       </thead>
       <tbody id="dataTbody">
-        <tr><td colspan="15" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
+        <tr><td colspan="16" class="text-slate-600 text-center py-8">請先設定篩選條件並點擊「查詢」</td></tr>
       </tbody>
     </table>
     </div>
@@ -606,7 +606,7 @@ function renderTable() {
 
   const tbody = document.getElementById('dataTbody');
   if (!slice.length) {
-    tbody.innerHTML='<tr><td colspan="10" class="text-slate-600 text-center py-8">無資料</td></tr>';
+    tbody.innerHTML='<tr><td colspan="16" class="text-slate-600 text-center py-8">無資料</td></tr>';
     return;
   }
   tbody.innerHTML = slice.map(r => {
@@ -621,6 +621,7 @@ function renderTable() {
       </td>
       <td class="font-mono text-[11px]">${localLabel(r)}</td>
       <td class="text-cyan-300 font-semibold text-xs">${r.operator||'—'}</td>
+      <td class="text-sky-300 text-xs">${r.personnel||'—'}</td>
       <td class="text-center text-xs">${r.device_id!=null?`#${r.device_id}`:'—'}</td>
       <td class="text-slate-400 text-xs">${r.location||'—'}</td>
       <td class="text-slate-400 text-xs">${r.equipment||'—'}</td>
@@ -702,9 +703,9 @@ function toggleSec(id, arrowId) {
 // ══════════════════════════════════════════════════════
 function exportCSV() {
   if (!allData.length) { alert('請先查詢資料'); return; }
-  const hdr = 'local_time,timestamp_utc,operator,location,equipment,load_kg,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event,note\n';
+  const hdr = 'local_time,timestamp_utc,operator,personnel,location,equipment,load_kg,device_id,session_id,motor_state,rpm,current_a,voltage_v,power_w,temperature_c,fault_code,event,note\n';
   const body = allData.map(r =>
-    `"${r.local_time||''}","${r.timestamp}","${r.operator||''}",` +
+    `"${r.local_time||''}","${r.timestamp}","${r.operator||''}","${r.personnel||''}",` +
     `"${r.location||''}","${r.equipment||''}",${r.load_kg??''},` +
     `${r.device_id??''},${r.session_id??''},${r.motor_state??''},${r.rpm??''},${r.current_a??''},` +
     `${r.voltage_v??''},${r.power_w??''},${r.temperature_c??''},${r.fault_code??''},"${r.event??''}","${r.note??''}"`
