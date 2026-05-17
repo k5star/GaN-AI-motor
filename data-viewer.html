@@ -354,18 +354,20 @@ function renderKPIs() {
   const rpm = allData.filter(r=>r.rpm!=null&&r.rpm>0).map(r=>r.rpm);
   const cur = allData.filter(r=>r.current_a!=null).map(r=>+r.current_a);
   const vol = allData.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
-  const pow = allData.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+  const pow    = allData.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+  // 只取 ≥ 0 的功率計算電能（負值為 Modbus 有號整數異常或再生煞車，排除避免負電能）
+  const powPos = pow.filter(v=>v>=0);
   const evt = allData.filter(r=>r.event);
 
-  // 累積電能 Wh（每筆 = 1 秒，∑power_w / 3600）
-  const wh = pow.reduce((s,v)=>s+v, 0) / 3600;
+  // 累積電能 Wh（每筆 ≈ 1 秒，∑power_w / 3600，只累正值）
+  const wh = powPos.reduce((s,v)=>s+v, 0) / 3600;
 
   document.getElementById('kTotal').textContent = n.toLocaleString();
   document.getElementById('kRpm').textContent   = rpm.length ? Math.round(avg(rpm)).toLocaleString() : '—';
   document.getElementById('kCur').textContent   = cur.length ? Math.max(...cur).toFixed(2) : '—';
   document.getElementById('kVolt').textContent  = vol.length ? avg(vol).toFixed(1) : '—';
-  document.getElementById('kPow').textContent   = pow.length ? Math.max(...pow).toLocaleString() : '—';
-  document.getElementById('kWh').textContent    = pow.length ? wh.toFixed(3) : '—';
+  document.getElementById('kPow').textContent   = powPos.length ? Math.max(...powPos).toLocaleString() : '—';
+  document.getElementById('kWh').textContent    = powPos.length ? wh.toFixed(3) : '—';
   document.getElementById('kEvt').textContent   = evt.length;
 }
 
@@ -390,7 +392,8 @@ function renderOpSummary() {
     const rpm  = rows.filter(r=>r.rpm>0).map(r=>r.rpm);
     const cur  = rows.filter(r=>r.current_a!=null).map(r=>+r.current_a);
     const vol  = rows.filter(r=>r.voltage_v!=null).map(r=>+r.voltage_v);
-    const pow  = rows.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+    const pow    = rows.filter(r=>r.power_w!=null).map(r=>+r.power_w);
+    const powPos = pow.filter(v=>v>=0);
     const times = rows.map(r=>r.local_time||r.timestamp).filter(Boolean).sort();
     const opEsc = encodeURIComponent(JSON.stringify(g.operator));
     const devVal = g.device != null ? g.device : '__null__';
@@ -401,7 +404,7 @@ function renderOpSummary() {
       <td class="text-right font-mono text-emerald-400">${rpm.length?Math.round(avg(rpm)).toLocaleString():'—'}</td>
       <td class="text-right font-mono text-amber-400">${cur.length?Math.max(...cur).toFixed(2):'—'}</td>
       <td class="text-right font-mono text-violet-400">${vol.length?avg(vol).toFixed(1):'—'}</td>
-      <td class="text-right font-mono text-rose-400">${pow.length?Math.max(...pow).toLocaleString():'—'}</td>
+      <td class="text-right font-mono text-rose-400">${powPos.length?Math.max(...powPos).toLocaleString():'—'}</td>
       <td class="font-mono text-[11px] text-slate-500">${times[0]?.slice(0,16)||'—'}</td>
       <td class="font-mono text-[11px] text-slate-500">${times[times.length-1]?.slice(0,16)||'—'}</td>
       <td>
