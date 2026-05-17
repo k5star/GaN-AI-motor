@@ -1473,7 +1473,8 @@ function updateCard(dev) {
   else if(st===5||alm!==0) card.classList.add('dev-card-fault');
 
   const badge=$('almbadge'), hintEl=$('almhint');
-  if(alm!==0||st===5){
+  const almValid = !isNaN(alm) && alm !== null;          // NaN/null → 不顯示
+  if(almValid && (alm!==0||st===5)){
     const sev=alarmSev(alm);
     badge.classList.remove('hidden');
     $('almtxt').textContent=`⚠ ${alm} ${alarmDesc(alm)}`;
@@ -1509,18 +1510,20 @@ function updateCard(dev) {
   }
   dev.pwrLastTime=now;
 
-  // 統計
-  if(rpm>dev.statMaxRpm){dev.statMaxRpm=rpm;_s(`smaxrpm-${id}`,rpm+' RPM');}
-  if(parseFloat(cur)>dev.statMaxCur){dev.statMaxCur=parseFloat(cur);_s(`smaxcur-${id}`,cur+' A');}
-  if(parseFloat(vlt)>dev.statMaxVlt){dev.statMaxVlt=parseFloat(vlt);_s(`smaxvlt-${id}`,vlt+' V');}
-  if(pwr>dev.statMaxPwr){dev.statMaxPwr=pwr;_s(`smaxpwr-${id}`,pwr+' W');}
+  // 統計（套用合理範圍守衛，排除 Modbus 瞬間雜訊）
+  const rpmV=plausible(rpm,'rpm'), curV=plausible(parseFloat(cur),'current_a');
+  const vltV=plausible(parseFloat(vlt),'voltage_v'), pwrV=plausible(pwr,'power_w');
+  if(rpmV!==null&&rpmV>dev.statMaxRpm){dev.statMaxRpm=rpmV;_s(`smaxrpm-${id}`,rpmV+' RPM');}
+  if(curV!==null&&curV>dev.statMaxCur){dev.statMaxCur=curV;_s(`smaxcur-${id}`,curV.toFixed(2)+' A');}
+  if(vltV!==null&&vltV>dev.statMaxVlt){dev.statMaxVlt=vltV;_s(`smaxvlt-${id}`,vltV.toFixed(1)+' V');}
+  if(pwrV!==null&&pwrV>dev.statMaxPwr){dev.statMaxPwr=pwrV;_s(`smaxpwr-${id}`,pwrV+' W');}
   const mm=String(Math.floor(dev.pwrRunSec/60)).padStart(2,'0');
   const ss=String(Math.floor(dev.pwrRunSec%60)).padStart(2,'0');
   _s(`swh-${id}`,dev.pwrAccWh.toFixed(3)+` Wh  (${mm}:${ss})`);
 
   // 警報事件
   const t=new Date().toLocaleTimeString('zh-TW');
-  if(alm!==0&&alm!==dev.lastAlmCode){
+  if(!isNaN(alm)&&alm!==0&&alm!==dev.lastAlmCode){   // NaN 警報碼不觸發
     dev.almCnt++; _s(`salmcnt-${id}`,dev.almCnt+' 次');
     const hint=alarmHint(alm)||'';
     almEvents.unshift({time:t,devId:id,devName:dev.bleName,code:alm,
@@ -1531,12 +1534,12 @@ function updateCard(dev) {
     addLog(`⚠ #${id} 警報 ${alm}：${alarmDesc(alm)}${hint?' — '+hint:''}`, 'red');
     writeLog(dev, `Fault:${alm}`).catch(()=>{});
   }
-  if(alm===0&&dev.lastAlmCode!==0){
+  if(!isNaN(alm)&&alm===0&&dev.lastAlmCode!==0&&!isNaN(dev.lastAlmCode)){
     const found=almEvents.find(e=>e.devId===id&&e.code===dev.lastAlmCode&&!e.resolvedAt);
     if(found){found.resolvedAt=t;renderAlmEvents();}
     addLog(`✓ #${id} 警報 ${dev.lastAlmCode} 解除`,'green');
   }
-  dev.lastAlmCode=alm;
+  if(!isNaN(alm)) dev.lastAlmCode=alm;   // NaN 不更新 lastAlmCode
   updateDevTemp(dev);
   pushCombinedRpm(dev, rpm);
 
