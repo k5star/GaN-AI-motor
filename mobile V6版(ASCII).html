@@ -1009,7 +1009,7 @@ function renderSegResult(rows, sv, ev) {
     type:'line',
     data:{labels, datasets:[
       {label:'RPM',    data:sampled.map(r=>r.rpm),         borderColor:'#22d3ee',yAxisID:'y', borderWidth:1.5,pointRadius:0,tension:0.3,fill:false},
-      {label:'A×10',   data:sampled.map(r=>r.current_a!=null?r.current_a*10:null), borderColor:'#fbbf24',yAxisID:'y', borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
+      {label:'A',      data:sampled.map(r=>r.current_a!=null?r.current_a:null),     borderColor:'#fbbf24',yAxisID:'y2',borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
       {label:'°C',     data:sampled.map(r=>r.temperature_c), borderColor:'#f87171',yAxisID:'y2',borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
       {label:'V',      data:sampled.map(r=>r.voltage_v),   borderColor:'#34d399',yAxisID:'y2',borderWidth:1.2,pointRadius:0,tension:0.3,fill:false},
     ]},
@@ -1019,9 +1019,9 @@ function renderSegResult(rows, sv, ev) {
       scales:{
         x: {ticks:{color:'#94a3b8',font:{size:8},maxTicksLimit:4,maxRotation:0,autoSkip:true},grid:{color:'rgba(255,255,255,.04)'}},
         y: {position:'left', ticks:{color:'#94a3b8',font:{size:8}}, grid:{color:'rgba(255,255,255,.04)'},
-            title:{display:true,text:'RPM / A×10',color:'#94a3b8',font:{size:8}}},
+            title:{display:true,text:'RPM',color:'#94a3b8',font:{size:8}}},
         y2:{position:'right',ticks:{color:'#94a3b8',font:{size:8}}, grid:{display:false},
-            title:{display:true,text:'V / °C',color:'#94a3b8',font:{size:8}}}
+            title:{display:true,text:'A / V / °C',color:'#94a3b8',font:{size:8}}}
       },
       plugins:{
         legend:{labels:{color:'#94a3b8',font:{size:8},boxWidth:8,padding:5}},

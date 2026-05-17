@@ -485,10 +485,10 @@ async function deleteByGroup(operator, device) {
 // ══════════════════════════════════════════════════════
 const TAB_CFG = [
   { ds: [
-      { k:'rpm',       lbl:'轉速 RPM',   color:'#34d399', ax:'y'  },
-      { k:'current_a', lbl:'電流 A × 10',color:'#fbbf24', ax:'y2', scale:10 },
+      { k:'rpm',       lbl:'轉速 RPM', color:'#34d399', ax:'y'  },
+      { k:'current_a', lbl:'電流 A',   color:'#fbbf24', ax:'y2' },
     ],
-    y: {title:'RPM', color:'#34d399'}, y2:{title:'A×10', color:'#fbbf24'}
+    y: {title:'RPM', color:'#34d399'}, y2:{title:'A', color:'#fbbf24'}
   },
   { ds: [
       { k:'voltage_v', lbl:'電壓 V', color:'#a78bfa', ax:'y'  },
