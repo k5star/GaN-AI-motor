@@ -51,8 +51,8 @@ except ImportError:
 #  全域常數
 # ══════════════════════════════════════════════════════════════
 
-TARGET_NAME = "LTC8115"
-TARGET_PIN  = "1234"
+TARGET_NAME = "右輪2"
+TARGET_PIN  = "001234"
 TARGET_BAUD = 115200
 
 # 各模組類型對應的 BAUD 指令碼
@@ -315,14 +315,19 @@ def apply_settings(port: str,
             print("  >> HC-10 BLE 模組指令")
             print(f"  {LINE}")
 
-            _, n_ok = do(f"AT+NAME{TARGET_NAME}", "設定名稱 HC-10", delay=2.5)
-            _, p_ok = do(f"AT+PASS{TARGET_PIN}",  "設定密碼 HC-10", delay=1.5)
-            # BAUD 指令最後送，因為會觸發重啟
-            _, b_ok = do("AT+BAUD4",              "設定 baud HC-10 (115200)", delay=1.5)
+            _, n_ok = do(f"AT+NAME{TARGET_NAME}", "設定名稱 HC-10",            delay=2.5)
+            _, p_ok = do(f"AT+PASS{TARGET_PIN}",  "設定密碼 HC-10",            delay=1.5)
+            _, t_ok = do("AT+TYPE0",               "設定 TYPE0（不綁定）HC-10", delay=1.5)
+            # BAUD 指令最後送，改完後立即 RESET
+            _, b_ok = do("AT+BAUD4",               "設定 baud HC-10 (115200)",  delay=1.5)
+            # 送出 RESET，等模組重啟
+            ser.write(b"AT+RESET" + ending)
+            print("  >> 送出 AT+RESET，等待模組重啟（3 秒）...")
+            time.sleep(3.0)
 
-            results["name_ok"]    = n_ok
-            results["pin_ok"]     = p_ok
-            results["baud_ok"]    = b_ok
+            results["name_ok"] = n_ok
+            results["pin_ok"]  = p_ok
+            results["baud_ok"] = b_ok
 
         elif mod_type in ("HC-06", "AYMY"):
             # ── HC-06 / AYMY 指令格式 ─────────────────────────────
@@ -415,7 +420,7 @@ def verify_settings(port: str,
         "name_found": "",
     }
 
-    time.sleep(1.5)   # 等模組完成重設/重啟
+    time.sleep(4.0)   # 等模組 RESET 重啟完成（HC-10 需 3~5 秒）
     ser = open_port(port, TARGET_BAUD)
     if ser is None:
         print(f"  ✗ 無法在 {TARGET_BAUD} baud 開啟埠，驗證跳過")
@@ -491,7 +496,7 @@ def print_summary(port: str,
         "✓ 已送出" if set_results["baud_ok"] else "△ 未確認（請手動驗證）")
     row("驗證：AT 回應",
         "✓ 正常" if ver_results["at_ok"]     else "✗ 無回應")
-    row("驗證：名稱是否為 LTC8115",
+    row(f"驗證：名稱是否為 {TARGET_NAME}",
         "✓ 確認" if ver_results["name_match"] else "△ 未確認（建議手機搜尋）")
 
     print()
