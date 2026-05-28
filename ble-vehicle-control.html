@@ -977,6 +977,17 @@ async function startAll() {
   log('全車啟動 — 搖桿生效', 'ok');
 }
 
+// 柔性停止：歸零搖桿 + 停止馬達，但保持 running=true，下一個指令可直接執行
+async function softStop() {
+  joyX = 0; joyY = 0;
+  drawJoystick(); updateJoyVals();
+  for (const side of ['L', 'R']) {
+    await motorStop(side);
+    W[side].lastRpm = 0; W[side].lastDir = 'STOP';
+    updateGauge(side, 0);
+  }
+}
+
 async function emergencyStop() {
   running = false;
   stopSendLoop();
@@ -1523,7 +1534,8 @@ async function executeVehicleAIAction(cmd) {
       break;
 
     case 'stop':
-      await emergencyStop();
+      // AI 指令的停止使用柔性停止：保持 running=true，下一個指令可直接接續
+      await softStop();
       break;
 
     case 'setSpeed': {
@@ -1553,7 +1565,11 @@ async function executeVehicleAIAction(cmd) {
           await sleep(step.delay);
         }
       }
-      aiVLog('系統', '✅ 序列完成', '#66bb6a');
+      // 序列結束後：歸零搖桿但保持 running=true，等待下一個指令
+      if (steps.length > 0 && steps[steps.length-1].action !== 'stop') {
+        await softStop();
+      }
+      aiVLog('系統', '✅ 序列完成，等待下一個指令', '#66bb6a');
       break;
     }
 
