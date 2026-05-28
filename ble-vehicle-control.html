@@ -415,7 +415,7 @@
       <label style="width:auto">實測距離</label>
       <input type="number" id="calDistInput" placeholder="cm" min="1" max="2000" step="1">
       <span>cm</span>
-      <button class="btn-cal" onclick="saveCalibration()">💾 儲存</button>
+      <button class="btn-cal" id="btnCalSave" onclick="saveCalibration()">💾 儲存</button>
     </div>
     <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
       ① 全車啟動 ② 按「直走5秒」→ 量距離 ③ 輸入→儲存
@@ -428,7 +428,7 @@
       <label style="width:auto">實測角度</label>
       <input type="number" id="calDegInput" placeholder="度" min="1" max="3600" step="1">
       <span>度</span>
-      <button class="btn-cal" onclick="saveTurnCalibration()">💾 儲存</button>
+      <button class="btn-cal" id="btnTurnSave" onclick="saveTurnCalibration()">💾 儲存</button>
     </div>
     <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
       ① 全車啟動 ② 在地上標記車頭方向 ③ 按「左旋5秒」→ 量旋轉角度 ③ 儲存<br>
@@ -1385,7 +1385,7 @@ function saveCalibration() {
   calData = { cms: dist / CAL_SEC, rpm, dist, ts: Date.now() };
   localStorage.setItem('v_calData', JSON.stringify(calData));
   updateCalStatus();
-  document.getElementById('calDistInput').value = '';
+  flashSaveBtn('btnCalSave');
   aiVLog('系統', `✅ 直走校正：${calData.cms.toFixed(1)} cm/s（${dist}cm / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
 }
 
@@ -1423,12 +1423,29 @@ function saveTurnCalibration() {
   calTurnData = { dps: deg / CAL_SEC, rpm, deg, ts: Date.now() };
   localStorage.setItem('v_calTurnData', JSON.stringify(calTurnData));
   updateCalStatus();
-  document.getElementById('calDegInput').value = '';
+  flashSaveBtn('btnTurnSave');
   aiVLog('系統', `✅ 轉彎校正：${calTurnData.dps.toFixed(1)} 度/秒（${deg}° / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
 }
 
-// 頁面載入時更新校正狀態
-document.addEventListener('DOMContentLoaded', updateCalStatus);
+// 儲存按鈕閃綠色確認
+function flashSaveBtn(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const orig = btn.textContent;
+  btn.textContent = '✅ 已儲存';
+  btn.style.background = '#1a4a2a';
+  btn.style.borderColor = '#2a7040';
+  btn.style.color = '#66cc80';
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+  }, 1800);
+}
+
+// 頁面載入時更新校正狀態（script在body底部，DOM已存在，直接呼叫）
+setTimeout(updateCalStatus, 0);
 
 // ═══════════════════════════════════════════════════
 //  失敗案例 & 修正案例收集
