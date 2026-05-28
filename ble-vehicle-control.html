@@ -1877,12 +1877,20 @@ async function executeVehicleAIAction(cmd) {
                               && step.params?.degrees > 0 && calTurnData?.dps > 0;
 
         if (isSpinWithDeg) {
-          // spinLeft/spinRight 有 degrees 時，時間由內部處理，
-          // 完成後加額外穩定時間讓馬達充分靜止，下一步才能順利啟動
-          if (i + 1 < steps.length && steps[i+1].action !== 'stop') {
-            aiVLog('系統', '⏸ 馬達穩定中...', '#3a5070');
-            await sleep(350);
+          // spinLeft/spinRight 有 degrees 時，時間由內部處理
+          // 完成後：清空馬達佇列、重設 busy、確保 send loop 正常，再繼續下一步
+          aiVLog('系統', '⏸ 馬達穩定中...', '#3a5070');
+          await sleep(300);
+          // 強制清空可能殘留的指令佇列與 busy 旗標
+          for (const s of ['L','R']) {
+            W[s].queue = [];
+            W[s].busy  = false;
+            W[s].lastDir = 'STOP';
+            W[s].lastRpm = 0;
           }
+          // 確保 send loop 正在運作
+          if (running) startSendLoop();
+          await sleep(100);
         } else if (step.delay && step.delay > 0) {
           aiVLog('系統', `⏱ 等待 ${(step.delay/1000).toFixed(1)} 秒...`, '#3a5070');
           await sleep(step.delay);
