@@ -283,6 +283,18 @@
     }
     .btn-cal:active{background:#2a4050;}
     .btn-cal.running-cal{background:#2a1010;border-color:#6a2020;color:#e07070;animation:pulse-rec .7s infinite alternate;}
+    .cal-export-row{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;}
+    .cal-code-box{
+      flex:1;background:#0d1f30;color:#7ecfff;font-size:.63rem;
+      border:1px solid #1e3a50;border-radius:5px;padding:4px 7px;
+      font-family:monospace;word-break:break-all;min-height:26px;
+      user-select:all;cursor:text;line-height:1.4;
+    }
+    .cal-import-input{
+      flex:1;background:#0d1f30;color:#e0e8f0;
+      border:1px solid #1e3a50;border-radius:5px;padding:4px 7px;font-size:.68rem;outline:none;
+    }
+    .cal-import-input:focus{border-color:var(--teal);}
 
     /* ── 模式切換 ── */
     .mode-card{
@@ -446,6 +458,23 @@
     <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
       ① 全車啟動 ② 地上標記車頭方向 ③ 按「執行90°測試」→ 量實際轉了幾度<br>
       ④ 輸入實際角度 → 儲存。重複直到左轉90度準確。
+    </div>
+
+    <!-- 校正碼 匯出 / 匯入 -->
+    <div class="cal-title" style="margin-top:12px;border-top:1px solid #1e3050;padding-top:8px;">
+      📤 校正碼 — 跨裝置同步
+    </div>
+    <div class="cal-export-row">
+      <button class="btn-cal" onclick="exportCalCode()">📋 產生校正碼</button>
+      <div class="cal-code-box" id="calCodeBox" title="點選全選後複製">－</div>
+      <button class="btn-cal" onclick="copyCalCode()" style="flex-shrink:0;">複製</button>
+    </div>
+    <div class="cal-export-row">
+      <input class="cal-import-input" type="text" id="calImportInput" placeholder="貼上校正碼後按匯入">
+      <button class="btn-cal" onclick="importCalCode()" style="flex-shrink:0;">📥 匯入</button>
+    </div>
+    <div style="font-size:.6rem;color:#2a5060;line-height:1.5;margin-top:4px;">
+      匯出→複製→傳到其他裝置→貼上→匯入，即可同步三組校正值。
     </div>
   </div>
 </div>
@@ -1516,6 +1545,76 @@ function saveTurnCalibration() {
   const err = actual - 90;
   const errStr = err === 0 ? '完全準確！' : `誤差 ${err > 0 ? '+' : ''}${err.toFixed(0)}°，已自動修正`;
   aiVLog('系統', `✅ 轉彎校正：${dps.toFixed(1)} 度/秒（實測 ${actual}° / ${(_calTurnTestMs/1000).toFixed(1)}s）— ${errStr}`, '#66bb6a');
+}
+
+// ═══════════════════════════════════════════════════
+//  校正碼 匯出 / 匯入
+// ═══════════════════════════════════════════════════
+function exportCalCode() {
+  const pkg = {
+    f: calData     ? { c: +calData.cms.toFixed(4),     r: calData.rpm }     : null,
+    b: calRevData  ? { c: +calRevData.cms.toFixed(4),  r: calRevData.rpm }  : null,
+    t: calTurnData ? { d: +calTurnData.dps.toFixed(4), r: calTurnData.rpm } : null
+  };
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(pkg))));
+  document.getElementById('calCodeBox').textContent = code;
+  // 自動選取
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('calCodeBox'));
+  sel.removeAllRanges(); sel.addRange(range);
+  aiVLog('系統', '📋 校正碼已產生（文字已選取，可直接複製）', '#4a9090');
+}
+
+function copyCalCode() {
+  const code = document.getElementById('calCodeBox').textContent.trim();
+  if (!code || code === '－') { aiVLog('系統', '⚠ 請先按「產生校正碼」', '#e6b800'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code)
+      .then(() => aiVLog('系統', '✅ 校正碼已複製到剪貼簿', '#66bb6a'))
+      .catch(() => aiVLog('系統', '⚠ 自動複製失敗，請手動長按選取文字複製', '#e6b800'));
+  } else {
+    // 手機 fallback
+    const ta = document.createElement('textarea');
+    ta.value = code; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand('copy'); aiVLog('系統', '✅ 校正碼已複製到剪貼簿', '#66bb6a'); }
+    catch(e) { aiVLog('系統', '⚠ 請手動長按選取文字複製', '#e6b800'); }
+    document.body.removeChild(ta);
+  }
+}
+
+function importCalCode() {
+  const code = document.getElementById('calImportInput').value.trim();
+  if (!code) { aiVLog('系統', '⚠ 請先貼上校正碼', '#e6b800'); return; }
+  let pkg;
+  try {
+    pkg = JSON.parse(decodeURIComponent(escape(atob(code))));
+  } catch(e) {
+    aiVLog('系統', '❌ 校正碼格式錯誤，請確認複製完整', '#e64a4a'); return;
+  }
+  let imported = [];
+  if (pkg.f && pkg.f.c > 0) {
+    calData = { cms: pkg.f.c, rpm: pkg.f.r, dist: +(pkg.f.c * 5).toFixed(1), ts: Date.now() };
+    localStorage.setItem('v_calData', JSON.stringify(calData));
+    imported.push(`前進 ${calData.cms.toFixed(1)}cm/s`);
+  }
+  if (pkg.b && pkg.b.c > 0) {
+    calRevData = { cms: pkg.b.c, rpm: pkg.b.r, dist: +(pkg.b.c * 5).toFixed(1), ts: Date.now() };
+    localStorage.setItem('v_calRevData', JSON.stringify(calRevData));
+    imported.push(`後退 ${calRevData.cms.toFixed(1)}cm/s`);
+  }
+  if (pkg.t && pkg.t.d > 0) {
+    calTurnData = { dps: pkg.t.d, rpm: pkg.t.r, deg: 90, testMs: Math.round(90/pkg.t.d*1000), ts: Date.now() };
+    localStorage.setItem('v_calTurnData', JSON.stringify(calTurnData));
+    imported.push(`旋轉 ${calTurnData.dps.toFixed(1)}°/s`);
+  }
+  if (imported.length === 0) {
+    aiVLog('系統', '⚠ 校正碼內無有效數據', '#e6b800'); return;
+  }
+  updateCalStatus();
+  document.getElementById('calImportInput').value = '';
+  aiVLog('系統', `✅ 匯入成功：${imported.join(' | ')}`, '#66bb6a');
 }
 
 // 儲存按鈕閃綠色確認
