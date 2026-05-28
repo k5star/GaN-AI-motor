@@ -1323,6 +1323,14 @@ none      | params: {}                                   ← 超出範圍
 輸入：「走1公尺然後向左轉再走1公尺」（直走速度:12.0cm/s）
 輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":8300},{"action":"spinLeft","params":{"degrees":90},"delay":0},{"action":"forward","params":{},"delay":8300},{"action":"stop","params":{},"delay":0}]},"reply":"前進1m→左轉90°→前進1m"}
 
+輸入：「走1公尺然後向左轉1公尺」（直走速度:12.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":8300},{"action":"spinLeft","params":{"degrees":90},"delay":0},{"action":"forward","params":{},"delay":8300},{"action":"stop","params":{},"delay":0}]},"reply":"前進1m→左轉90°→沿新方向前進1m"}
+
+輸入：「向右轉後退50公分」（後退速度:10.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"spinRight","params":{"degrees":90},"delay":0},{"action":"backward","params":{},"delay":5000},{"action":"stop","params":{},"delay":0}]},"reply":"右轉90°→後退50cm"}
+
+重要規則：「走/前進/後退X後向左/右轉Y」= 先走X，再轉90°，再走Y。steps必須包含轉彎前的移動、spinLeft/spinRight、轉彎後的移動、最後stop，共4步。
+
 輸入：「前進速度設800」
 輸出：{"action":"setSpeed","params":{"type":"forward","rpm":800},"reply":"前進最高速設為800RPM"}
 
@@ -1864,7 +1872,18 @@ async function executeVehicleAIAction(cmd) {
         const step = steps[i];
         aiVLog('系統', `步驟 ${i+1}/${steps.length}：${step.action}`, '#4a7090');
         await executeVehicleAIAction(step);
-        if (step.delay && step.delay > 0) {
+
+        const isSpinWithDeg = (step.action === 'spinLeft' || step.action === 'spinRight')
+                              && step.params?.degrees > 0 && calTurnData?.dps > 0;
+
+        if (isSpinWithDeg) {
+          // spinLeft/spinRight 有 degrees 時，時間由內部處理，
+          // 完成後加額外穩定時間讓馬達充分靜止，下一步才能順利啟動
+          if (i + 1 < steps.length && steps[i+1].action !== 'stop') {
+            aiVLog('系統', '⏸ 馬達穩定中...', '#3a5070');
+            await sleep(350);
+          }
+        } else if (step.delay && step.delay > 0) {
           aiVLog('系統', `⏱ 等待 ${(step.delay/1000).toFixed(1)} 秒...`, '#3a5070');
           await sleep(step.delay);
         }
