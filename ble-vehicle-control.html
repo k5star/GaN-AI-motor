@@ -408,8 +408,8 @@
 
   <!-- 速度校正 -->
   <div class="cal-section">
-    <div class="cal-title">📏 校正① 直走距離</div>
-    <div class="cal-status" id="calStatus">尚未校正 — AI 距離指令將無法使用</div>
+    <div class="cal-title">📏 校正① 前進距離</div>
+    <div class="cal-status" id="calStatus">尚未校正 — AI 前進距離指令將無法使用</div>
     <div class="cal-row">
       <button class="btn-cal" id="btnCal" onclick="startCalRun()">▶ 直走5秒</button>
       <label style="width:auto">實測距離</label>
@@ -419,6 +419,19 @@
     </div>
     <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
       ① 全車啟動 ② 按「直走5秒」→ 量距離 ③ 輸入→儲存
+    </div>
+
+    <div class="cal-title" style="margin-top:8px;">🔙 校正① 後退距離</div>
+    <div class="cal-status" id="calRevStatus">尚未校正 — AI 後退距離指令將無法使用</div>
+    <div class="cal-row">
+      <button class="btn-cal" id="btnCalRev" onclick="startCalRevRun()">▶ 後退5秒</button>
+      <label style="width:auto">實測距離</label>
+      <input type="number" id="calRevDistInput" placeholder="cm" min="1" max="2000" step="1">
+      <span>cm</span>
+      <button class="btn-cal" id="btnCalRevSave" onclick="saveRevCalibration()">💾 儲存</button>
+    </div>
+    <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
+      ① 全車啟動 ② 按「後退5秒」→ 量距離 ③ 輸入→儲存
     </div>
 
     <div class="cal-title" style="margin-top:8px;">🔄 校正② 原地轉彎角度</div>
@@ -1233,8 +1246,10 @@ R8. delay 的意義：「執行本步驟後，等待 delay 毫秒再執行下一
     例：前進3秒→停止 = [{action:forward, delay:3000}, {action:stop, delay:0}]
     ❌ 錯誤：把 delay 放在停止步驟上（會先停止再空等）。
     ✅ 正確：把 delay 放在需要持續執行的那個步驟上。
-R9. 距離指令（公分/公尺）：從狀態「直走速度」計算 delay_ms = 距離cm ÷ 速度cms × 1000，四捨五入到100ms。
-    若狀態「直走速度:未校正」，action必須為query，詢問使用者先做校正。
+R9. 距離指令（公分/公尺）：
+    前進距離：從狀態「前進速度」計算 delay_ms = 距離cm ÷ 前進速度cms × 1000，四捨五入到100ms。
+    後退距離：從狀態「後退速度」計算 delay_ms = 距離cm ÷ 後退速度cms × 1000，四捨五入到100ms。
+    若對應速度「未校正」，action必須為query，詢問使用者先做校正。
 R10. 角度轉彎指令（度/左轉90度/右轉180度等）：
      ✅ 使用 spinLeft 或 spinRight（原地旋轉），params 必須包含 "degrees" 欄位，delay 設 0。
      ✅ 範例：左轉90度 → {"action":"spinLeft","params":{"degrees":90},"delay":0}
@@ -1330,6 +1345,7 @@ warning : string  可選，參數被修正時填入`;
 //  速度校正 & 轉彎角度校正
 // ═══════════════════════════════════════════════════
 let calData     = JSON.parse(localStorage.getItem('v_calData')     || 'null');
+let calRevData  = JSON.parse(localStorage.getItem('v_calRevData')  || 'null');  // 後退校正
 let calTurnData = JSON.parse(localStorage.getItem('v_calTurnData') || 'null');
 let calRunning  = false;
 
@@ -1349,9 +1365,15 @@ function _setCalStatusEl(elId, ok, msg) {
 function updateCalStatus() {
   if (calData && calData.cms > 0)
     _setCalStatusEl('calStatus', true,
-      `✅ 前進 ${calData.cms.toFixed(1)} cm/s（${calData.rpm} RPM時）— AI可使用距離指令`);
+      `✅ 前進 ${calData.cms.toFixed(1)} cm/s（${calData.rpm} RPM時）`);
   else
-    _setCalStatusEl('calStatus', false, '尚未校正 — AI 距離指令將無法使用');
+    _setCalStatusEl('calStatus', false, '尚未校正 — AI 前進距離指令將無法使用');
+
+  if (calRevData && calRevData.cms > 0)
+    _setCalStatusEl('calRevStatus', true,
+      `✅ 後退 ${calRevData.cms.toFixed(1)} cm/s（${calRevData.rpm} RPM時）`);
+  else
+    _setCalStatusEl('calRevStatus', false, '尚未校正 — AI 後退距離指令將無法使用');
 
   if (calTurnData && calTurnData.dps > 0)
     _setCalStatusEl('calTurnStatus', true,
@@ -1394,7 +1416,44 @@ function saveCalibration() {
   localStorage.setItem('v_calData', JSON.stringify(calData));
   updateCalStatus();
   flashSaveBtn('btnCalSave');
-  aiVLog('系統', `✅ 直走校正：${calData.cms.toFixed(1)} cm/s（${dist}cm / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
+  aiVLog('系統', `✅ 前進校正：${calData.cms.toFixed(1)} cm/s（${dist}cm / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
+}
+
+// ── 後退距離校正 ──
+async function startCalRevRun() {
+  if (calRunning) return;
+  if (!running) { aiVLog('系統', '⚠ 請先按「全車啟動」再校正', '#e6b800'); return; }
+  calRunning = true;
+  const btn = document.getElementById('btnCalRev');
+  btn.classList.add('running-cal');
+
+  joyX = 0; joyY = 1;   // 後退
+  drawJoystick(); updateJoyVals();
+  aiVLog('系統', `🔙 後退校正：後退 ${CAL_SEC} 秒，請準備量距`, '#00bfa5');
+
+  let rem = CAL_SEC;
+  btn.textContent = `⏱ 後退... ${rem}s`;
+  const cd = setInterval(() => { rem--; btn.textContent = rem > 0 ? `⏱ 後退... ${rem}s` : '⏱ 停止中...'; }, 1000);
+  await sleep(CAL_SEC * 1000);
+  clearInterval(cd);
+
+  await softStop();
+  calRunning = false;
+  btn.classList.remove('running-cal');
+  btn.textContent = '▶ 後退5秒';
+  aiVLog('系統', '⏹ 已停止，請量實際後退距離並輸入→儲存', '#e6b800');
+  document.getElementById('calRevDistInput').focus();
+}
+
+function saveRevCalibration() {
+  const dist = parseFloat(document.getElementById('calRevDistInput').value);
+  if (!dist || dist <= 0) { aiVLog('系統', '⚠ 請輸入有效距離（cm）', '#e6b800'); return; }
+  const rpm = parseInt(document.getElementById('revVal').textContent) || 300;
+  calRevData = { cms: dist / CAL_SEC, rpm, dist, ts: Date.now() };
+  localStorage.setItem('v_calRevData', JSON.stringify(calRevData));
+  updateCalStatus();
+  flashSaveBtn('btnCalRevSave');
+  aiVLog('系統', `✅ 後退校正：${calRevData.cms.toFixed(1)} cm/s（${dist}cm / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
 }
 
 // ── 轉彎角度校正（直接測試90度法）──
@@ -1878,14 +1937,18 @@ async function sendAIVehicleMessage() {
   const fwdSpd   = document.getElementById('fwdVal').textContent;
   const revSpd   = document.getElementById('revVal').textContent;
   const steerPct = document.getElementById('sensVal').textContent;
-  const curRpm = parseInt(fwdSpd) || 500;
+  const curFwdRpm = parseInt(fwdSpd) || 500;
+  const curRevRpm = parseInt(revSpd) || 300;
   const calStr = (calData && calData.cms > 0)
-    ? ` | 直走速度:${(calData.cms * curRpm / calData.rpm).toFixed(1)}cm/s(@${curRpm}RPM)`
-    : ' | 直走速度:未校正';
+    ? ` | 前進速度:${(calData.cms * curFwdRpm / calData.rpm).toFixed(1)}cm/s(@${curFwdRpm}RPM)`
+    : ' | 前進速度:未校正';
+  const calRevStr = (calRevData && calRevData.cms > 0)
+    ? ` | 後退速度:${(calRevData.cms * curRevRpm / calRevData.rpm).toFixed(1)}cm/s(@${curRevRpm}RPM)`
+    : ' | 後退速度:未校正';
   const turnStr = (calTurnData && calTurnData.dps > 0)
-    ? ` | 旋轉速度:${(calTurnData.dps * curRpm / calTurnData.rpm).toFixed(1)}度/s(@${curRpm}RPM)`
+    ? ` | 旋轉速度:${(calTurnData.dps * curFwdRpm / calTurnData.rpm).toFixed(1)}度/s(@${curFwdRpm}RPM)`
     : ' | 旋轉速度:未校正';
-  const stateCtx = `[車輛狀態] 運行:${running?'是':'否'} | 左輪:${leftRpm}RPM ${leftDir} | 右輪:${rightRpm}RPM | 前進最高速:${fwdSpd}RPM | 後退最高速:${revSpd}RPM | 轉向靈敏度:${steerPct}%${calStr}${turnStr}`;
+  const stateCtx = `[車輛狀態] 運行:${running?'是':'否'} | 左輪:${leftRpm}RPM ${leftDir} | 右輪:${rightRpm}RPM | 前進最高速:${fwdSpd}RPM | 後退最高速:${revSpd}RPM | 轉向靈敏度:${steerPct}%${calStr}${calRevStr}${turnStr}`;
   const fullMsg = `${stateCtx}\n\n${msg}`;
 
   try {
