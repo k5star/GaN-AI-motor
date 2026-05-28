@@ -424,15 +424,15 @@
     <div class="cal-title" style="margin-top:8px;">🔄 校正② 原地轉彎角度</div>
     <div class="cal-status" id="calTurnStatus">尚未校正 — AI 角度轉彎將無法使用</div>
     <div class="cal-row">
-      <button class="btn-cal" id="btnCalTurn" onclick="startCalTurn()">▶ 左旋5秒</button>
-      <label style="width:auto">實測角度</label>
-      <input type="number" id="calDegInput" placeholder="度" min="1" max="3600" step="1">
+      <button class="btn-cal" id="btnCalTurn" onclick="startCalTurnTest()">▶ 執行90°測試</button>
+      <label style="width:auto">實際轉了</label>
+      <input type="number" id="calDegInput" placeholder="度" min="1" max="720" step="1">
       <span>度</span>
       <button class="btn-cal" id="btnTurnSave" onclick="saveTurnCalibration()">💾 儲存</button>
     </div>
     <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
-      ① 全車啟動 ② 在地上標記車頭方向 ③ 按「左旋5秒」→ 量旋轉角度 ③ 儲存<br>
-      之後 AI 可使用「左轉90度」「右轉180度」等指令
+      ① 全車啟動 ② 地上標記車頭方向 ③ 按「執行90°測試」→ 量實際轉了幾度<br>
+      ④ 輸入實際角度 → 儲存。重複直到左轉90度準確。
     </div>
   </div>
 </div>
@@ -1397,42 +1397,58 @@ function saveCalibration() {
   aiVLog('系統', `✅ 直走校正：${calData.cms.toFixed(1)} cm/s（${dist}cm / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
 }
 
-// ── 轉彎角度校正 ──
-async function startCalTurn() {
+// ── 轉彎角度校正（直接測試90度法）──
+let _calTurnTestMs = 3000;  // 本次測試實際旋轉了幾毫秒
+
+async function startCalTurnTest() {
   if (calRunning) return;
   if (!running) { aiVLog('系統', '⚠ 請先按「全車啟動」再校正', '#e6b800'); return; }
   calRunning = true;
   const btn = document.getElementById('btnCalTurn');
   btn.classList.add('running-cal');
 
-  // 使用原地左旋（spinLeft）：joyX=-1, joyY=0
-  joyX = -1; joyY = 0;
-  drawJoystick(); updateJoyVals();
-  aiVLog('系統', `🔄 轉彎校正：原地左旋 ${CAL_SEC} 秒，請標記車頭起始方向`, '#00bfa5');
+  // 計算這次要轉多久：有校正就試轉90度，否則預設轉3秒
+  const curRpm = parseInt(document.getElementById('fwdVal').textContent) || 500;
+  if (calTurnData && calTurnData.dps > 0) {
+    const dpsNow = calTurnData.dps * curRpm / calTurnData.rpm;
+    _calTurnTestMs = Math.round(90 / dpsNow * 1000);
+  } else {
+    _calTurnTestMs = 3000;  // 第一次：預設3秒
+  }
 
-  let rem = CAL_SEC;
+  aiVLog('系統', `🔄 執行90°測試（旋轉 ${(_calTurnTestMs/1000).toFixed(1)} 秒），請標記車頭方向`, '#00bfa5');
+
+  let rem = Math.ceil(_calTurnTestMs / 1000);
   btn.textContent = `⏱ 旋轉... ${rem}s`;
   const cd = setInterval(() => { rem--; btn.textContent = rem > 0 ? `⏱ 旋轉... ${rem}s` : '⏱ 停止中...'; }, 1000);
-  await sleep(CAL_SEC * 1000);
+
+  joyX = -1; joyY = 0;
+  drawJoystick(); updateJoyVals();
+  if (!running) await startAll();
+  await sleep(_calTurnTestMs);
   clearInterval(cd);
 
   await softStop();
   calRunning = false;
   btn.classList.remove('running-cal');
-  btn.textContent = '▶ 左旋5秒';
-  aiVLog('系統', '⏹ 已停止，請量旋轉角度並輸入→儲存', '#e6b800');
+  btn.textContent = '▶ 執行90°測試';
+  aiVLog('系統', '⏹ 已停止 — 量實際轉了幾度後輸入儲存', '#e6b800');
   document.getElementById('calDegInput').focus();
 }
 
 function saveTurnCalibration() {
-  const deg = parseFloat(document.getElementById('calDegInput').value);
-  if (!deg || deg <= 0) { aiVLog('系統', '⚠ 請輸入有效角度（度）', '#e6b800'); return; }
+  const actual = parseFloat(document.getElementById('calDegInput').value);
+  if (!actual || actual <= 0) { aiVLog('系統', '⚠ 請輸入實際轉了幾度', '#e6b800'); return; }
   const rpm = parseInt(document.getElementById('fwdVal').textContent) || 500;
-  calTurnData = { dps: deg / CAL_SEC, rpm, deg, ts: Date.now() };
+  // dps = 實際角度 ÷ 實際旋轉秒數
+  const dps = actual / (_calTurnTestMs / 1000);
+  calTurnData = { dps, rpm, deg: actual, testMs: _calTurnTestMs, ts: Date.now() };
   localStorage.setItem('v_calTurnData', JSON.stringify(calTurnData));
   updateCalStatus();
   flashSaveBtn('btnTurnSave');
-  aiVLog('系統', `✅ 轉彎校正：${calTurnData.dps.toFixed(1)} 度/秒（${deg}° / ${CAL_SEC}s，RPM=${rpm}）`, '#66bb6a');
+  const err = actual - 90;
+  const errStr = err === 0 ? '完全準確！' : `誤差 ${err > 0 ? '+' : ''}${err.toFixed(0)}°，已自動修正`;
+  aiVLog('系統', `✅ 轉彎校正：${dps.toFixed(1)} 度/秒（實測 ${actual}° / ${(_calTurnTestMs/1000).toFixed(1)}s）— ${errStr}`, '#66bb6a');
 }
 
 // 儲存按鈕閃綠色確認
