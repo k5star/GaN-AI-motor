@@ -1236,11 +1236,13 @@ R8. delay 的意義：「執行本步驟後，等待 delay 毫秒再執行下一
 R9. 距離指令（公分/公尺）：從狀態「直走速度」計算 delay_ms = 距離cm ÷ 速度cms × 1000，四捨五入到100ms。
     若狀態「直走速度:未校正」，action必須為query，詢問使用者先做校正。
 R10. 角度轉彎指令（度/左轉90度/右轉180度等）：
-     ✅ 使用 spinLeft 或 spinRight（原地旋轉），不要用 turnLeft/turnRight（turnLeft是弧形轉彎）。
-     從狀態「旋轉速度」計算 delay_ms = 角度 ÷ 旋轉速度dps × 1000，四捨五入到100ms。
+     ✅ 使用 spinLeft 或 spinRight（原地旋轉），params 必須包含 "degrees" 欄位，delay 設 0。
+     ✅ 範例：左轉90度 → {"action":"spinLeft","params":{"degrees":90},"delay":0}
+     ❌ 不要用 turnLeft/turnRight 做角度控制（那是弧形轉彎）。
+     ❌ 不要自己計算 delay，delay 一律設 0，JS 會根據校正值自動計算時間。
      若狀態「旋轉速度:未校正」，action必須為query，詢問使用者先做轉彎校正。
-R11. 「前進X公尺再左轉」= sequence：[forward(距離delay), spinLeft(角度delay), stop]
-     ✅ 不要用 turnLeft 做角度控制，turnLeft 只適合「邊走邊轉彎」的弧形路徑。
+R11. 「前進X公尺再左轉」= sequence：[{forward,delay:距離ms}, {spinLeft,params:{degrees:90},delay:0}, ...]
+     ✅ spinLeft/spinRight 的 delay 固定為 0，時間由 JS 內部處理。
 
 ═══ 可用 action 白名單 ═══
 forward   | params: {"rpm": 可選0-3000}                  ← 前進
@@ -1294,11 +1296,17 @@ none      | params: {}                                   ← 超出範圍
 輸入：「前進1公尺再停止」（狀態顯示直走速度:20.0cm/s）
 輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":5000},{"action":"stop","params":{},"delay":0}]},"reply":"前進100公分（約5.0秒）"}
 
-輸入：「左轉90度」（狀態顯示旋轉速度:72.0度/s）
-輸出：{"action":"sequence","params":{"steps":[{"action":"spinLeft","params":{},"delay":1300},{"action":"stop","params":{},"delay":0}]},"reply":"原地左轉90度（約1.3秒）"}
+輸入：「左轉90度」（任何旋轉速度）
+輸出：{"action":"spinLeft","params":{"degrees":90},"reply":"原地左轉90度"}
 
-輸入：「前進1公尺，左轉90度，再前進1公尺」（直走速度:20.0cm/s，旋轉速度:72.0度/s）
-輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":5000},{"action":"spinLeft","params":{},"delay":1300},{"action":"forward","params":{},"delay":5000},{"action":"stop","params":{},"delay":0}]},"reply":"前進1m→左轉90°→前進1m"}
+輸入：「右轉180度」
+輸出：{"action":"spinRight","params":{"degrees":180},"reply":"原地右轉180度"}
+
+輸入：「前進1公尺，左轉90度，再前進1公尺」（直走速度:20.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":5000},{"action":"spinLeft","params":{"degrees":90},"delay":0},{"action":"forward","params":{},"delay":5000},{"action":"stop","params":{},"delay":0}]},"reply":"前進1m→左轉90°→前進1m"}
+
+輸入：「走1公尺然後向左轉再走1公尺」（直走速度:12.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":8300},{"action":"spinLeft","params":{"degrees":90},"delay":0},{"action":"forward","params":{},"delay":8300},{"action":"stop","params":{},"delay":0}]},"reply":"前進1m→左轉90°→前進1m"}
 
 輸入：「前進速度設800」
 輸出：{"action":"setSpeed","params":{"type":"forward","rpm":800},"reply":"前進最高速設為800RPM"}
@@ -1726,17 +1734,33 @@ async function executeVehicleAIAction(cmd) {
       break;
 
     case 'spinLeft':
-      // 原地左旋：左輪停/逆，右輪前進
-      joyX = -1; joyY = 0;
-      drawJoystick(); updateJoyVals();
-      if (!running) await startAll();
+    case 'spinRight': {
+      // 若有 degrees 參數，JS 直接根據校正值計算時間，不依賴 AI delay
+      const deg = params.degrees ? Math.abs(Number(params.degrees)) : 0;
+      if (deg > 0 && calTurnData && calTurnData.dps > 0) {
+        // 計算當前 RPM 下的旋轉速度
+        const curRpmNow = parseInt(document.getElementById('fwdVal').textContent) || calTurnData.rpm;
+        const dpsNow = calTurnData.dps * curRpmNow / calTurnData.rpm;
+        const spinMs = Math.round(deg / dpsNow * 1000);
+        aiVLog('系統', `🔄 ${action==='spinLeft'?'左':'右'}旋 ${deg}°（${dpsNow.toFixed(1)}°/s → ${(spinMs/1000).toFixed(1)}秒）`, '#4a9090');
+        // 先短停讓馬達從前進狀態穩定
+        await softStop();
+        await sleep(150);
+        // 開始旋轉
+        joyX = action === 'spinLeft' ? -1 : 1; joyY = 0;
+        drawJoystick(); updateJoyVals();
+        if (!running) await startAll();
+        await sleep(spinMs);
+        await softStop();
+        await sleep(100);
+      } else {
+        // 無 degrees 或未校正：設搖桿持續旋轉（由 delay 控制）
+        joyX = action === 'spinLeft' ? -1 : 1; joyY = 0;
+        drawJoystick(); updateJoyVals();
+        if (!running) await startAll();
+      }
       break;
-
-    case 'spinRight':
-      joyX = 1; joyY = 0;
-      drawJoystick(); updateJoyVals();
-      if (!running) await startAll();
-      break;
+    }
 
     case 'stop':
       // AI 指令的停止使用柔性停止：保持 running=true，下一個指令可直接接續
