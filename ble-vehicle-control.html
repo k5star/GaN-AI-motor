@@ -211,6 +211,53 @@
     .btn-export:active{background:#3a4020;}
     .btn-clear{background:transparent;border:1px solid #2a3f58;color:#4a6080;border-radius:8px;padding:5px;font-size:.68rem;cursor:pointer;}
 
+    /* ── 修正按鈕 ── */
+    .ai-correct-btn{
+      background:transparent;border:1px solid #1e3850;color:#3a6080;
+      border-radius:4px;padding:1px 7px;font-size:.62rem;cursor:pointer;
+      margin-left:6px;vertical-align:middle;transition:all .15s;white-space:nowrap;
+    }
+    .ai-correct-btn:hover{border-color:#e6b800;color:#e6b800;}
+    .ai-correct-btn.done{border-color:#2a6040;color:#4a9060;}
+
+    /* ── 修正 Modal ── */
+    #corrModal{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.87);
+      z-index:1010;align-items:center;justify-content:center;
+    }
+    #corrModal.open{display:flex;}
+    .corr-box{
+      background:#1a2535;border:1px solid #2a5040;border-radius:14px;
+      padding:18px 16px;width:92%;max-width:390px;
+      display:flex;flex-direction:column;gap:10px;
+    }
+    .corr-title{font-size:.85rem;font-weight:700;color:#4dd0c4;}
+    .corr-field{display:flex;flex-direction:column;gap:3px;}
+    .corr-field label{font-size:.65rem;color:#4a7090;}
+    .corr-orig{
+      background:#0d1820;border:1px solid #1e3050;border-radius:6px;
+      padding:6px 8px;font-size:.67rem;color:#5a8090;
+      word-break:break-all;max-height:54px;overflow-y:auto;
+      font-family:monospace;line-height:1.4;
+    }
+    .corr-field textarea{
+      background:#0d1820;border:1px solid #2a3f58;color:var(--text);
+      border-radius:8px;padding:8px;font-size:.74rem;outline:none;
+      resize:vertical;min-height:68px;font-family:monospace;
+      transition:border-color .2s;line-height:1.4;
+    }
+    .corr-field textarea:focus{border-color:#4dd0c4;}
+    .corr-hint{font-size:.62rem;color:#2a5060;line-height:1.45;}
+    .corr-btns{display:flex;gap:8px;}
+    .corr-btns .btn{flex:1;padding:8px 0;font-size:.78rem;}
+    .btn-corr-save{
+      background:#1a3a2a;border:1px solid #2a6040;color:#66cc80;
+      border-radius:8px;cursor:pointer;font-weight:700;font-size:.78rem;
+      transition:background .15s;
+    }
+    .btn-corr-save:active{background:#2a4a3a;}
+    .corr-count-badge{font-size:.62rem;color:#4a9060;margin-left:4px;}
+
     /* ── 模式切換 ── */
     .mode-card{
       width:100%;max-width:520px;background:var(--card);
@@ -488,14 +535,52 @@
     </div>
 
     <div class="ai-export-section">
-      <div class="ai-export-note">訓練資料收集 — 自動記錄驗證失敗的指令</div>
-      <button class="btn-export" onclick="exportVFailedCases(); closeAISettings();">
-        📦 匯出失敗案例 JSONL（LoRA 訓練用）
+      <div class="ai-export-note">
+        訓練資料收集 — 自動記錄失敗指令 &amp; 手動修正案例
+      </div>
+      <button class="btn-export" onclick="exportAllTrainingData(); closeAISettings();">
+        📦 匯出全部訓練資料 JSONL<span class="corr-count-badge" id="trainCountBadge"></span>
+      </button>
+      <button class="btn-export" style="background:#1a2a10;border-color:#3a5020;color:#8ab860;"
+              onclick="exportVFailedCases(); closeAISettings();">
+        ⚠ 僅匯出失敗案例<span class="corr-count-badge" id="failCountBadge"></span>
+      </button>
+      <button class="btn-export" style="background:#102a2a;border-color:#205040;color:#60b890;"
+              onclick="exportVCorrections(); closeAISettings();">
+        ✏️ 僅匯出修正案例<span class="corr-count-badge" id="corrCountBadge"></span>
       </button>
       <button class="btn-clear"
-              onclick="vFailedCases=[]; sessionStorage.removeItem('v_failedCases'); aiVLog('系統','已清除失敗案例','#4a6080'); closeAISettings();">
-        🗑 清除失敗案例記錄
+              onclick="vFailedCases=[]; vCorrections=[]; sessionStorage.removeItem('v_failedCases'); localStorage.removeItem('v_corrections'); aiVLog('系統','已清除全部訓練資料','#4a6080'); updateTrainBadges(); closeAISettings();">
+        🗑 清除全部訓練資料
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AI 修正 Modal ═══ -->
+<div id="corrModal">
+  <div class="corr-box">
+    <div class="corr-title">✏️ 修正 AI 輸出</div>
+    <div class="corr-field">
+      <label>原始輸入</label>
+      <div class="corr-orig" id="corrOrigInput"></div>
+    </div>
+    <div class="corr-field">
+      <label>AI 回應</label>
+      <div class="corr-orig" id="corrOrigOutput"></div>
+    </div>
+    <div class="corr-field">
+      <label>正確的指令（JSON 或文字描述）</label>
+      <textarea id="corrTextarea"
+        placeholder='例：{"action":"move","params":{"direction":"forward","speed":500,"duration":3000}}'></textarea>
+    </div>
+    <div class="corr-hint">
+      💡 填入正確的 JSON 指令格式，或用文字說明正確意圖。<br>
+      儲存後加入訓練資料，可在設定中匯出 JSONL。
+    </div>
+    <div class="corr-btns">
+      <button class="btn btn-corr-save" onclick="saveCorrection()">✅ 儲存修正</button>
+      <button class="btn btn-gray" onclick="closeCorrModal()">取消</button>
     </div>
   </div>
 </div>
@@ -1137,9 +1222,11 @@ reply   : string  可選，繁體中文說明（不影響控制）
 warning : string  可選，參數被修正時填入`;
 
 // ═══════════════════════════════════════════════════
-//  失敗案例收集
+//  失敗案例 & 修正案例收集
 // ═══════════════════════════════════════════════════
-let vFailedCases = JSON.parse(sessionStorage.getItem('v_failedCases') || '[]');
+let vFailedCases  = JSON.parse(sessionStorage.getItem('v_failedCases')  || '[]');
+let vCorrections  = JSON.parse(localStorage.getItem('v_corrections')    || '[]');
+let _lastAICtx    = null;  // { input, aiOutput } — 最後一次 AI 回應的上下文
 
 function recordVFailed(userInput, rawCmd, errors) {
   vFailedCases.push({ ts: Date.now(), input: userInput, raw: rawCmd, errors });
@@ -1161,7 +1248,121 @@ function exportVFailedCases() {
   a.href = URL.createObjectURL(blob);
   a.download = `vehicle_failed_${Date.now()}.jsonl`;
   a.click();
-  aiVLog('系統', `✅ 已匯出 ${vFailedCases.length} 筆`, '#66bb6a');
+  aiVLog('系統', `✅ 已匯出失敗案例 ${vFailedCases.length} 筆`, '#66bb6a');
+}
+
+function exportVCorrections() {
+  if (!vCorrections.length) { aiVLog('系統', '目前沒有修正案例', '#4a7090'); return; }
+  const lines = vCorrections.map(c => JSON.stringify({
+    messages: [
+      { role: 'system',    content: AI_VEHICLE_PROMPT },
+      { role: 'user',      content: c.input || '' },
+      { role: 'assistant', content: c.correction || '' }
+    ],
+    _ai_original: c.aiOutput,
+    _ts: c.ts
+  }));
+  const blob = new Blob([lines.join('\n')], { type: 'application/jsonl' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `vehicle_corrections_${Date.now()}.jsonl`;
+  a.click();
+  aiVLog('系統', `✅ 已匯出修正案例 ${vCorrections.length} 筆`, '#66bb6a');
+}
+
+function exportAllTrainingData() {
+  const total = vFailedCases.length + vCorrections.length;
+  if (!total) { aiVLog('系統', '目前沒有訓練資料', '#4a7090'); return; }
+  const failLines = vFailedCases.map(c => JSON.stringify({
+    messages: [
+      { role: 'system',    content: AI_VEHICLE_PROMPT },
+      { role: 'user',      content: c.input || '' },
+      { role: 'assistant', content: '[NEEDS_CORRECTION] ' + JSON.stringify(c.raw) }
+    ],
+    _type: 'failed', errors: c.errors
+  }));
+  const corrLines = vCorrections.map(c => JSON.stringify({
+    messages: [
+      { role: 'system',    content: AI_VEHICLE_PROMPT },
+      { role: 'user',      content: c.input || '' },
+      { role: 'assistant', content: c.correction || '' }
+    ],
+    _type: 'corrected', _ai_original: c.aiOutput, _ts: c.ts
+  }));
+  const blob = new Blob([[...corrLines, ...failLines].join('\n')], { type: 'application/jsonl' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `vehicle_training_${Date.now()}.jsonl`;
+  a.click();
+  aiVLog('系統', `✅ 已匯出全部訓練資料 ${total} 筆（修正 ${vCorrections.length} + 失敗 ${vFailedCases.length}）`, '#66bb6a');
+}
+
+// ── 修正 Modal ──
+function openCorrModal(triggerBtn) {
+  const ctx = _lastAICtx || { input: '(未知)', aiOutput: '(未知)' };
+  // 若按鈕位於特定訊息旁，嘗試讀取更精確的上下文
+  if (triggerBtn) {
+    const msgEl = triggerBtn.closest('.ai-msg');
+    if (msgEl) {
+      // 找到此訊息前最近的「你：」訊息
+      const allMsgs = Array.from(document.getElementById('aiChatLog').querySelectorAll('.ai-msg'));
+      const idx = allMsgs.indexOf(msgEl);
+      for (let i = idx - 1; i >= 0; i--) {
+        const txt = allMsgs[i].querySelector('span:first-child')?.textContent || '';
+        if (txt.startsWith('你：') || txt.includes('你：')) {
+          const inputEl = allMsgs[i].querySelector('span:last-child');
+          if (inputEl) ctx.input = inputEl.textContent;
+          break;
+        }
+      }
+    }
+  }
+  document.getElementById('corrOrigInput').textContent  = ctx.input;
+  document.getElementById('corrOrigOutput').textContent = ctx.aiOutput;
+  document.getElementById('corrTextarea').value = '';
+  document.getElementById('corrModal').classList.add('open');
+  setTimeout(() => document.getElementById('corrTextarea').focus(), 100);
+  // 儲存當前上下文到 modal（供 saveCorrection 使用）
+  document.getElementById('corrModal').dataset.input    = ctx.input;
+  document.getElementById('corrModal').dataset.aiOutput = ctx.aiOutput;
+}
+
+function closeCorrModal() {
+  document.getElementById('corrModal').classList.remove('open');
+}
+
+function saveCorrection() {
+  const correction = document.getElementById('corrTextarea').value.trim();
+  if (!correction) { document.getElementById('corrTextarea').focus(); return; }
+  const modal = document.getElementById('corrModal');
+  const entry = {
+    ts: Date.now(),
+    input:      modal.dataset.input    || '',
+    aiOutput:   modal.dataset.aiOutput || '',
+    correction
+  };
+  vCorrections.push(entry);
+  try { localStorage.setItem('v_corrections', JSON.stringify(vCorrections)); } catch(_) {}
+  closeCorrModal();
+  aiVLog('系統', `✅ 修正已儲存（共 ${vCorrections.length} 筆）`, '#66bb6a');
+  updateTrainBadges();
+  // 將觸發修正的按鈕標記為「已修正」
+  const activeBtns = document.querySelectorAll('.ai-correct-btn:not(.done)');
+  if (activeBtns.length > 0) {
+    const last = activeBtns[activeBtns.length - 1];
+    last.textContent = '✅ 已修正';
+    last.classList.add('done');
+    last.disabled = true;
+  }
+}
+
+function updateTrainBadges() {
+  const tc = document.getElementById('trainCountBadge');
+  const fc = document.getElementById('failCountBadge');
+  const cc = document.getElementById('corrCountBadge');
+  if (tc) tc.textContent = ` (${vCorrections.length + vFailedCases.length})`;
+  if (fc) fc.textContent = ` (${vFailedCases.length})`;
+  if (cc) cc.textContent = ` (${vCorrections.length})`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1360,7 +1561,7 @@ async function executeVehicleAIAction(cmd) {
 // ═══════════════════════════════════════════════════
 //  AI Chat Log
 // ═══════════════════════════════════════════════════
-function aiVLog(role, msg, color='#e0e8f0') {
+function aiVLog(role, msg, color='#e0e8f0', addCorrectBtn=false) {
   const el = document.getElementById('aiChatLog');
   // 清除初始提示
   const hint = el.querySelector('div[style*="2a4060"]');
@@ -1368,8 +1569,18 @@ function aiVLog(role, msg, color='#e0e8f0') {
   const div = document.createElement('div');
   div.className = 'ai-msg';
   div.innerHTML = `<span style="color:${color};font-weight:600">${role}：</span><span style="color:#c0d0e0">${msg}</span>`;
+  // 加入修正按鈕（僅 AI 回應）
+  if (addCorrectBtn) {
+    const btn = document.createElement('button');
+    btn.className = 'ai-correct-btn';
+    btn.textContent = '✏️ 修正';
+    btn.title = '這個回應不正確，點此修正並加入訓練資料';
+    btn.onclick = () => openCorrModal(btn);
+    div.appendChild(btn);
+  }
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
+  return div;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1448,7 +1659,9 @@ async function sendAIVehicleMessage() {
     if (validation.fixed.warning) {
       aiVLog('警告', validation.fixed.warning, '#ff9800');
     }
-    aiVLog('AI', validation.fixed.reply || '執行中...', '#4dd0c4');
+    // 儲存最後一次 AI 上下文（供修正功能使用）
+    _lastAICtx = { input: msg, aiOutput: JSON.stringify(validation.fixed, null, 2) };
+    aiVLog('AI', validation.fixed.reply || '執行中...', '#4dd0c4', true);
     await executeVehicleAIAction(validation.fixed);
 
   } catch(e) {
@@ -1498,6 +1711,7 @@ function startVoiceV() {
 //  AI 設定 Modal
 // ═══════════════════════════════════════════════════
 function showAISettings() {
+  updateTrainBadges();
   document.getElementById('aiBaseUrlInput').value = aiVConfig.baseUrl;
   document.getElementById('aiApiKeyInput').value  = aiVConfig.apiKey;
   document.getElementById('aiModelInput').value   = aiVConfig.model;
@@ -1519,6 +1733,9 @@ function saveAIVSettings() {
 // 點外部關閉 modal
 document.getElementById('aiModal').addEventListener('click', function(e) {
   if (e.target === this) closeAISettings();
+});
+document.getElementById('corrModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCorrModal();
 });
 
 // ═══════════════════════════════════════════════════
