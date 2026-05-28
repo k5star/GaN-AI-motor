@@ -258,6 +258,32 @@
     .btn-corr-save:active{background:#2a4a3a;}
     .corr-count-badge{font-size:.62rem;color:#4a9060;margin-left:4px;}
 
+    /* ── 速度校正 ── */
+    .cal-section{
+      margin-top:10px;border-top:1px solid #1e3050;padding-top:10px;
+    }
+    .cal-title{font-size:.68rem;color:var(--teal);font-weight:600;letter-spacing:1px;margin-bottom:6px;}
+    .cal-status{
+      font-size:.7rem;color:#4a9070;background:#0d2010;
+      border:1px solid #1a4020;border-radius:6px;
+      padding:5px 8px;margin-bottom:6px;min-height:22px;
+    }
+    .cal-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+    .cal-row label{font-size:.68rem;color:var(--muted);width:70px;flex-shrink:0;}
+    .cal-row input[type=number]{
+      width:80px;background:#0d1820;border:1px solid #2a3f58;
+      color:var(--text);border-radius:6px;padding:4px 8px;font-size:.74rem;outline:none;
+    }
+    .cal-row input[type=number]:focus{border-color:var(--teal);}
+    .cal-row span{font-size:.65rem;color:var(--muted);}
+    .btn-cal{
+      background:#1a3040;border:1px solid #2a5060;color:#60b8d0;
+      border-radius:7px;padding:6px 10px;font-size:.72rem;font-weight:700;
+      cursor:pointer;transition:all .15s;white-space:nowrap;
+    }
+    .btn-cal:active{background:#2a4050;}
+    .btn-cal.running-cal{background:#2a1010;border-color:#6a2020;color:#e07070;animation:pulse-rec .7s infinite alternate;}
+
     /* ── 模式切換 ── */
     .mode-card{
       width:100%;max-width:520px;background:var(--card);
@@ -378,6 +404,23 @@
            oninput="document.getElementById('deadVal').textContent=this.value">
     <span class="speed-val" id="deadVal">50</span>
     <span class="speed-unit">RPM</span>
+  </div>
+
+  <!-- 速度校正 -->
+  <div class="cal-section">
+    <div class="cal-title">📏 距離／時間校正</div>
+    <div class="cal-status" id="calStatus">尚未校正 — AI 距離指令將無法使用</div>
+    <div class="cal-row">
+      <button class="btn-cal" id="btnCal" onclick="startCalRun()">▶ 跑5秒校正</button>
+      <label style="width:auto">實測距離</label>
+      <input type="number" id="calDistInput" placeholder="cm" min="1" max="2000" step="1">
+      <span>cm</span>
+      <button class="btn-cal" onclick="saveCalibration()">💾 儲存</button>
+    </div>
+    <div style="font-size:.62rem;color:#2a5060;line-height:1.5;">
+      ① 連線並設定好轉速 ② 按「跑5秒校正」→ 車跑5秒後自動停止<br>
+      ③ 量實際行走距離 ④ 輸入距離並儲存 → AI可使用「前進X公分」
+    </div>
   </div>
 </div>
 
@@ -1177,6 +1220,9 @@ R8. delay 的意義：「執行本步驟後，等待 delay 毫秒再執行下一
     例：前進3秒→停止 = [{action:forward, delay:3000}, {action:stop, delay:0}]
     ❌ 錯誤：把 delay 放在停止步驟上（會先停止再空等）。
     ✅ 正確：把 delay 放在需要持續執行的那個步驟上。
+R9. 距離指令（公分/公尺）：從狀態中讀取「速度校正」估算值(cm/s)，
+    計算 delay_ms = 距離cm ÷ 估算速度cms × 1000，四捨五入到100ms。
+    若狀態顯示「速度校正:未校正」，action必須為query，詢問使用者先做校正。
 
 ═══ 可用 action 白名單 ═══
 forward   | params: {"rpm": 可選0-3000}                  ← 前進
@@ -1224,6 +1270,12 @@ none      | params: {}                                   ← 超出範圍
 輸入：「前進2秒」
 輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":2000},{"action":"stop","params":{},"delay":0}]},"reply":"前進2秒後停止"}
 
+輸入：「前進50公分」（狀態顯示速度校正:16.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":3100},{"action":"stop","params":{},"delay":0}]},"reply":"前進50公分（約3.1秒）"}
+
+輸入：「前進1公尺再停止」（狀態顯示速度校正:20.0cm/s）
+輸出：{"action":"sequence","params":{"steps":[{"action":"forward","params":{},"delay":5000},{"action":"stop","params":{},"delay":0}]},"reply":"前進100公分（約5.0秒）"}
+
 輸入：「前進速度設800」
 輸出：{"action":"setSpeed","params":{"type":"forward","rpm":800},"reply":"前進最高速設為800RPM"}
 
@@ -1241,6 +1293,81 @@ action  : string  必填，必須在白名單內
 params  : object  必填
 reply   : string  可選，繁體中文說明（不影響控制）
 warning : string  可選，參數被修正時填入`;
+
+// ═══════════════════════════════════════════════════
+//  速度校正
+// ═══════════════════════════════════════════════════
+let calData = JSON.parse(localStorage.getItem('v_calData') || 'null');
+let calRunning = false;
+
+function updateCalStatus() {
+  const el = document.getElementById('calStatus');
+  if (!el) return;
+  if (calData && calData.cms > 0) {
+    el.style.color = '#4a9070';
+    el.style.background = '#0d2010';
+    el.style.borderColor = '#1a4020';
+    el.textContent = `✅ 前進 ${calData.cms.toFixed(1)} cm/s（${calData.rpm} RPM時）— AI可使用距離指令`;
+  } else {
+    el.style.color = '#7a5020';
+    el.style.background = '#1a1000';
+    el.style.borderColor = '#3a2000';
+    el.textContent = '尚未校正 — AI 距離指令將無法使用';
+  }
+}
+
+async function startCalRun() {
+  if (calRunning) return;
+  if (!running) {
+    aiVLog('系統', '⚠ 請先按「全車啟動」再校正', '#e6b800');
+    return;
+  }
+  calRunning = true;
+  const btn = document.getElementById('btnCal');
+  btn.classList.add('running-cal');
+  const CAL_SEC = 5;
+  btn.textContent = `⏱ 跑中... ${CAL_SEC}s`;
+
+  // 設定搖桿前進
+  joyX = 0; joyY = -1;
+  drawJoystick(); updateJoyVals();
+  aiVLog('系統', `📏 校正啟動：前進 ${CAL_SEC} 秒，請準備量距`, '#00bfa5');
+
+  let remaining = CAL_SEC;
+  const countdown = setInterval(() => {
+    remaining--;
+    btn.textContent = remaining > 0 ? `⏱ 跑中... ${remaining}s` : '⏱ 停止中...';
+  }, 1000);
+
+  await sleep(CAL_SEC * 1000);
+  clearInterval(countdown);
+
+  await softStop();
+  calRunning = false;
+  btn.classList.remove('running-cal');
+  btn.textContent = '▶ 跑5秒校正';
+  aiVLog('系統', '⏹ 車輛停止，請量實際距離並輸入→儲存', '#e6b800');
+
+  document.getElementById('calDistInput').focus();
+}
+
+function saveCalibration() {
+  const dist = parseFloat(document.getElementById('calDistInput').value);
+  if (!dist || dist <= 0) {
+    aiVLog('系統', '⚠ 請輸入有效距離（cm）', '#e6b800');
+    return;
+  }
+  const rpm = parseInt(document.getElementById('fwdVal').textContent) || 500;
+  const cms = dist / 5;  // 跑了5秒
+  calData = { cms, rpm, dist, ts: Date.now() };
+  localStorage.setItem('v_calData', JSON.stringify(calData));
+  updateCalStatus();
+  document.getElementById('calDistInput').value = '';
+  aiVLog('系統', `✅ 校正完成：${cms.toFixed(1)} cm/s（跑${dist}cm / 5秒，RPM=${rpm}）`, '#66bb6a');
+}
+
+// 頁面載入時更新校正狀態
+document.addEventListener('DOMContentLoaded', updateCalStatus);
 
 // ═══════════════════════════════════════════════════
 //  失敗案例 & 修正案例收集
@@ -1633,7 +1760,10 @@ async function sendAIVehicleMessage() {
   const fwdSpd   = document.getElementById('fwdVal').textContent;
   const revSpd   = document.getElementById('revVal').textContent;
   const steerPct = document.getElementById('sensVal').textContent;
-  const stateCtx = `[車輛狀態] 運行:${running?'是':'否'} | 左輪:${leftRpm}RPM ${leftDir} | 右輪:${rightRpm}RPM | 前進最高速:${fwdSpd}RPM | 後退最高速:${revSpd}RPM | 轉向靈敏度:${steerPct}%`;
+  const calStr = (calData && calData.cms > 0)
+    ? ` | 速度校正:${calData.cms.toFixed(1)}cm/s(@${calData.rpm}RPM,當前${fwdSpd}RPM,估算${(calData.cms * parseInt(fwdSpd) / calData.rpm).toFixed(1)}cm/s)`
+    : ' | 速度校正:未校正(距離指令不可用)';
+  const stateCtx = `[車輛狀態] 運行:${running?'是':'否'} | 左輪:${leftRpm}RPM ${leftDir} | 右輪:${rightRpm}RPM | 前進最高速:${fwdSpd}RPM | 後退最高速:${revSpd}RPM | 轉向靈敏度:${steerPct}%${calStr}`;
   const fullMsg = `${stateCtx}\n\n${msg}`;
 
   try {
