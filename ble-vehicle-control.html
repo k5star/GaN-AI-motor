@@ -907,8 +907,11 @@ function calcTargets() {
   const turnPct = joyX * sens;
   const spd = fwdPct >= 0 ? fwd : rev;
 
-  let L = -(fwdPct * spd + turnPct * fwd);
-  let R =  fwdPct * spd - turnPct * fwd;
+  // 後退時轉向方向需反向（差速補償）
+  const effTurn = fwdPct >= 0 ? turnPct : -turnPct;
+
+  let L = -(fwdPct * spd + effTurn * fwd);
+  let R =  fwdPct * spd - effTurn * fwd;
 
   const limit = Math.max(fwd, rev);
   return {
