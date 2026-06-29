@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GaN AI Motor — 版本管理</title>
+<style>
+  :root {
+    --bg: #0a1520;
+    --card: #0d1e2e;
+    --border: #1a3050;
+    --teal: #00bcd4;
+    --teal-dim: #1a4050;
+    --text: #c8dce8;
+    --muted: #5a7a90;
+    --green: #4caf70;
+    --yellow: #e6b800;
+    --red: #e05050;
+    --purple: #9c6fce;
+    --orange: #e07830;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Segoe UI', Arial, sans-serif;
+    font-size: .85rem;
+    padding: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 14px; margin-bottom: 18px;
+  }
+  header h1 {
+    font-size: 1.1rem; color: var(--teal); font-weight: 700; letter-spacing: 1px;
+  }
+  header .sub { font-size: .7rem; color: var(--muted); margin-top: 3px; }
+  .badge-repo {
+    margin-left: auto;
+    background: var(--teal-dim); color: var(--teal);
+    border: 1px solid var(--teal); border-radius: 6px;
+    padding: 4px 10px; font-size: .7rem; text-decoration: none; white-space: nowrap;
+  }
+  .badge-repo:hover { background: #254060; }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: .65rem; letter-spacing: 2px; color: var(--muted);
+    text-transform: uppercase; margin: 20px 0 8px;
+    border-left: 3px solid var(--teal); padding-left: 8px;
+  }
+
+  /* ── Table ── */
+  .vtable { width: 100%; border-collapse: collapse; }
+  .vtable thead tr { background: #0b1828; }
+  .vtable th {
+    text-align: left; font-size: .65rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .vtable td {
+    padding: 9px 10px; border-bottom: 1px solid #0f2030;
+    vertical-align: top; line-height: 1.5;
+  }
+  .vtable tr:hover td { background: #0e2030; }
+
+  /* col widths */
+  .col-page  { width: 210px; }
+  .col-ver   { width: 80px; }
+  .col-date  { width: 90px; white-space: nowrap; }
+  .col-tag   { width: 90px; }
+  .col-feat  { }
+  .col-note  { width: 200px; }
+
+  /* ── Page link ── */
+  .page-link {
+    color: var(--teal); text-decoration: none; font-weight: 600;
+    font-size: .8rem; display: block; word-break: break-all;
+  }
+  .page-link:hover { text-decoration: underline; }
+  .page-file {
+    font-size: .62rem; color: var(--muted); font-family: monospace;
+    margin-top: 2px; display: block;
+  }
+
+  /* ── Version badge ── */
+  .ver { font-weight: 700; font-size: .8rem; color: var(--text); }
+
+  /* ── Date ── */
+  .date { font-size: .75rem; color: var(--muted); }
+  .date.latest { color: var(--green); font-weight: 600; }
+
+  /* ── Tag chips ── */
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag {
+    font-size: .6rem; padding: 2px 6px; border-radius: 10px;
+    font-weight: 600; white-space: nowrap; letter-spacing: .3px;
+  }
+  .tag-active  { background: #0e3a20; color: #6ecf90; border: 1px solid #1a5030; }
+  .tag-robot   { background: #2a1a40; color: #b87eee; border: 1px solid #4a2a60; }
+  .tag-monitor { background: #1a2a40; color: #60b0e0; border: 1px solid #2a4a60; }
+  .tag-ai      { background: #2a2010; color: #e0a040; border: 1px solid #5a4010; }
+  .tag-data    { background: #1a1a30; color: #8888ee; border: 1px solid #303060; }
+  .tag-tool    { background: #1a2a20; color: #70b890; border: 1px solid #2a5030; }
+  .tag-legacy  { background: #201a18; color: #806050; border: 1px solid #403028; }
+
+  /* ── Feature list ── */
+  .feat-list { list-style: none; }
+  .feat-list li { font-size: .75rem; color: var(--text); padding: 1px 0; }
+  .feat-list li::before { content: '・'; color: var(--teal); }
+
+  /* ── Note ── */
+  .note { font-size: .72rem; color: #7090a0; line-height: 1.5; }
+
+  /* ── Status dot ── */
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+  .dot-active  { background: var(--green); }
+  .dot-legacy  { background: var(--muted); }
+  .dot-archive { background: #3a3030; }
+
+  /* ── Updated row ── */
+  .row-latest td { border-left: 3px solid var(--teal); }
+
+  /* ── Changelog section ── */
+  .changelog-grid { display: grid; gap: 10px; }
+  .cl-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 0 12px;
+    align-items: start;
+  }
+  .cl-date { font-size: .7rem; color: var(--muted); padding-top: 2px; }
+  .cl-commit { font-size: .72rem; color: var(--text); line-height: 1.6; }
+  .cl-commit b { color: var(--teal); }
+  .cl-hash { font-family: monospace; font-size: .6rem; color: var(--muted); margin-right: 6px; }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border);
+    font-size: .65rem; color: var(--muted); text-align: center;
+  }
+  footer a { color: var(--teal); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚡ GaN AI Motor — 版本管理</h1>
+    <div class="sub">GitHub Pages 發布清單 · 各版次連結 · 更新紀錄</div>
+  </div>
+  <a class="badge-repo" href="https://github.com/k5star/GaN-AI-motor" target="_blank">
+    ⎇ GitHub Repo
+  </a>
+</header>
+
+<!-- ════════════════════════════════════════
+     主要發布頁面
+════════════════════════════════════════ -->
+<div class="section-label">主要發布頁面</div>
+<table class="vtable">
+  <thead>
+    <tr>
+      <th class="col-page">頁面名稱</th>
+      <th class="col-ver">版本</th>
+      <th class="col-date">最後更新</th>
+      <th class="col-tag">類別</th>
+      <th class="col-feat">主要功能</th>
+      <th class="col-note">備註</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <!-- ble-vehicle-control -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/ble-vehicle-control.html" target="_blank">
+          車輛 AI 語音控制台
+        </a>
+        <span class="page-file">ble-vehicle-control.html</span>
+      </td>
+      <td><span class="ver">最新</span></td>
+      <td><span class="date latest">2026-05-28</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-ai">AI</span>
+          <span class="tag tag-robot">小車</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>BLE 雙輪差速控制（左/右輪各一 HC-10）</li>
+          <li>搖桿觸控 + 緊急煞車</li>
+          <li>Gemini AI 語音指令（前進/後退/轉彎/序列）</li>
+          <li>AI 指令修正 & 訓練資料匯出（JSONL）</li>
+          <li>前進/後退/旋轉三組距離角度校正</li>
+          <li>校正碼跨裝置匯出/匯入</li>
+          <li>差速後退轉向補正</li>
+        </ul>
+      </td>
+      <td class="note">
+        左右輪分開 BLE 連線<br>
+        Node ID 設定 L=17 / R=18<br>
+        AI 序列指令（前進→旋轉→前進）<br>
+        校正後才能使用距離/角度指令
+      </td>
+    </tr>
+
+    <!-- mobile V7 -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V7%E7%89%88(ASCII).html" target="_blank">
+          手機監控 V7（ASCII）
+        </a>
+        <span class="page-file">mobile V7版(ASCII).html</span>
+      </td>
+      <td><span class="ver">V7</span></td>
+      <td><span class="date latest">2026-06-10</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>BLE ASCII 協定多裝置監控</li>
+          <li>即時 RPM / 電流 / 溫度 / 電壓</li>
+          <li>防抖強化：噪訊過濾 + 穩定電流判斷</li>
+          <li>異常警報顯示 + 復規按鈕</li>
+          <li>Supabase 雲端資料同步</li>
+          <li>離線緩存 + 自動補傳</li>
+        </ul>
+      </td>
+      <td class="note">
+        最新穩定版監控頁<br>
+        防抖為本版主要改善<br>
+        建議日常使用此版
+      </td>
+    </tr>
+
+    <!-- mobile V6 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V6%E7%89%88(ASCII).html" target="_blank">
+          手機監控 V6（ASCII）
+        </a>
+        <span class="page-file">mobile V6版(ASCII).html</span>
+      </td>
+      <td><span class="ver">V6</span></td>
+      <td><span class="date">2026-05-17</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-monitor">監控</span>
+          <span class="tag tag-data">雲端</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>Supabase 雲端同步初始版</li>
+          <li>電流單位修正（直接顯示 A，移除 ×10）</li>
+          <li>電流合理性過濾（Modbus 噪訊）</li>
+          <li>啟動自動同步 + 網路恢復補傳</li>
+          <li>操作員/現場人員 分離管理</li>
+          <li>1000 行分頁拉取（Supabase 限制）</li>
+        </ul>
+      </td>
+      <td class="note">
+        V7 前置版本<br>
+        電流修正為本版重要 fix
+      </td>
+    </tr>
+
+    <!-- mobile V5 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V5%E7%89%88(ASCII).html" target="_blank">
+          手機監控 V5（ASCII）
+        </a>
+        <span class="page-file">mobile V5版(ASCII).html</span>
+      </td>
+      <td><span class="ver">V5</span></td>
+      <td><span class="date">2026-05-07</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>純監控版：移除 Run/Stop 按鈕</li>
+          <li>ASCII 多裝置 BLE 監控</li>
+          <li>溫度修正補入</li>
+          <li>ASCII 傳送（GAN AI ROBOT），RTU 傳送</li>
+        </ul>
+      </td>
+      <td class="note">安全性考量去除啟停按鈕</td>
+    </tr>
+
+    <!-- mobile V4 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V4%E7%89%88(ASCII).html" target="_blank">
+          手機監控 V4（ASCII）
+        </a>
+        <span class="page-file">mobile V4版(ASCII).html</span>
+      </td>
+      <td><span class="ver">V4</span></td>
+      <td><span class="date">2026-05-06</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>加入登入畫面（帳號/密碼驗證）</li>
+          <li>V3 多裝置 BLE 監控基礎</li>
+        </ul>
+      </td>
+      <td class="note">移除 ITRI 預填帳密</td>
+    </tr>
+
+    <!-- mobile V3 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V3%E7%89%88(ASCII).html" target="_blank">
+          手機監控 V3（ASCII）
+        </a>
+        <span class="page-file">mobile V3版(ASCII).html</span>
+      </td>
+      <td><span class="ver">V3</span></td>
+      <td><span class="date">2026-05-06</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>ASCII 協定多裝置監控首版</li>
+          <li>異常復規按鈕</li>
+          <li>裝置名稱顯示</li>
+          <li>CSV 匯出含累積電能</li>
+        </ul>
+      </td>
+      <td class="note">ASCII 多裝置架構起點</td>
+    </tr>
+
+    <!-- mobile V2 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/mobile%20V2%E7%89%88.html" target="_blank">
+          手機監控 V2
+        </a>
+        <span class="page-file">mobile V2版.html</span>
+      </td>
+      <td><span class="ver">V2</span></td>
+      <td><span class="date">2026-05-06</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-legacy"><span class="dot dot-legacy"></span>舊版</span>
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>早期 BLE 監控版（非 ASCII）</li>
+        </ul>
+      </td>
+      <td class="note">已被 V3+ ASCII 版取代</td>
+    </tr>
+
+    <!-- index-AI ROBOT -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/index-AI%20ROBOT.html" target="_blank">
+          AI ROBOT 語音控制
+        </a>
+        <span class="page-file">index-AI ROBOT.html</span>
+      </td>
+      <td><span class="ver">V1</span></td>
+      <td><span class="date">2026-05-03</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-ai">AI</span>
+          <span class="tag tag-robot">單輪</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>Gemini AI 語音控制（單 BLE 裝置）</li>
+          <li>裝置設定檔系統</li>
+          <li>BLE TX/RX 詳細 log</li>
+          <li>GaN 速度暫存器修正</li>
+          <li>AI 模型切換下拉選單</li>
+        </ul>
+      </td>
+      <td class="note">
+        單輪版；雙輪小車請用<br>
+        ble-vehicle-control.html
+      </td>
+    </tr>
+
+    <!-- index-ROBOT -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/index-ROBOT.html" target="_blank">
+          ROBOT RTU 平台
+        </a>
+        <span class="page-file">index-ROBOT.html</span>
+      </td>
+      <td><span class="ver">RTU</span></td>
+      <td><span class="date">2026-04-14</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-robot">機器人</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>Modbus RTU BLE 控制版</li>
+          <li>機器人應用場景</li>
+        </ul>
+      </td>
+      <td class="note">RTU 協定版本</td>
+    </tr>
+
+    <!-- index.html -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/" target="_blank">
+          主控台 V4.1 EV
+        </a>
+        <span class="page-file">index.html</span>
+      </td>
+      <td><span class="ver">V4.1</span></td>
+      <td><span class="date">2026-04-20</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-monitor">監控</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>GaN AI Motor AI Platform（桌機版）</li>
+          <li>BLE 佇列系統 + 穩定連線</li>
+          <li>警報碼對照表（中文說明）</li>
+          <li>Page10 掃描、NTC B 值可調</li>
+          <li>CSV 分析 + 警報事件摘要</li>
+        </ul>
+      </td>
+      <td class="note">GitHub Pages 首頁</td>
+    </tr>
+
+    <!-- data-viewer -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/data-viewer.html" target="_blank">
+          數據分析儀表板
+        </a>
+        <span class="page-file">data-viewer.html</span>
+      </td>
+      <td><span class="ver">V6+</span></td>
+      <td><span class="date">2026-05-17</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-data">分析</span>
+          <span class="tag tag-data">雲端</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>Supabase 資料庫查詢介面</li>
+          <li>RPM / 電流 / 溫度趨勢圖表</li>
+          <li>人員篩選 + 操作員彙整表</li>
+          <li>自動分頁（突破 Supabase 1000 行限制）</li>
+          <li>合理性過濾 + NaN 排除</li>
+        </ul>
+      </td>
+      <td class="note">需要 Supabase API Key</td>
+    </tr>
+
+    <!-- 程式檢查與燒錄 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/%E7%A8%8B%E5%BC%8F%E6%AA%A2%E6%9F%A5%E8%88%87%E7%87%92%E9%8C%84.html" target="_blank">
+          程式檢查與燒錄
+        </a>
+        <span class="page-file">程式檢查與燒錄.html</span>
+      </td>
+      <td><span class="ver">工具</span></td>
+      <td><span class="date">2026-05-13</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-tool">工具</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>韌體燒錄輔助工具</li>
+          <li>多機模式暫存器對照（0x0209 = 多機）</li>
+          <li>參數快速檢查</li>
+        </ul>
+      </td>
+      <td class="note">
+        暫存器說明修正：<br>
+        多機模式 = 0209h，非 020Ah
+      </td>
+    </tr>
+
+  </tbody>
+</table>
+
+<!-- ════════════════════════════════════════
+     最近更新紀錄
+════════════════════════════════════════ -->
+<div class="section-label" style="margin-top:28px;">最近重要更新（2026）</div>
+<div class="changelog-grid">
+
+  <div class="cl-item">
+    <div class="cl-date">2026-06-10</div>
+    <div class="cl-commit">
+      <b>mobile V7版(ASCII).html</b> 新增<br>
+      <span class="cl-hash">d921e27</span>防抖強化版：Modbus 噪訊過濾、電流穩定性判斷提升
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-05-28</div>
+    <div class="cl-commit">
+      <b>ble-vehicle-control.html</b> 重大更新<br>
+      <span class="cl-hash">49c5e79</span>校正碼跨裝置匯出/匯入功能<br>
+      <span class="cl-hash">e6b37a3</span>修正 spinLeft 後 forward 不執行（清空 BLE queue/busy）<br>
+      <span class="cl-hash">ab4d6ef</span>修正 AI 序列只產生 3 步（漏掉第二段前進）<br>
+      <span class="cl-hash">3c12e3d</span>新增後退距離校正（獨立後退速度）<br>
+      <span class="cl-hash">8b2c93b</span>簡化轉彎校正：直接 90° 實測法<br>
+      <span class="cl-hash">1b3dd49</span>AI 角度指令改由 JS 計算時間（degrees 欄位，不再由 AI 估 delay）<br>
+      <span class="cl-hash">7edd894</span>修正 AI stop 不保留 running 狀態（softStop）<br>
+      <span class="cl-hash">77caea1</span>修正後退轉向方向相反（差速 effTurn 補正）
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-05-17</div>
+    <div class="cl-commit">
+      <b>mobile V6版 / data-viewer.html</b> 修正<br>
+      <span class="cl-hash">42d7630</span>電流顯示改為直接 A 值（移除錯誤 ×10 倍乘）<br>
+      <span class="cl-hash">8226d03</span>自動分頁突破 Supabase 1000 行限制<br>
+      <span class="cl-hash">e383a07</span>防抖：過濾 Modbus 噪訊造成的 RPM 瞬間歸零<br>
+      <span class="cl-hash">07b0789</span>人員篩選、操作員彙整表、帳號切換按鈕
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-05-13</div>
+    <div class="cl-commit">
+      <b>程式檢查與燒錄.html</b> 修正<br>
+      <span class="cl-hash">bcb81b8→</span>多機模式暫存器修正：0209h（非 020Ah）
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-05-06</div>
+    <div class="cl-commit">
+      <b>mobile V2～V4版</b> 發布<br>
+      多裝置 ASCII BLE 監控、異常復規按鈕、CSV 電能匯出、登入畫面
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-05-03</div>
+    <div class="cl-commit">
+      <b>index-AI ROBOT.html</b> 功能擴充<br>
+      <span class="cl-hash">feat</span>裝置設定檔系統、BLE TX/RX log、GaN 速度暫存器修正
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-04-20</div>
+    <div class="cl-commit">
+      <b>index.html</b> V4.1 更新<br>
+      警報碼中文對照、Page10 掃描、NTC B 值可調、CSV 事件摘要
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════
+     快速連結
+════════════════════════════════════════ -->
+<div class="section-label" style="margin-top:28px;">快速連結</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+  <a class="badge-repo" style="font-size:.72rem;padding:6px 14px;" href="https://k5star.github.io/GaN-AI-motor/" target="_blank">🏠 GitHub Pages 首頁</a>
+  <a class="badge-repo" style="font-size:.72rem;padding:6px 14px;" href="https://k5star.github.io/GaN-AI-motor/ble-vehicle-control.html" target="_blank">🚗 車輛 AI 控制台</a>
+  <a class="badge-repo" style="font-size:.72rem;padding:6px 14px;" href="https://k5star.github.io/GaN-AI-motor/mobile%20V7%E7%89%88(ASCII).html" target="_blank">📱 手機監控 V7</a>
+  <a class="badge-repo" style="font-size:.72rem;padding:6px 14px;" href="https://k5star.github.io/GaN-AI-motor/data-viewer.html" target="_blank">📊 數據分析</a>
+  <a class="badge-repo" style="font-size:.72rem;padding:6px 14px;" href="https://github.com/k5star/GaN-AI-motor/commits/master" target="_blank">📜 完整提交紀錄</a>
+</div>
+
+<footer>
+  GaN AI Motor Project ·
+  <a href="https://github.com/k5star/GaN-AI-motor" target="_blank">github.com/k5star/GaN-AI-motor</a> ·
+  最後整理：2026-06-29
+</footer>
+
+</body>
+</html>
