@@ -610,7 +610,7 @@
 
     <div class="ai-field">
       <label>Base URL</label>
-      <input id="aiBaseUrlInput" placeholder="https://ai.aistargalaxy.com">
+      <input id="aiBaseUrlInput" placeholder="https://ai-test.aistargalaxy.com">
     </div>
     <div class="ai-field">
       <label>API Key</label>
@@ -1256,7 +1256,7 @@ const VEHICLE_CMD_SCHEMA = {
 const ACTION_WHITELIST_V = new Set(Object.keys(VEHICLE_CMD_SCHEMA.actions));
 
 let aiVConfig = {
-  baseUrl: localStorage.getItem('v_aiBaseUrl') || 'https://ai.aistargalaxy.com',
+  baseUrl: localStorage.getItem('v_aiBaseUrl') || 'https://ai-test.aistargalaxy.com',
   apiKey:  localStorage.getItem('v_aiApiKey')  || '',
   model:   localStorage.getItem('v_aiModel')   || 'qwen2.5:14b'
 };
