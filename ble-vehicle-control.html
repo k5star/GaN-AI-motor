@@ -2078,7 +2078,7 @@ async function sendAIVehicleMessage() {
   const fullMsg = `${stateCtx}\n\n${msg}`;
 
   try {
-    const res = await fetch(`${aiVConfig.baseUrl}/api/v1/chat/completions`, {
+    const requestOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2094,10 +2094,29 @@ async function sendAIVehicleMessage() {
         temperature: 0.1,
         response_format: { type: 'json_object' }
       })
-    });
+    };
+
+    let res;
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        res = await fetch(`${aiVConfig.baseUrl}/api/v1/chat/completions`, requestOptions);
+        if (res.ok || ![502, 503, 504].includes(res.status) || attempt === 1) break;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (error) {
+        lastError = error;
+        if (attempt === 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
 
     loadDiv.remove();
-    if (!res.ok) throw new Error(`HTTP ${res.status} — 請確認 API Key 與 Base URL`);
+    if (!res) throw lastError || new Error('API connection failed');
+    if (!res.ok) {
+      let detail = '';
+      try { detail = await res.text(); } catch (_) {}
+      throw new Error(`HTTP ${res.status}${detail ? `: ${detail.slice(0, 120)}` : ''}`);
+    }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content?.trim() || '';
