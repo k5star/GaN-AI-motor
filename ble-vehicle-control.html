@@ -2163,34 +2163,73 @@ let voiceRecV = null;
 
 function startVoiceV() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { aiVLog('系統', '⚠ 此瀏覽器不支援語音，請使用 Chrome', '#e6b800'); return; }
+  if (!window.isSecureContext) {
+    aiVLog('系統', '⚠ 語音功能需要 HTTPS 安全網站。', '#e53935');
+    return;
+  }
+  if (!SR) {
+    aiVLog('系統', '⚠ 此瀏覽器不支援語音辨識，請使用最新版 Chrome。', '#e6b800');
+    return;
+  }
   if (voiceRecV) { voiceRecV.stop(); return; }
 
-  voiceRecV = new SR();
-  voiceRecV.lang = 'zh-TW';
-  voiceRecV.interimResults = false;
-  voiceRecV.maxAlternatives = 1;
-
   const btn = document.getElementById('voiceBtnV');
-  btn.textContent = '🔴';
-  btn.classList.add('recording');
-
-  voiceRecV.onresult = e => {
-    const t = e.results[0][0].transcript;
-    document.getElementById('aiVInput').value = t;
-    aiVLog('語音', t, '#00bfa5');
-    sendAIVehicleMessage();
-  };
-  voiceRecV.onerror = e => {
-    aiVLog('語音錯誤', e.error === 'not-allowed' ? '請允許麥克風權限' : e.error, '#e53935');
-  };
-  voiceRecV.onend = () => {
+  const resetVoiceButton = () => {
     btn.textContent = '🎙️';
     btn.classList.remove('recording');
     voiceRecV = null;
   };
-  voiceRecV.start();
-  aiVLog('系統', '🎙️ 請說話...', '#4a7090');
+  const startRecognition = () => {
+    voiceRecV = new SR();
+    voiceRecV.lang = 'zh-TW';
+    voiceRecV.interimResults = false;
+    voiceRecV.maxAlternatives = 1;
+
+    voiceRecV.onresult = e => {
+      const t = e.results[0][0].transcript;
+      document.getElementById('aiVInput').value = t;
+      aiVLog('語音', t, '#00bfa5');
+      sendAIVehicleMessage();
+    };
+    voiceRecV.onerror = e => {
+      const messages = {
+        'not-allowed': '請在 Chrome 網址列的網站設定中允許麥克風，然後重新整理頁面。',
+        'service-not-allowed': '瀏覽器的語音辨識服務被停用，請確認 Chrome 可連網並允許 Google 語音服務。',
+        'audio-capture': '找不到可用麥克風，請檢查手機麥克風或藍牙耳機。',
+        'network': '語音辨識需要網路連線；請確認手機可上網。',
+        'no-speech': '沒有偵測到語音，請再試一次並靠近麥克風。',
+        'aborted': '語音輸入已取消。'
+      };
+      aiVLog('語音錯誤', messages[e.error] || `辨識失敗：${e.error}`, '#e53935');
+    };
+    voiceRecV.onend = resetVoiceButton;
+    try {
+      voiceRecV.start();
+      aiVLog('系統', '🎙️ 請說話...', '#4a7090');
+    } catch (error) {
+      resetVoiceButton();
+      aiVLog('語音錯誤', `無法啟動麥克風：${error.message}`, '#e53935');
+    }
+  };
+
+  btn.textContent = '🔴';
+  btn.classList.add('recording');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    resetVoiceButton();
+    aiVLog('系統', '⚠ 此瀏覽器無法要求麥克風權限，請使用最新版 Chrome。', '#e6b800');
+    return;
+  }
+
+  // Request microphone permission first so browser permission failures are explicit.
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      stream.getTracks().forEach(track => track.stop());
+      startRecognition();
+    })
+    .catch(() => {
+      resetVoiceButton();
+      aiVLog('語音錯誤', '請允許 k5star.github.io 使用麥克風後再試一次。', '#e53935');
+    });
 }
 
 // ═══════════════════════════════════════════════════
