@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>雙輪車控制 V1 — 速度 + 位置</title>
+<style>
+:root{
+  --bg:#0f1923; --card:#1a2535; --card2:#1e2d40; --line:#2a3f58;
+  --teal:#00bfa5; --red:#e53935; --green:#43a047; --blue:#2979ff;
+  --text:#e0e8f0; --muted:#8ba0b8; --accent:#00e5ff; --amber:#ffa726;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);
+  font-family:'Segoe UI','Microsoft JhengHei',system-ui,sans-serif;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:12px 10px 40px;user-select:none;touch-action:pan-y}
+#jCanvas{touch-action:none}
+h1{font-size:.95rem;color:var(--teal);letter-spacing:2px;margin-bottom:4px;text-align:center}
+.sub{font-size:.62rem;color:#3a5a7a;margin-bottom:12px;font-family:monospace;text-align:center}
+
+.card{width:100%;max-width:540px;background:var(--card);border-radius:14px;
+  padding:14px 16px;margin-bottom:10px}
+.card-title{font-size:.72rem;color:var(--teal);font-weight:600;letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+
+details{width:100%;max-width:540px;background:var(--card2);border-radius:10px;
+  padding:10px 14px;margin-bottom:10px;font-size:.75rem;color:var(--muted)}
+details summary{cursor:pointer;color:var(--teal);font-size:.8rem;padding:2px 0}
+.row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.row label{width:104px;flex-shrink:0;color:var(--muted);font-size:.72rem}
+input,select{background:#111c28;border:1px solid var(--line);color:var(--text);
+  border-radius:6px;padding:4px 8px;font-size:.74rem;outline:none}
+input:focus,select:focus{border-color:var(--teal)}
+.mono{font-family:monospace;color:var(--accent)}
+
+.btn{border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;
+  padding:9px 0;letter-spacing:.5px;transition:opacity .15s,transform .1s;color:#fff}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.b-teal{background:var(--teal)} .b-green{background:var(--green)}
+.b-red{background:var(--red)}  .b-blue{background:var(--blue)}
+.b-gray{background:#2a3f58;color:var(--muted)} .b-amber{background:#b26a00}
+
+.connect-row{display:flex;gap:10px;width:100%;max-width:540px;margin-bottom:10px}
+.cc{flex:1;background:var(--card);border-radius:12px;padding:10px 8px;
+  display:flex;flex-direction:column;align-items:center;gap:5px}
+.badge{font-size:.68rem;padding:2px 8px;border-radius:10px;background:#263040;color:var(--muted)}
+.badge.on{background:#1a3a2a;color:#66bb6a} .badge.err{background:#3a1a1a;color:#ef5350}
+.cc .btn{width:100%}
+.tiny{font-size:.6rem;color:#3a5a7a;font-family:monospace;text-align:center}
+
+/* 分頁 */
+.tabs{display:flex;gap:6px;width:100%;max-width:540px;margin-bottom:10px}
+.tab{flex:1;padding:9px 0;text-align:center;font-size:.76rem;font-weight:700;
+  background:#16202e;color:var(--muted);border-radius:9px;cursor:pointer;border:1px solid transparent}
+.tab.on{background:var(--card);color:var(--teal);border-color:var(--teal)}
+.pane{display:none;width:100%;max-width:540px;flex-direction:column;align-items:center}
+.pane.on{display:flex}
+
+/* 搖桿 */
+.joy-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+#jCanvas{cursor:grab;border-radius:50%;display:block}
+.joy-vals{display:flex;gap:24px;font-size:.76rem;color:var(--muted)}
+.joy-vals span{display:flex;flex-direction:column;align-items:center;gap:1px}
+.joy-vals b{font-size:1.05rem;color:var(--accent)}
+.joy-vals b.neg{color:#ff7043}
+
+.speed-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.speed-row label{font-size:.74rem;color:var(--muted);width:112px;flex-shrink:0}
+.speed-row input[type=range]{flex:1;-webkit-appearance:none;height:6px;
+  background:#263040;border-radius:4px;outline:none;padding:0;border:none}
+.speed-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
+  width:22px;height:22px;border-radius:50%;background:var(--teal);cursor:pointer}
+.sv{font-size:.9rem;font-weight:700;color:var(--accent);width:44px;text-align:right}
+.su{font-size:.66rem;color:var(--muted);width:34px}
+
+/* 狀態表 */
+.st-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.st-panel{background:#0d1820;border-radius:10px;padding:10px 12px}
+.st-panel h4{font-size:.7rem;color:var(--teal);margin-bottom:6px;letter-spacing:1px}
+.st-item{display:flex;justify-content:space-between;padding:3px 0;
+  border-bottom:1px solid #1a2a3a;font-size:.7rem}
+.st-item:last-child{border-bottom:none}
+.sl{color:var(--muted)} .sv2{font-family:monospace;font-weight:700;color:var(--accent)}
+.sv2.run{color:#66bb6a} .sv2.stop{color:#4a6080} .sv2.fault{color:#ef5350} .sv2.warn{color:var(--amber)}
+.raw{margin-top:6px;font-size:.58rem;font-family:monospace;color:#2a4060;
+  background:#070f18;border-radius:6px;padding:4px 6px;word-break:break-all;line-height:1.5}
+
+/* log */
+#log{width:100%;max-width:540px;background:#111c28;border-radius:10px;padding:8px 12px;
+  font-size:.66rem;color:var(--muted);max-height:150px;overflow-y:auto;font-family:monospace;line-height:1.7}
+#log .ok{color:#66bb6a} #log .err{color:#ef5350} #log .tx{color:#40c4ff} #log .pos{color:#82b1ff}
+
+.note{font-size:.66rem;color:#506070;line-height:1.6;margin-top:6px}
+.warnbox{background:#2a1810;border:1px solid #5a3010;border-radius:8px;
+  padding:8px 10px;font-size:.68rem;color:#ffb74d;line-height:1.6;margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+#eOv{display:none;position:fixed;inset:0;border:5px solid var(--red);
+  pointer-events:none;z-index:9999;animation:fl .4s infinite alternate}
+@keyframes fl{from{opacity:.15}to{opacity:.9}}
+</style>
+</head>
+<body>
+<div id="eOv"></div>
+
+<h1>● 雙輪車控制 V1 — 速度 + 位置</h1>
+<div class="sub">暫存器對照 index-local-ai-motor.html（已驗證）</div>
+
+<!-- ════ 設定 ════ -->
+<details>
+  <summary>⚙ 連線 &amp; 暫存器設定</summary>
+  <div class="row"><label>通訊協定</label>
+    <select id="proto" style="flex:1">
+      <option value="ascii" selected>Modbus ASCII（現行）</option>
+      <option value="rtu">Modbus RTU（GaN 版用）</option>
+    </select>
+  </div>
+  <div class="row"><label>Service UUID</label>
+    <input id="svcUUID" style="flex:1" value="0000ffe0-0000-1000-8000-00805f9b34fb"></div>
+  <div class="row"><label>Char UUID</label>
+    <input id="charUUID" style="flex:1" value="0000ffe1-0000-1000-8000-00805f9b34fb"></div>
+  <div class="row"><label>左輪 Node ID</label>
+    <input id="nodeL" type="number" value="17" min="1" max="247" style="width:70px">
+    <label style="width:auto;margin-left:10px">右輪 Node ID</label>
+    <input id="nodeR" type="number" value="17" min="1" max="247" style="width:70px"></div>
+  <div class="row"><label>Encoder 解析度</label>
+    <input id="encRes" type="number" value="5000" style="width:80px">
+    <span style="font-size:.66rem;color:var(--muted)">counts / 圈（參數 01-06）</span></div>
+  <div class="row"><label>右輪反裝</label>
+    <select id="rightRev" style="flex:1">
+      <option value="1" selected>是（右輪安裝方向相反）</option>
+      <option value="0">否</option>
+    </select></div>
+  <div class="note">
+    <b style="color:var(--accent)">已驗證暫存器對照</b><br>
+    <span class="mono">1400h</span> RUN/STOP — bit0=RUN, bit1=CCW, bit2=ALM_RST, bit3=STOP_MODE<br>
+    <span class="mono">0300h</span> 目標轉速 RPM（<s style="color:#5a3030">舊版誤用 3F08h</s>）<br>
+    <span class="mono">0400h</span> 加速時間 ms &nbsp; <span class="mono">0408h</span> 減速時間 ms<br>
+    <span class="mono">0A00h</span> 警報清除 =1（<s style="color:#5a3030">舊版誤用 2501h</s>）<br>
+    <span class="mono">0000h×16</span> 狀態輪詢（<s style="color:#5a3030">舊版誤用 4600h</s>）<br>
+    <span class="mono">460Dh×2</span> Encoder 絕對位置 H/L（32-bit 有號）<br>
+    參數位址 = <span class="mono">群組×256 + (編號−1)</span>，例：01-11 → 010Ah
+  </div>
+</details>
+
+<!-- ════ 連線 ════ -->
+<div class="connect-row">
+  <div class="cc">
+    <div style="font-size:.76rem;color:var(--muted)">左輪</div>
+    <div class="badge" id="badgeL">未連線</div>
+    <button class="btn b-teal" id="btnL" onclick="connectWheel('L')">連接左輪</button>
+    <button class="btn b-gray" id="btnLdc" onclick="disconnect('L')" disabled>中斷</button>
+    <div class="tiny" id="txL">—</div>
+  </div>
+  <div class="cc">
+    <div style="font-size:.76rem;color:var(--muted)">右輪</div>
+    <div class="badge" id="badgeR">未連線</div>
+    <button class="btn b-teal" id="btnR" onclick="connectWheel('R')">連接右輪</button>
+    <button class="btn b-gray" id="btnRdc" onclick="disconnect('R')" disabled>中斷</button>
+    <div class="tiny" id="txR">—</div>
+  </div>
+</div>
+
+<!-- ════ 開機必做 ════ -->
+<div class="card" style="border:1px solid #5a3010">
+  <div class="card-title">⚠ 開機必做：控制模式設為 Speed</div>
+  <div class="warnbox">
+    你的 HMI 顯示 <b>01-11 = 2 (Position)</b>。<br>
+    位置模式下驅動器只吃位置命令，<b>送再多 RPM 都不會轉</b>。<br>
+    本頁的位置控制是「速度模式 + 時間預測」軟體閉環，<b>必須 01-11 = 0</b>。
+  </div>
+  <div class="grid3">
+    <button class="btn b-teal" style="font-size:.72rem" onclick="setCtrlMode(0)">01-11=0<br><span style="font-size:.6rem;font-weight:400">Speed ✅</span></button>
+    <button class="btn b-gray" style="font-size:.72rem" onclick="setCtrlMode(1)">01-11=1<br><span style="font-size:.6rem;font-weight:400">Duty</span></button>
+    <button class="btn b-gray" style="font-size:.72rem" onclick="setCtrlMode(2)">01-11=2<br><span style="font-size:.6rem;font-weight:400">Position</span></button>
+  </div>
+  <div class="grid2" style="margin-top:8px">
+    <button class="btn b-blue" style="font-size:.74rem" onclick="readCtrlMode()">📖 讀取 01-11 現況</button>
+    <button class="btn b-amber" style="font-size:.74rem" onclick="clearAlarm()">🔔 清除警報 0A00h</button>
+  </div>
+  <div class="tiny" id="modeStat" style="margin-top:8px;color:#406080">尚未讀取</div>
+</div>
+
+<!-- ════ 分頁 ════ -->
+<div class="tabs">
+  <div class="tab on" onclick="showTab(0,this)">🕹 速度控制</div>
+  <div class="tab"    onclick="showTab(1,this)">📍 位置控制</div>
+  <div class="tab"    onclick="showTab(2,this)">🔧 參數 / 除錯</div>
+</div>
+
+<!-- ═══════════ 分頁 0：速度控制 ═══════════ -->
+<div class="pane on">
+
+  <div class="card">
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <button class="btn b-green" style="flex:1;padding:14px 0;font-size:.95rem" onclick="startAll()">▶ 全車啟動</button>
+      <button class="btn b-red"   style="flex:1;padding:14px 0;font-size:.95rem" onclick="emergencyStop()">■ 緊急煞車</button>
+    </div>
+    <div class="card-title">速度設定</div>
+    <div class="speed-row"><label>前進最高速</label>
+      <input type="range" id="fwdSpeed" min="50" max="3000" value="500" step="50"
+        oninput="fwdVal.textContent=this.value"><span class="sv" id="fwdVal">500</span><span class="su">RPM</span></div>
+    <div class="speed-row"><label>後退最高速</label>
+      <input type="range" id="revSpeed" min="50" max="1500" value="300" step="50"
+        oninput="revVal.textContent=this.value"><span class="sv" id="revVal">300</span><span class="su">RPM</span></div>
+    <div class="speed-row"><label>轉向靈敏度</label>
+      <input type="range" id="steerSens" min="10" max="100" value="70" step="5"
+        oninput="sensVal.textContent=this.value"><span class="sv" id="sensVal">70</span><span class="su">%</span></div>
+    <div class="speed-row"><label>死區</label>
+      <input type="range" id="deadband" min="10" max="200" value="50" step="10"
+        oninput="deadVal.textContent=this.value"><span class="sv" id="deadVal">50</span><span class="su">RPM</span></div>
+    <div class="speed-row"><label>加速時間 0400h</label>
+      <input type="range" id="accMs" min="100" max="5000" value="1000" step="100"
+        oninput="accVal.textContent=this.value"><span class="sv" id="accVal">1000</span><span class="su">ms</span></div>
+    <div class="speed-row"><label>減速時間 0408h</label>
+      <input type="range" id="decMs" min="100" max="5000" value="2000" step="100"
+        oninput="decVal.textContent=this.value"><span class="sv" id="decVal">2000</span><span class="su">ms</span></div>
+    <button class="btn b-gray" style="width:100%;margin-top:4px;font-size:.74rem" onclick="writeAccDec()">
+      寫入加/減速時間到兩輪
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="justify-content:center">搖桿控制</div>
+    <div class="joy-wrap">
+      <canvas id="jCanvas" width="220" height="220"></canvas>
+      <div class="joy-vals">
+        <span><div>前進/後退</div><b id="jvT">0</b><div>%</div></span>
+        <span style="font-size:1.6rem;align-self:center" id="dirArrow">•</span>
+        <span><div>左轉/右轉</div><b id="jvS">0</b><div>%</div></span>
+      </div>
+      <div class="grid2" style="width:100%">
+        <div class="tiny">左輪指令 <b class="mono" id="cmdL">0</b> RPM <span id="dirLb">STOP</span></div>
+        <div class="tiny">右輪指令 <b class="mono" id="cmdR">0</b> RPM <span id="dirRb">STOP</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ 分頁 1：位置控制 ═══════════ -->
+<div class="pane">
+
+  <div class="card" style="border:1px solid #1a3a5a">
+    <div class="card-title">📍 位置控制 — 軟體閉環<span class="tiny" id="posBadge">待命</span></div>
+    <div class="note" style="margin-bottom:10px">
+      原理：速度模式下算好 <b>加速 / 等速 / 減速</b> 時間跑固定時長，
+      結束後讀 <span class="mono">460Dh</span> Encoder 驗證誤差。<br>
+      BLE 延遲高，回授迴圈不可靠，故採時間預測（同 GaN 版做法）。
+    </div>
+
+    <div class="speed-row"><label>位置模式轉速</label>
+      <input type="range" id="posRpm" min="50" max="1000" value="200" step="50"
+        oninput="posRpmVal.textContent=this.value"><span class="sv" id="posRpmVal">200</span><span class="su">RPM</span></div>
+
+    <div style="height:1px;background:var(--line);margin:12px 0"></div>
+
+    <!-- 直線 -->
+    <div style="font-size:.74rem;color:var(--accent);margin-bottom:6px">🡹 直線移動（兩輪同步）</div>
+    <div class="row" style="margin-bottom:8px">
+      <label style="width:70px">圈數</label>
+      <input id="posRot" type="number" value="1" step="0.25" style="width:80px">
+      <button class="btn b-blue" style="flex:1" onclick="goStraight()">▶ 前進</button>
+      <button class="btn b-amber" style="flex:1" onclick="goStraight(true)">◀ 後退</button>
+    </div>
+    <div class="grid4" style="margin-bottom:12px">
+      <button class="btn b-gray" style="font-size:.7rem" onclick="quickStraight(0.25)">¼圈</button>
+      <button class="btn b-gray" style="font-size:.7rem" onclick="quickStraight(0.5)">½圈</button>
+      <button class="btn b-gray" style="font-size:.7rem" onclick="quickStraight(1)">1圈</button>
+      <button class="btn b-gray" style="font-size:.7rem" onclick="quickStraight(5)">5圈</button>
+    </div>
+
+    <!-- 旋轉 -->
+    <div style="font-size:.74rem;color:var(--accent);margin-bottom:6px">🔄 原地旋轉（兩輪反向）</div>
+    <div class="row" style="margin-bottom:8px">
+      <label style="width:70px">圈數</label>
+      <input id="spinRot" type="number" value="0.5" step="0.25" style="width:80px">
+      <button class="btn b-blue" style="flex:1" onclick="goSpin(false)">↺ 左旋</button>
+      <button class="btn b-amber" style="flex:1" onclick="goSpin(true)">↻ 右旋</button>
+    </div>
+
+    <div class="grid2" style="margin-bottom:10px">
+      <button class="btn b-red" onclick="abortPos()">■ 中止</button>
+      <button class="btn b-gray" onclick="zeroPos()">⊙ 位置歸零</button>
+    </div>
+
+    <!-- 位置顯示 -->
+    <div class="st-grid">
+      <div class="st-panel">
+        <h4>左輪位置</h4>
+        <div class="st-item"><span class="sl">當前</span><span class="sv2" id="pLcur">--</span></div>
+        <div class="st-item"><span class="sl">目標</span><span class="sv2" id="pLtgt">--</span></div>
+        <div class="st-item"><span class="sl">誤差</span><span class="sv2" id="pLerr">--</span></div>
+        <div class="raw" id="pLraw">-- cnt</div>
+      </div>
+      <div class="st-panel">
+        <h4>右輪位置</h4>
+        <div class="st-item"><span class="sl">當前</span><span class="sv2" id="pRcur">--</span></div>
+        <div class="st-item"><span class="sl">目標</span><span class="sv2" id="pRtgt">--</span></div>
+        <div class="st-item"><span class="sl">誤差</span><span class="sv2" id="pRerr">--</span></div>
+        <div class="raw" id="pRraw">-- cnt</div>
+      </div>
+    </div>
+    <button class="btn b-gray" style="width:100%;margin-top:8px;font-size:.74rem" onclick="readEnc()">
+      📖 讀取 Encoder 位置（460Dh）
+    </button>
+  </div>
+
+</div>
+
+<!-- ═══════════ 分頁 2：參數 / 除錯 ═══════════ -->
+<div class="pane">
+
+  <!-- 狀態監控 -->
+  <div class="card">
+    <div class="card-title">📊 狀態監控 0000h×16
+      <button class="btn b-gray" style="padding:4px 12px;font-size:.68rem" id="btnPoll" onclick="togglePoll()">▶ 開始</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <label>輪詢間隔</label>
+      <select id="pollMs" style="flex:1">
+        <option value="500">500 ms</option><option value="1000" selected>1 秒</option>
+        <option value="2000">2 秒</option><option value="5000">5 秒</option>
+      </select>
+    </div>
+    <div class="st-grid">
+      <div class="st-panel">
+        <h4>左輪</h4>
+        <div class="st-item"><span class="sl">狀態</span><span class="sv2 stop" id="sL0">—</span></div>
+        <div class="st-item"><span class="sl">指令轉速</span><span class="sv2" id="sL1">—</span></div>
+        <div class="st-item"><span class="sl">實際轉速</span><span class="sv2" id="sL2">—</span></div>
+        <div class="st-item"><span class="sl">Alarm</span><span class="sv2" id="sL3">—</span></div>
+        <div class="st-item"><span class="sl">轉向</span><span class="sv2" id="sL4">—</span></div>
+        <div class="st-item"><span class="sl">BUS電壓</span><span class="sv2" id="sL9">—</span></div>
+        <div class="st-item"><span class="sl">輸出電流</span><span class="sv2" id="sLA">—</span></div>
+        <div class="st-item"><span class="sl">輸出Duty</span><span class="sv2" id="sLB">—</span></div>
+        <div class="raw" id="sLraw">等待資料…</div>
+      </div>
+      <div class="st-panel">
+        <h4>右輪</h4>
+        <div class="st-item"><span class="sl">狀態</span><span class="sv2 stop" id="sR0">—</span></div>
+        <div class="st-item"><span class="sl">指令轉速</span><span class="sv2" id="sR1">—</span></div>
+        <div class="st-item"><span class="sl">實際轉速</span><span class="sv2" id="sR2">—</span></div>
+        <div class="st-item"><span class="sl">Alarm</span><span class="sv2" id="sR3">—</span></div>
+        <div class="st-item"><span class="sl">轉向</span><span class="sv2" id="sR4">—</span></div>
+        <div class="st-item"><span class="sl">BUS電壓</span><span class="sv2" id="sR9">—</span></div>
+        <div class="st-item"><span class="sl">輸出電流</span><span class="sv2" id="sRA">—</span></div>
+        <div class="st-item"><span class="sl">輸出Duty</span><span class="sv2" id="sRB">—</span></div>
+        <div class="raw" id="sRraw">等待資料…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 參數讀寫 -->
+  <div class="card" style="border:1px solid #4a2010">
+    <div class="card-title">🛠 參數讀寫（位址已修正）</div>
+    <div class="note" style="margin-bottom:8px">
+      位址 = <b class="mono">群組×256 + (編號−1)</b>
+      例：01-11 → <span class="mono">010Ah</span>、02-03 → <span class="mono">0202h</span>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <select id="pSide" style="width:76px"><option value="L">左輪</option><option value="R">右輪</option></select>
+      <span style="font-size:.72rem;color:var(--muted)">群組</span>
+      <input id="pGroup" type="number" value="1" min="0" max="99" style="width:56px">
+      <button class="btn b-teal" style="flex:1;padding:6px 0;font-size:.74rem" onclick="scanGroup()">📖 讀 16 筆</button>
+    </div>
+    <div class="raw" id="scanOut" style="min-height:60px;max-height:220px;overflow-y:auto;font-size:.62rem">尚未讀取</div>
+
+    <div style="height:1px;background:#2a1a0a;margin:10px 0"></div>
+    <div class="row">
+      <span style="font-size:.72rem;color:var(--muted)">寫入</span>
+      <input id="wGroup" type="number" value="1" min="0" max="99" style="width:52px">
+      <span style="color:var(--muted)">-</span>
+      <input id="wNum" type="number" value="11" min="1" max="99" style="width:52px">
+      <span style="font-size:.72rem;color:var(--muted)">值</span>
+      <input id="wVal" type="number" value="0" style="width:72px">
+      <button class="btn b-red" style="padding:6px 14px;font-size:.74rem" onclick="writeParam()">✏️ 寫入</button>
+    </div>
+    <div class="tiny" id="wCalc" style="margin-top:6px;text-align:left">—</div>
+  </div>
+
+  <!-- 手動測試 -->
+  <div class="card" style="border:1px solid #2a4030">
+    <div class="card-title">🔧 手動指令測試</div>
+    <div class="row" style="margin-bottom:8px">
+      <select id="tSide" style="width:76px"><option value="L">左輪</option><option value="R">右輪</option></select>
+      <span style="font-size:.72rem;color:var(--muted)">RPM</span>
+      <input id="tRpm" type="number" value="300" step="50" style="width:76px">
+      <button class="btn b-teal" style="flex:1;padding:7px 0;font-size:.74rem" onclick="mSetRpm()">① 送速度 0300h</button>
+    </div>
+    <div class="grid3">
+      <button class="btn b-green" onclick="mRun(false)">② CW</button>
+      <button class="btn b-blue"  onclick="mRun(true)">② CCW</button>
+      <button class="btn b-red"   onclick="mStop()">③ STOP</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span style="font-size:.72rem;color:var(--muted)">任意位址</span>
+      <input id="rAddr" value="0300" maxlength="4" style="width:66px;font-family:monospace" placeholder="hex">
+      <span style="font-size:.72rem;color:var(--muted)">h　值</span>
+      <input id="rVal" type="number" value="0" style="width:76px">
+      <button class="btn b-gray" style="padding:6px 14px;font-size:.74rem" onclick="rawWrite()">寫入</button>
+    </div>
+    <div class="tiny" id="tOut" style="margin-top:8px">等待測試…</div>
+  </div>
+
+</div>
+
+<div id="log"><span class="ok">[系統] V1 就緒 — 暫存器已對照 index-local-ai-motor.html</span><br></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  暫存器對照（取自 index-local-ai-motor.html，已實機驗證）
+// ═══════════════════════════════════════════════════════════
+const REG = {
+  NET_IO : 0x1400,   // RUN/STOP/DIR，bit 定義見 BIT
+  SPD    : 0x0300,   // 目標轉速 RPM（舊版誤用 3F08h）
+  ACC    : 0x0400,   // 加速時間 ms
+  DEC    : 0x0408,   // 減速時間 ms
+  ALM_RST: 0x0A00,   // 警報清除 =1（舊版誤用 2501h）
+  STATUS : 0x0000,   // 狀態區起始，讀 16 筆
+  ENC    : 0x460D,   // Encoder 絕對位置 H/L，讀 2 筆
+  CTRL_MODE: 0x010A, // 參數 01-11 控制模式 0=Speed 1=Duty 2=Position
+};
+const BIT = { RUN:0x01, CCW:0x02, ALM:0x04, STOPMODE:0x08 };
+
+const MOTOR_STATUS = {
+  0:['STOP','stop'], 2:['RUN','run'], 3:['EBRAKE','warn'], 4:['FREE','stop'],
+  5:['FAULT','fault'], 6:['INHIBIT','warn'], 7:['SERVO-ON','run'], 8:['POS-KEEP','run']
+};
+const ALARM_TXT = {
+  0:'正常', 1:'過電流', 2:'過載', 3:'Hall 錯誤', 4:'低電壓', 5:'過電壓',
+  6:'過熱', 7:'Encoder 錯誤', 8:'通訊逾時', 9:'STO 觸發'
+};
+
+// ═══════════════════════════════════════════════════════════
+//  Modbus 幀組裝（ASCII + RTU 皆支援）
+// ═══════════════════════════════════════════════════════════
+const hx = v => v.toString(16).toUpperCase().padStart(2,'0');
+function isRTU(){ return document.getElementById('proto').value === 'rtu'; }
+
+function crc16(bytes){
+  let c = 0xFFFF;
+  for (const b of bytes){ c ^= b; for (let i=0;i<8;i++) c = (c&1) ? (c>>>1)^0xA001 : c>>>1; }
+  return c;
+}
+function asciiFrame(payload){            // payload = number[]
+  const sum = payload.reduce((a,b)=>(a+b)&0xFF, 0);
+  const lrc = ((~sum)+1)&0xFF;
+  return ':' + payload.map(hx).join('') + hx(lrc) + '\r\n';
+}
+function rtuFrame(payload){
+  const c = crc16(payload);
+  return Uint8Array.from([...payload, c&0xFF, (c>>8)&0xFF]);
+}
+// FC06 寫單一暫存器
+function fc06(id, addr, val){
+  const v = val < 0 ? (0x10000 + val) & 0xFFFF : val & 0xFFFF;
+  const p = [id&0xFF, 0x06, (addr>>8)&0xFF, addr&0xFF, (v>>8)&0xFF, v&0xFF];
+  return isRTU() ? rtuFrame(p) : asciiFrame(p);
+}
+// FC03 讀保持暫存器
+function fc03(id, addr, qty){
+  const p = [id&0xFF, 0x03, (addr>>8)&0xFF, addr&0xFF, (qty>>8)&0xFF, qty&0xFF];
+  return isRTU() ? rtuFrame(p) : asciiFrame(p);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BLE 狀態
+// ═══════════════════════════════════════════════════════════
+const W = {
+  L:{ dev:null, tx:null, rxStr:'', rxBuf:new Uint8Array(512), rxLen:0,
+      q:[], busy:false, lastRpm:null, lastDir:null,
+      encH:0, encL:0, zero:0, lastFC03:0, scan:{} },
+  R:{ dev:null, tx:null, rxStr:'', rxBuf:new Uint8Array(512), rxLen:0,
+      q:[], busy:false, lastRpm:null, lastDir:null,
+      encH:0, encL:0, zero:0, lastFC03:0, scan:{} }
+};
+let running=false, sendTimer=null, pollTimer=null;
+let joyX=0, joyY=0;
+let posActive=false, posAbort=false;
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function log(m, c=''){
+  const el=$('log'), t=new Date().toLocaleTimeString('zh-TW');
+  el.innerHTML += `<span class="${c}">[${t}] ${m}</span><br>`;
+  el.scrollTop = el.scrollHeight;
+}
+const nodeId = s => parseInt($(s==='L'?'nodeL':'nodeR').value) || 17;
+const encRes = () => parseInt($('encRes').value) || 5000;
+const rightRev = () => $('rightRev').value === '1';
+
+// ═══════════════════════════════════════════════════════════
+//  傳送佇列
+// ═══════════════════════════════════════════════════════════
+function enq(side, frame, meta){
+  const w = W[side];
+  if (!w.tx) return Promise.resolve();
+  if (meta && meta.fc03Addr !== undefined) w.lastFC03 = meta.fc03Addr;
+  w.q.push(frame);
+  if (!w.busy) pump(side);
+  return Promise.resolve();
+}
+async function pump(side){
+  const w = W[side];
+  if (w.busy || !w.q.length) return;
+  w.busy = true;
+  while (w.q.length){
+    const f = w.q.shift();
+    const bytes = (f instanceof Uint8Array) ? f : new TextEncoder().encode(f);
+    try{
+      for (let i=0;i<bytes.length;i+=20){
+        const chunk = bytes.slice(i, i+20);
+        if (w.tx.properties.writeWithoutResponse) await w.tx.writeValueWithoutResponse(chunk);
+        else await w.tx.writeValueWithResponse(chunk);
+        if (bytes.length > 20) await sleep(20);
+      }
+      const disp = (f instanceof Uint8Array)
+        ? Array.from(f).map(hx).join(' ') : String(f).trim();
+      $('tx'+side).textContent = disp;
+    }catch(e){ log(`[${side}] TX錯誤: ${e.message}`,'err'); }
+    await sleep(25);
+  }
+  w.busy = false;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  連線
+// ═══════════════════════════════════════════════════════════
+async function connectWheel(side){
+  if (!navigator.bluetooth){ log('需 Chrome/Edge 才支援 Web Bluetooth','err'); return; }
+  setBadge(side,'搜尋中…','');
+  try{
+    const svc = $('svcUUID').value.trim().toLowerCase();
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[svc] });
+    W[side].dev = dev;
+    dev.addEventListener('gattserverdisconnected', ()=>onDisc(side));
+    log(`[${side}] 找到: ${dev.name || '(無名稱)'}`);
+    const server = await dev.gatt.connect();
+    const service = await server.getPrimaryService(svc);
+    for (const c of await service.getCharacteristics()){
+      const p = c.properties;
+      if (p.write || p.writeWithoutResponse) W[side].tx = c;
+      if (p.notify || p.indicate){
+        await c.startNotifications();
+        c.addEventListener('characteristicvaluechanged', e=>onRx(side,e));
+      }
+    }
+    if (!W[side].tx) throw new Error('找不到可寫入 Characteristic');
+    setBadge(side,'已連線','on'); setBtns(side,true);
+    log(`[${side}] 連線成功`,'ok');
+  }catch(e){ setBadge(side,'失敗','err'); log(`[${side}] ${e.message}`,'err'); }
+}
+function disconnect(side){ if (W[side].dev?.gatt?.connected) W[side].dev.gatt.disconnect(); onDisc(side); }
+function onDisc(side){
+  const w=W[side]; w.tx=null; w.lastRpm=null; w.lastDir=null;
+  setBadge(side,'未連線',''); setBtns(side,false); log(`[${side}] 中斷連線`);
+}
+function setBadge(side,t,c){ const e=$('badge'+side); e.textContent=t; e.className='badge '+c; }
+function setBtns(side,on){ $('btn'+side).disabled=on; $('btn'+side+'dc').disabled=!on; }
+
+// ═══════════════════════════════════════════════════════════
+//  接收 / 解析
+// ═══════════════════════════════════════════════════════════
+function onRx(side, ev){
+  const bytes = new Uint8Array(ev.target.value.buffer);
+  if (isRTU()) rxRTU(side, bytes);
+  else rxASCII(side, bytes);
+}
+function rxASCII(side, bytes){
+  const w = W[side];
+  w.rxStr += new TextDecoder().decode(bytes);
+  let i;
+  while ((i = w.rxStr.indexOf('\n')) !== -1){
+    const line = w.rxStr.slice(0, i+1).trim();
+    w.rxStr = w.rxStr.slice(i+1);
+    if (!line.startsWith(':')) continue;
+    const hex = line.slice(1);
+    const b = [];
+    for (let k=0;k+1<hex.length;k+=2) b.push(parseInt(hex.substr(k,2),16));
+    if (b.length >= 3) parseReply(side, b.slice(0,-1));   // 去掉 LRC
+  }
+}
+function rxRTU(side, bytes){
+  const w = W[side];
+  for (const b of bytes){ if (w.rxLen < w.rxBuf.length) w.rxBuf[w.rxLen++] = b; }
+  // 依 FC 判斷長度切幀
+  while (w.rxLen >= 5){
+    const fc = w.rxBuf[1];
+    let need;
+    if (fc === 0x03) need = 3 + w.rxBuf[2] + 2;
+    else if (fc === 0x06) need = 8;
+    else if (fc & 0x80)   need = 5;
+    else { w.rxLen = 0; return; }
+    if (w.rxLen < need) return;
+    parseReply(side, Array.from(w.rxBuf.slice(0, need-2)));
+    w.rxBuf.copyWithin(0, need, w.rxLen);
+    w.rxLen -= need;
+  }
+}
+// b = [id, fc, ...data]（不含 LRC / CRC）
+function parseReply(side, b){
+  const fc = b[1];
+  if (fc === 0x06){
+    const addr = (b[2]<<8)|b[3], val = (b[4]<<8)|b[5];
+    log(`[${side}] ✓ ${hx(b[2])}${hx(b[3])}h = ${val}`,'ok');
+    if (addr === REG.CTRL_MODE) showCtrlMode(side, val);
+  }
+  else if (fc === 0x03){
+    const n = b[2] >> 1, regs = [];
+    for (let i=0;i<n;i++) regs.push((b[3+i*2]<<8)|b[4+i*2]);
+    routeFC03(side, W[side].lastFC03, regs);
+  }
+  else if (fc & 0x80){
+    const ex = ['','非法功能碼','非法位址','非法資料值','裝置故障','已接受','忙碌中'][b[2]] || `例外${b[2]}`;
+    log(`[${side}] ✗ Modbus 例外: ${ex}`,'err');
+  }
+}
+function routeFC03(side, addr, regs){
+  if (addr === REG.STATUS && regs.length >= 12){ showStatus(side, regs); return; }
+  if (addr === REG.ENC && regs.length >= 2){
+    W[side].encH = regs[0]; W[side].encL = regs[1];
+    updatePosUI(side); return;
+  }
+  if (addr === REG.CTRL_MODE){ showCtrlMode(side, regs[0]); return; }
+  // 其餘視為參數掃描
+  const w = W[side];
+  regs.forEach((v,i)=>{ w.scan[addr+i] = v; });
+  renderScan();
+  log(`[${side}] 收到 ${regs.length} 筆參數`,'ok');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  狀態顯示
+// ═══════════════════════════════════════════════════════════
+function showStatus(side, r){
+  const st = MOTOR_STATUS[r[0]] || [`?${r[0]}`,'warn'];
+  const set = (k,txt,cls)=>{ const e=$('s'+side+k); if(!e) return;
+    e.textContent = txt; e.className = 'sv2 ' + (cls||''); };
+  set('0', st[0], st[1]);
+  set('1', `${r[1]} RPM`);
+  set('2', `${r[2]} RPM`, r[2]!==0 ? 'run' : '');
+  set('3', r[3]===0 ? '✓ 正常' : `${r[3]} ${ALARM_TXT[r[3]]||'未知'}`, r[3]===0?'run':'fault');
+  set('4', r[4]===0 ? 'CW' : 'CCW');
+  set('9', `${(r[9]*0.01).toFixed(2)} V`);
+  set('A', `${(r[10]*0.01).toFixed(2)} A`);
+  set('B', `${(r[11]*0.1).toFixed(1)} %`);
+  $('s'+side+'raw').textContent =
+    r.map((v,i)=>`${hx(i)}:${v.toString(16).toUpperCase().padStart(4,'0')}`).join(' ');
+  if (r[3] !== 0 && W[side]._alm !== r[3]){
+    log(`[${side}] ⚠ Alarm ${r[3]} — ${ALARM_TXT[r[3]]||'未知'}`,'err');
+    W[side]._alm = r[3];
+  }
+}
+function togglePoll(){
+  if (pollTimer){
+    clearInterval(pollTimer); pollTimer=null;
+    $('btnPoll').textContent='▶ 開始'; log('[監控] 停止');
+  } else {
+    const ms = parseInt($('pollMs').value)||1000;
+    doPoll(); pollTimer = setInterval(doPoll, ms);
+    $('btnPoll').textContent='■ 停止'; log('[監控] 輪詢 0000h×16','ok');
+  }
+}
+async function doPoll(){
+  if (posActive) return;                     // 位置控制中讓路
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    await enq(s, fc03(nodeId(s), REG.STATUS, 16), { fc03Addr: REG.STATUS });
+    await sleep(40);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  控制模式 01-11 / 警報 / 加減速
+// ═══════════════════════════════════════════════════════════
+async function setCtrlMode(mode){
+  const names = ['Speed','Duty','Position'];
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    await enq(s, fc06(nodeId(s), REG.CTRL_MODE, mode));
+    await sleep(180);
+    log(`[${s}] 01-11 (010Ah) = ${mode} → ${names[mode]}`,'tx');
+  }
+  $('modeStat').textContent = `已寫入 01-11 = ${mode} (${names[mode]})，請按「讀取現況」確認`;
+}
+async function readCtrlMode(){
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    await enq(s, fc03(nodeId(s), REG.CTRL_MODE, 1), { fc03Addr: REG.CTRL_MODE });
+    await sleep(250);
+  }
+}
+function showCtrlMode(side, v){
+  const names = {0:'Speed ✅',1:'Duty',2:'Position ⚠ 速度指令無效'};
+  const prev = $('modeStat').textContent;
+  const tag = `${side}:01-11=${v} (${names[v]||'?'})`;
+  $('modeStat').textContent = prev.includes('尚未') || prev.includes('已寫入')
+    ? tag : (prev.includes(side+':') ? prev.replace(new RegExp(side+':[^|]*'), tag) : prev+' | '+tag);
+  $('modeStat').style.color = v===0 ? '#66bb6a' : '#ffa726';
+  log(`[${side}] 01-11 = ${v} → ${names[v]||'?'}`, v===0?'ok':'err');
+}
+async function clearAlarm(){
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    await enq(s, fc06(nodeId(s), REG.NET_IO, 0));      await sleep(120);
+    await enq(s, fc06(nodeId(s), REG.ALM_RST, 1));     await sleep(200);
+    await enq(s, fc06(nodeId(s), REG.NET_IO, 0));
+    log(`[${s}] 警報清除 0A00h = 1`,'ok');
+    W[s]._alm = null;
+  }
+}
+async function writeAccDec(){
+  const acc = parseInt($('accMs').value), dec = parseInt($('decMs').value);
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    await enq(s, fc06(nodeId(s), REG.ACC, acc)); await sleep(150);
+    await enq(s, fc06(nodeId(s), REG.DEC, dec)); await sleep(150);
+    log(`[${s}] 0400h=${acc}ms 0408h=${dec}ms`,'tx');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  馬達基本動作
+// ═══════════════════════════════════════════════════════════
+const setRpm = (s, rpm) => enq(s, fc06(nodeId(s), REG.SPD, Math.abs(Math.round(rpm))));
+const runCW  = s => enq(s, fc06(nodeId(s), REG.NET_IO, BIT.RUN));
+const runCCW = s => enq(s, fc06(nodeId(s), REG.NET_IO, BIT.RUN|BIT.CCW));
+const runDir = (s, ccw) => enq(s, fc06(nodeId(s), REG.NET_IO, BIT.RUN | (ccw?BIT.CCW:0)));
+const stopM  = s => enq(s, fc06(nodeId(s), REG.NET_IO, 0));
+
+// 車體「前進為正」→ 馬達方向（右輪反裝時翻轉）
+function motorCCW(side, vehicleForward){
+  const flip = (side === 'R') && rightRev();
+  return flip ? vehicleForward : !vehicleForward;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  差速 + 搖桿迴圈
+// ═══════════════════════════════════════════════════════════
+function calcTargets(){
+  const fwd = parseInt($('fwdSpeed').value), rev = parseInt($('revSpeed').value);
+  const sens = parseInt($('steerSens').value)/100;
+  const f = -joyY, t = joyX*sens;
+  const spd = f >= 0 ? fwd : rev;
+  const lim = Math.max(fwd, rev);
+  const cl = v => Math.max(-lim, Math.min(lim, v));
+  return { L: Math.round(cl(f*spd + t*fwd)), R: Math.round(cl(f*spd - t*fwd)) };
+}
+function startSendLoop(){
+  if (sendTimer) return;
+  sendTimer = setInterval(async ()=>{
+    if (!running || posActive) return;
+    const dead = parseInt($('deadband').value);
+    const tgt = calcTargets();
+    for (const side of ['L','R']){
+      const v = tgt[side], w = W[side];
+      if (Math.abs(v) < dead){
+        if (w.lastDir !== 'STOP'){ await stopM(side); w.lastRpm=0; w.lastDir='STOP'; }
+        setCmdUI(side, 0, 'STOP');
+      } else {
+        const fwdDir = v > 0;
+        const ccw = motorCCW(side, fwdDir);
+        const dir = ccw ? 'CCW' : 'CW';
+        const rpm = Math.abs(v);
+        if (w.lastDir !== dir){
+          if (w.lastDir && w.lastDir !== 'STOP') await stopM(side);
+          await sleep(60);
+          await setRpm(side, rpm); await sleep(50);
+          await runDir(side, ccw);
+          w.lastRpm = rpm; w.lastDir = dir;
+        } else if (Math.abs(rpm - (w.lastRpm||0)) > 20){
+          await setRpm(side, rpm); w.lastRpm = rpm;
+        }
+        setCmdUI(side, v, dir);
+      }
+    }
+  }, 120);
+}
+function setCmdUI(side, rpm, dir){
+  $('cmd'+side).textContent = Math.abs(rpm);
+  const e = $('dir'+side+'b');
+  e.textContent = dir;
+  e.style.color = dir==='STOP' ? '#4a6080' : (dir==='CW' ? '#00e5ff' : '#ff7043');
+}
+function stopSendLoop(){ clearInterval(sendTimer); sendTimer=null; }
+
+async function startAll(){
+  running = true; startSendLoop();
+  $('eOv').style.display='none';
+  log('全車啟動 — 搖桿生效','ok');
+}
+async function emergencyStop(){
+  running = false; posAbort = true; stopSendLoop();
+  joyX=0; joyY=0;
+  for (const s of ['L','R']){ await stopM(s); W[s].lastRpm=0; W[s].lastDir='STOP'; setCmdUI(s,0,'STOP'); }
+  drawJoy(); updateJoyVals();
+  const o=$('eOv'); o.style.display='block'; setTimeout(()=>o.style.display='none',1600);
+  log('緊急煞車！','err');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  位置控制 — 軟體閉環（速度模式 + 時間預測）
+//  移植自 index-local-ai-motor.html softGoToPos()
+// ═══════════════════════════════════════════════════════════
+function getCnt(side){
+  const w = W[side];
+  let v = (w.encH & 0xFFFF) * 65536 + (w.encL & 0xFFFF);
+  if (v > 0x7FFFFFFF) v -= 0x100000000;
+  return v;
+}
+function zeroPos(){
+  for (const s of ['L','R']){ W[s].zero = getCnt(s); updatePosUI(s); }
+  log('📍 位置歸零','pos');
+}
+function readEnc(){
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    enq(s, fc03(nodeId(s), REG.ENC, 2), { fc03Addr: REG.ENC });
+  }
+}
+function updatePosUI(side, tgtCnt){
+  const w = W[side], cur = getCnt(side), res = encRes();
+  $('p'+side+'cur').textContent = ((cur - w.zero)/res).toFixed(3) + ' 圈';
+  $('p'+side+'raw').textContent = cur + ' cnt';
+  if (tgtCnt !== undefined && tgtCnt !== null){
+    $('p'+side+'tgt').textContent = ((tgtCnt - w.zero)/res).toFixed(3) + ' 圈';
+    const err = Math.abs(tgtCnt - cur)/res*360;
+    const e = $('p'+side+'err');
+    e.textContent = err.toFixed(1) + '°';
+    e.className = 'sv2 ' + (err < 30 ? 'run' : 'warn');
+  }
+}
+function setPosBadge(t, c='#8ba0b8'){ const e=$('posBadge'); e.textContent=t; e.style.color=c; }
+function abortPos(){ if (posActive) posAbort = true; }
+
+function quickStraight(r){ $('posRot').value = r; goStraight(false); }
+function goStraight(back){
+  const r = parseFloat($('posRot').value)||0;
+  if (!r) return;
+  const rot = back ? -r : r;
+  runPos({ L: rot, R: rot }, `直線 ${rot > 0 ? '前進' : '後退'} ${Math.abs(rot)} 圈`);
+}
+function goSpin(right){
+  const r = parseFloat($('spinRot').value)||0;
+  if (!r) return;
+  // 右旋：左輪前進、右輪後退
+  const s = right ? 1 : -1;
+  runPos({ L: r*s, R: -r*s }, `原地${right?'右':'左'}旋 ${r} 圈`);
+}
+
+// wheelRot = { L: 圈數(車體前進為正), R: 圈數 }
+async function runPos(wheelRot, label){
+  if (!W.L.tx && !W.R.tx){ log('請先連接 BLE','err'); return; }
+  if (posActive){ posAbort = true; await sleep(400); }
+  posActive = true; posAbort = false;
+  running = false; stopSendLoop();
+  clearInterval(pollTimer); pollTimer = null;
+
+  const SPEED  = Math.max(50, parseInt($('posRpm').value)||200);
+  const MAXRPM = 3000;
+  const ACC = parseInt($('accMs').value)||1000;
+  const DEC = parseInt($('decMs').value)||2000;
+  const res = encRes();
+
+  // 依實際轉速比例換算真實加減速時間（同 GaN 版公式）
+  const cps    = SPEED/60*res;
+  const accMs  = Math.round(ACC * SPEED / MAXRPM);
+  const decMs  = Math.round(DEC * SPEED / MAXRPM);
+  const accD   = cps*accMs/1000/2;
+  const decD   = cps*decMs/1000/2;
+
+  setPosBadge('▶ 運行中','#40c4ff');
+  log(`📍 ${label} @ ${SPEED}RPM｜acc=${accMs}ms dec=${decMs}ms`,'pos');
+
+  // 先讀起點
+  readEnc(); await sleep(500);
+
+  const plan = {};
+  let maxWait = 0;
+  for (const s of ['L','R']){
+    if (!W[s].tx) continue;
+    const rot = wheelRot[s] || 0;
+    const delta = Math.round(rot * res);
+    const abs = Math.abs(delta);
+    const cruiseD  = Math.max(0, abs - accD - decD);
+    const cruiseMs = Math.round(cruiseD / cps * 1000);
+    const wait = accMs + cruiseMs;
+    const start = getCnt(s);
+    plan[s] = { delta, wait, ccw: motorCCW(s, rot > 0), start, target: start + delta };
+    maxWait = Math.max(maxWait, wait);
+    updatePosUI(s, plan[s].target);
+  }
+
+  try{
+    // 同時啟動兩輪
+    for (const s of ['L','R']){
+      if (!plan[s] || plan[s].delta === 0) continue;
+      await setRpm(s, SPEED); await sleep(40);
+    }
+    for (const s of ['L','R']){
+      if (!plan[s] || plan[s].delta === 0) continue;
+      await runDir(s, plan[s].ccw);
+    }
+
+    // 各輪到時間就停（圈數不同時會先後停）
+    const t0 = Date.now();
+    const stopped = { L:false, R:false };
+    while (Date.now()-t0 < maxWait && !posAbort){
+      await sleep(80);
+      const el = Date.now()-t0;
+      for (const s of ['L','R']){
+        if (plan[s] && !stopped[s] && el >= plan[s].wait){
+          await stopM(s); stopped[s] = true;
+        }
+      }
+    }
+    for (const s of ['L','R']) if (plan[s] && !stopped[s]) await stopM(s);
+    await sleep(decMs + 250);
+
+  } finally {
+    for (const s of ['L','R']) if (W[s].tx) await stopM(s);
+    await sleep(150);
+    readEnc(); await sleep(600);
+
+    let msg = [];
+    for (const s of ['L','R']){
+      if (!plan[s]) continue;
+      updatePosUI(s, plan[s].target);
+      const err = Math.abs(plan[s].target - getCnt(s))/res*360;
+      msg.push(`${s} 誤差${err.toFixed(0)}°`);
+    }
+    setPosBadge(posAbort ? '■ 中止' : '✓ 完成', posAbort ? '#ffa726' : '#66bb6a');
+    log(`📍 ${posAbort?'中止':'完成'}：${msg.join('  ')}`, posAbort?'err':'ok');
+    posActive = false;
+    for (const s of ['L','R']){ W[s].lastDir='STOP'; W[s].lastRpm=0; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  參數讀寫（位址 = 群組×256 + 編號−1）
+// ═══════════════════════════════════════════════════════════
+const paramAddr = (g, n) => (g & 0xFF)*256 + (n - 1);
+const PARAM_NAME = {
+  '1-6':'Encoder解析度', '1-11':'控制模式 0=Spd 1=Duty 2=Pos',
+  '1-12':'速度控制OP Mode', '1-13':'位置控制OP Mode',
+};
+function scanGroup(){
+  const side = $('pSide').value;
+  if (!W[side].tx){ log('請先連接 BLE','err'); return; }
+  const g = parseInt($('pGroup').value)||1;
+  const base = paramAddr(g, 1);
+  W[side].scan = {};
+  $('scanOut').textContent = '讀取中…';
+  enq(side, fc03(nodeId(side), base, 16), { fc03Addr: base });
+  log(`[${side}] 讀取 ${String(g).padStart(2,'0')}-01 ~ 16（${base.toString(16).toUpperCase().padStart(4,'0')}h）`,'tx');
+}
+function renderScan(){
+  const side = $('pSide').value, g = parseInt($('pGroup').value)||1;
+  const w = W[side];
+  let h = '';
+  for (let n=1;n<=16;n++){
+    const a = paramAddr(g, n);
+    const v = w.scan[a];
+    const key = `${g}-${n}`;
+    const nm = PARAM_NAME[key] ? ` ${PARAM_NAME[key]}` : '';
+    h += `<div style="display:flex;justify-content:space-between">
+      <span style="color:#3a6080">${a.toString(16).toUpperCase().padStart(4,'0')}h ${String(g).padStart(2,'0')}-${String(n).padStart(2,'0')}${nm}</span>
+      <span style="color:${v===undefined?'#2a4060':'#00e5ff'};font-weight:700">${v===undefined?'—':v}</span></div>`;
+  }
+  $('scanOut').innerHTML = h;
+}
+function writeParam(){
+  const side = $('pSide').value;
+  if (!W[side].tx){ log('請先連接 BLE','err'); return; }
+  const g = parseInt($('wGroup').value)||1, n = parseInt($('wNum').value)||1;
+  const v = parseInt($('wVal').value)||0;
+  const a = paramAddr(g, n);
+  $('wCalc').textContent = `${String(g).padStart(2,'0')}-${String(n).padStart(2,'0')} → ${a.toString(16).toUpperCase().padStart(4,'0')}h = ${v}`;
+  log(`[${side}] 寫入 ${String(g).padStart(2,'0')}-${String(n).padStart(2,'0')} (${a.toString(16).toUpperCase()}h) = ${v}`,'tx');
+  enq(side, fc06(nodeId(side), a, v));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  手動測試
+// ═══════════════════════════════════════════════════════════
+const tSide = () => $('tSide').value;
+function mSetRpm(){
+  const s=tSide(), r=parseInt($('tRpm').value)||300;
+  $('tOut').textContent = `TX [${s}] 0300h = ${r} RPM`;
+  log(`[手動][${s}] 0300h = ${r} RPM`,'tx'); setRpm(s, r);
+}
+function mRun(ccw){
+  const s=tSide();
+  $('tOut').textContent = `TX [${s}] 1400h = ${ccw?3:1} (${ccw?'CCW':'CW'})`;
+  log(`[手動][${s}] 1400h = ${ccw?3:1} ${ccw?'CCW':'CW'}`,'tx'); runDir(s, ccw);
+}
+function mStop(){
+  const s=tSide();
+  $('tOut').textContent = `TX [${s}] 1400h = 0 (STOP)`;
+  log(`[手動][${s}] 1400h = 0 STOP`,'tx'); stopM(s);
+}
+function rawWrite(){
+  const s=tSide();
+  const a=parseInt($('rAddr').value||'0',16), v=parseInt($('rVal').value)||0;
+  $('tOut').textContent = `TX [${s}] ${a.toString(16).toUpperCase().padStart(4,'0')}h = ${v}`;
+  log(`[手動][${s}] ${a.toString(16).toUpperCase()}h = ${v}`,'tx');
+  enq(s, fc06(nodeId(s), a, v));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  分頁 / 搖桿
+// ═══════════════════════════════════════════════════════════
+function showTab(i, el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelectorAll('.pane')[i].classList.add('on');
+}
+
+const jc = $('jCanvas'), jx = jc.getContext('2d');
+const CX = jc.width/2, CY = jc.height/2, JR = 95, KR = 28, DZ = .05;
+function drawJoy(){
+  jx.clearRect(0,0,jc.width,jc.height);
+  jx.beginPath(); jx.arc(CX,CY,JR,0,7); jx.fillStyle='#12202e'; jx.fill();
+  jx.strokeStyle='#2a4060'; jx.lineWidth=2; jx.stroke();
+  jx.strokeStyle='#1e3450'; jx.lineWidth=1;
+  jx.beginPath(); jx.moveTo(CX-JR+8,CY); jx.lineTo(CX+JR-8,CY); jx.stroke();
+  jx.beginPath(); jx.moveTo(CX,CY-JR+8); jx.lineTo(CX,CY+JR-8); jx.stroke();
+  jx.font='11px sans-serif'; jx.textAlign='center'; jx.textBaseline='middle'; jx.fillStyle='#1e3a50';
+  jx.fillText('▲ 前進',CX,CY-JR+14); jx.fillText('▼ 後退',CX,CY+JR-10);
+  jx.fillText('◀ 左轉',CX-JR+22,CY); jx.fillText('右轉 ▶',CX+JR-22,CY);
+  const kx=CX+joyX*JR, ky=CY+joyY*JR;
+  const g=jx.createRadialGradient(kx,ky,2,kx,ky,KR+12);
+  g.addColorStop(0,'rgba(0,229,255,.28)'); g.addColorStop(1,'rgba(0,229,255,0)');
+  jx.beginPath(); jx.arc(kx,ky,KR+12,0,7); jx.fillStyle=g; jx.fill();
+  const k=jx.createRadialGradient(kx-5,ky-5,2,kx,ky,KR);
+  k.addColorStop(0,'#40e0d0'); k.addColorStop(1,'#007a70');
+  jx.beginPath(); jx.arc(kx,ky,KR,0,7); jx.fillStyle=k; jx.fill();
+  jx.strokeStyle='#00e5ff'; jx.lineWidth=2; jx.stroke();
+}
+function updateJoyVals(){
+  const tp=Math.round(-joyY*100), sp=Math.round(joyX*100);
+  const t=$('jvT'), s=$('jvS'), a=$('dirArrow');
+  t.textContent=(tp>=0?'+':'')+tp; t.className=tp<0?'neg':'';
+  s.textContent=(sp>=0?'+':'')+sp; s.className=sp<0?'neg':'';
+  if (Math.abs(tp)<5 && Math.abs(sp)<5) a.textContent='•';
+  else if (Math.abs(tp)>=Math.abs(sp)) a.textContent = tp>=0?'▲':'▼';
+  else a.textContent = sp>=0?'▶':'◀';
+  a.style.color = (tp<0||sp<0)?'#ff7043':((tp>0||sp>0)?'#00e5ff':'#8ba0b8');
+}
+function jpos(e){ const r=jc.getBoundingClientRect(); const s=e.touches?e.touches[0]:e;
+  return [s.clientX-r.left, s.clientY-r.top]; }
+function applyPos(px,py){
+  let dx=(px-CX)/JR, dy=(py-CY)/JR;
+  const d=Math.hypot(dx,dy); if (d>1){ dx/=d; dy/=d; }
+  if (Math.abs(dx)<DZ) dx=0; if (Math.abs(dy)<DZ) dy=0;
+  joyX=dx; joyY=dy; drawJoy(); updateJoyVals();
+}
+let drag=false;
+jc.addEventListener('mousedown', e=>{ drag=true; applyPos(...jpos(e)); });
+jc.addEventListener('mousemove', e=>{ if(drag) applyPos(...jpos(e)); });
+addEventListener('mouseup', ()=>{ if(drag){ drag=false; snap(); } });
+jc.addEventListener('touchstart', e=>{ e.preventDefault(); drag=true; applyPos(...jpos(e)); },{passive:false});
+jc.addEventListener('touchmove',  e=>{ e.preventDefault(); if(drag) applyPos(...jpos(e)); },{passive:false});
+jc.addEventListener('touchend',   e=>{ e.preventDefault(); drag=false; snap(); },{passive:false});
+function snap(){
+  const sx=joyX, sy=joyY; let i=0;
+  const id=setInterval(()=>{ i++;
+    joyX=sx*(1-i/8); joyY=sy*(1-i/8); drawJoy(); updateJoyVals();
+    if(i>=8){ joyX=0; joyY=0; drawJoy(); updateJoyVals(); clearInterval(id); }
+  },16);
+}
+
+drawJoy(); updateJoyVals();
+</script>
+</body>
+</html>
