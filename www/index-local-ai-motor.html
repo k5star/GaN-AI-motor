@@ -424,6 +424,24 @@
                     <div class="text-slate-500">目標：<span id="posTgtDisp" class="text-emerald-400 font-mono">--</span><span class="text-slate-600"> °</span></div>
                 </div>
                 <div class="text-[9px] text-slate-600 mt-1" id="posCurCnt"></div>
+
+                <!-- ══ 圓形角度轉盤（輸出端，拖曳綠點設目標，藍針=即時）══ -->
+                <div class="flex flex-col items-center mt-2 pt-2 border-t border-slate-700">
+                    <div class="text-[9px] text-slate-500 mb-1 self-start">🎯 角度轉盤（輸出端，0°在正上、順時針為正）</div>
+                    <canvas id="posDial" width="190" height="190" style="touch-action:none;cursor:pointer"></canvas>
+                    <div class="grid grid-cols-3 gap-1 text-[10px] w-full mt-1 text-center">
+                        <div class="text-slate-500">目標 <span id="dialTgt" class="text-emerald-400 font-mono font-bold">0</span>°</div>
+                        <div class="text-slate-500">目前 <span id="dialCur" class="text-blue-300 font-mono font-bold">--</span>°</div>
+                        <div class="text-slate-500">差 <span id="dialDelta" class="text-amber-300 font-mono font-bold">0</span>°</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1 w-full mt-1">
+                        <button onclick="dialGo()" class="bg-blue-700 hover:bg-blue-600 text-white py-1.5 rounded text-xs font-bold">🎯 轉到目標</button>
+                        <button onclick="dialSetTargetToCurrent()" class="bg-slate-600 hover:bg-slate-500 text-slate-200 py-1.5 rounded text-[11px]">綠點對齊目前</button>
+                    </div>
+                    <div class="text-[9px] text-slate-600 mt-1 text-center leading-relaxed">
+                        拖曳綠點設角度 → 按「轉到目標」走最短路徑。<br>轉完看<span class="text-blue-300">藍針</span>是否落在<span class="text-emerald-400">綠點</span>上即為比對。
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -1769,11 +1787,107 @@ function _updatePosUI(curCounts, targetCounts) {
         const motorDeg = (curCounts - posZeroOffset) / POS_CPR * 360;
         cntEl.textContent = `馬達 ${curCounts} cnt（馬達端 ${motorDeg.toFixed(0)}° ÷${POS_GEAR} = 輸出）`;
     }
+    // 同步圓形轉盤的藍針（輸出端角度 mod 360）
+    const outDeg = counts2outDeg(curCounts - posZeroOffset);
+    dialCurAngle = ((outDeg % 360) + 360) % 360;
+    drawPosDial();
 }
 
 function _setPosStatus(txt, clr='text-slate-500') {
     const el = document.getElementById('posStatusBadge');
     if (el) { el.textContent = txt; el.className = `text-[9px] font-mono ${clr}`; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  圓形角度轉盤（輸出端）
+// ═══════════════════════════════════════════════════════════════════
+let dialTargetAngle = 0;      // 目標角度 0~360（輸出端，相對 ZERO 基準）
+let dialCurAngle    = null;   // 目前角度（由 encoder 換算，mod 360）
+
+// 由 cur → tgt 的最短帶符號角差（-180 ~ +180）
+function angleDelta(cur, tgt) { let d = ((tgt - cur) % 360 + 540) % 360 - 180; return d; }
+
+function drawPosDial() {
+    const c = document.getElementById('posDial'); if (!c) return;
+    const ctx = c.getContext('2d');
+    const W = c.width, H = c.height, cx = W/2, cy = H/2, R = Math.min(cx, cy) - 16;
+    ctx.clearRect(0, 0, W, H);
+    // 外圈
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.fillStyle = '#0f1a28'; ctx.fill();
+    ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 2; ctx.stroke();
+    // 刻度（每 30°，90 的倍數較長）
+    for (let a = 0; a < 360; a += 30) {
+        const rad = (a - 90) * Math.PI/180;
+        const r2 = R - (a % 90 === 0 ? 12 : 7);
+        ctx.beginPath();
+        ctx.moveTo(cx + R*Math.cos(rad), cy + R*Math.sin(rad));
+        ctx.lineTo(cx + r2*Math.cos(rad), cy + r2*Math.sin(rad));
+        ctx.strokeStyle = a % 90 === 0 ? '#4a6a90' : '#243850'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    // 象限標籤（0 在正上、順時針）
+    ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [[0,'0'],[90,'90'],[180,'180'],[270,'270']].forEach(([a,t]) => {
+        const rad = (a - 90) * Math.PI/180, rr = R - 24;
+        ctx.fillText(t, cx + rr*Math.cos(rad), cy + rr*Math.sin(rad));
+    });
+    // 從目前到目標的圓弧（示意移動方向）
+    if (dialCurAngle !== null) {
+        const d = angleDelta(dialCurAngle, dialTargetAngle);
+        const a0 = (dialCurAngle - 90) * Math.PI/180;
+        const a1 = a0 + d * Math.PI/180;
+        ctx.beginPath(); ctx.arc(cx, cy, R - 4, Math.min(a0,a1), Math.max(a0,a1));
+        ctx.strokeStyle = 'rgba(251,191,36,.5)'; ctx.lineWidth = 3; ctx.stroke();
+    }
+    // 藍針：目前角度
+    if (dialCurAngle !== null) {
+        const rad = (dialCurAngle - 90) * Math.PI/180;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + (R-10)*Math.cos(rad), cy + (R-10)*Math.sin(rad));
+        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.stroke();
+    }
+    // 綠點：目標角度
+    const trad = (dialTargetAngle - 90) * Math.PI/180;
+    const tx = cx + (R-5)*Math.cos(trad), ty = cy + (R-5)*Math.sin(trad);
+    ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI*2);
+    ctx.fillStyle = '#22c55e'; ctx.fill();
+    ctx.strokeStyle = '#0f1a28'; ctx.lineWidth = 2; ctx.stroke();
+    // 中心
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fillStyle = '#8ba0b8'; ctx.fill();
+
+    // 數字
+    const tg = document.getElementById('dialTgt'); if (tg) tg.textContent = dialTargetAngle.toFixed(0);
+    const cu = document.getElementById('dialCur'); if (cu) cu.textContent = dialCurAngle === null ? '--' : dialCurAngle.toFixed(0);
+    const de = document.getElementById('dialDelta');
+    if (de) { const d = dialCurAngle === null ? 0 : angleDelta(dialCurAngle, dialTargetAngle);
+              de.textContent = (d >= 0 ? '+' : '') + d.toFixed(0); }
+}
+
+function _posDialFromEvent(e) {
+    const c = document.getElementById('posDial'); if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    const x = p.clientX - rect.left - c.width/2;
+    const y = p.clientY - rect.top  - c.height/2;
+    let a = Math.atan2(y, x) * 180/Math.PI + 90;   // 0° 在正上
+    dialTargetAngle = Math.round(((a % 360) + 360) % 360);
+    drawPosDial();
+}
+
+function dialSetTargetToCurrent() {
+    if (dialCurAngle === null) return;
+    dialTargetAngle = Math.round(dialCurAngle);
+    drawPosDial();
+}
+
+function dialGo() {
+    if (!isConnected) return alert('請先連線');
+    if (dialCurAngle === null) return alert('尚無目前角度：請先連線讓 encoder 讀回位置');
+    const d = angleDelta(dialCurAngle, dialTargetAngle);   // 走最短路徑（-180~180）
+    if (Math.abs(d) < 1) { log('SYS', '🎯 已在目標角度（差 <1°）', 'text-slate-400'); return; }
+    log('SYS', `🎯 轉盤：目前 ${dialCurAngle.toFixed(0)}° → 目標 ${dialTargetAngle}°，移動 ${d.toFixed(0)}°`, 'text-blue-400');
+    softGoToPos(d);
 }
 
 // 位置控制參數
@@ -2289,6 +2403,22 @@ window.addEventListener('DOMContentLoaded', () => {
         } else {
             setTimeout(() => document.getElementById('loginUser').focus(), 100);
         }
+    }
+
+    // 圓形角度轉盤：初始繪製 + 綁定拖曳
+    const dial = document.getElementById('posDial');
+    if (dial) {
+        let dragging = false;
+        const down = e => { dragging = true; _posDialFromEvent(e); e.preventDefault?.(); };
+        const move = e => { if (dragging) { _posDialFromEvent(e); e.preventDefault?.(); } };
+        const up   = () => { dragging = false; };
+        dial.addEventListener('mousedown', down);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        dial.addEventListener('touchstart', down, { passive: false });
+        dial.addEventListener('touchmove', move, { passive: false });
+        dial.addEventListener('touchend', up);
+        drawPosDial();
     }
 });
 
