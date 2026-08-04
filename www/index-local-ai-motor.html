@@ -1633,7 +1633,7 @@ async function writeSpdSrc() {
                  `這會改變驅動器從哪裡取得轉速命令。\n` +
                  `請先在 A_HMI 點選 01-12 確認該數值的意義。`)) return;
 
-    if (currentValues[0] === 2) {      // RUN 中無法寫 01-xx
+    if (currentValues[0] === 2) {
         log('SYS', '⚠ 馬達在 RUN 狀態，先送 STOP', 'text-amber-400');
         await sendCmd(REG.NET_IO, 0x0000);
         await delay(500);
