@@ -472,6 +472,27 @@
                         <button id="oscStartBtn" onclick="startDirectBleSwing()" class="h-11 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-bold">啟動直接擺動</button>
                         <button onclick="stopDirectBleSwing()" class="h-11 bg-red-700 hover:bg-red-600 text-white rounded font-bold">立即停止</button>
                     </div>
+                    <!-- ══ 斷線保護:驅動器通訊逾時 watchdog ══ -->
+                    <div class="mt-3 pt-3 border-t border-amber-800/50">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-amber-300">🛡 斷線保護（防藍牙斷掉暴衝）</span>
+                            <span id="commGuardStatus" class="text-[10px] font-mono text-slate-500">未設定</span>
+                        </div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <label class="text-[11px] text-slate-300">逾時 ms
+                                <input id="commTimeoutMs" type="number" value="500" min="200" max="5000" step="50"
+                                       class="mt-1 w-24 h-9 bg-slate-800 border border-slate-600 rounded px-2 text-sm text-white">
+                            </label>
+                            <button onclick="writeCommProtection()"
+                                    class="flex-1 h-10 bg-amber-700 hover:bg-amber-600 text-white rounded font-bold text-xs">🛡 寫入斷線保護（05-17/05-19/05-21）</button>
+                            <button onclick="readCommProtection()"
+                                    class="h-10 px-3 bg-blue-800/70 hover:bg-blue-700 text-blue-100 rounded text-xs font-bold">📖 讀取</button>
+                        </div>
+                        <div class="text-[10px] text-slate-500 leading-relaxed">
+                            寫入後:藍牙斷線 → 驅動器逾時 → 清虛擬I/O + Alarm → <b class="text-amber-300">馬達自動停</b>，展示品不會被撞。
+                            擺動時網頁每 150ms 送心跳餵狗;斷線即失去心跳觸發保護。
+                        </div>
+                    </div>
                 </div>
                 <!-- 位置顯示 -->
                 <div class="grid grid-cols-2 gap-1 text-[10px]">
@@ -992,6 +1013,7 @@ function parseFC03Response(frame, byteCount) {
     // 單一暫存器回應 (qty=1 → byteCount=2)：依最後一次請求的位址分派
     if (byteCount === 2) {
         const v = (frame[3] << 8) | frame[4];
+        if (_commReadWant !== null && _lastRead1Addr === _commReadWant) { _commReadVal = v; return; }
         showCtrlMode(v);
         return;
     }
@@ -1143,12 +1165,19 @@ async function connectBLE(){
 
 function onBLEDisconnect(){
     if(!isConnected)return;
+    // 立刻中止所有馬達控制迴圈（網頁端已發不出指令，靠驅動器 watchdog 停馬達）
+    directSwingStopRequested = true;
+    posCtrlAbort = true;
+    cancelDirectSwingTimer();
+    cancelPendingEncoderRead('BLE 已斷線');
     clearInterval(pollTimer);isConnected=false;keepReading=false;connectionType=null;
     bleDevice=null;bleRxChar=null;bleTxChar=null;
     const btn=document.getElementById('connectBtn');
     btn.innerHTML="🔌 連線";btn.className=btn.className.replace('bg-red-600','bg-emerald-700');
     document.getElementById('navSubtitle').innerText="ID:1 | 115200 8N1 | Modbus RTU | 1400h NET-IO";
-    log("SYS","BLE 裝置已斷線","text-amber-400");
+    log("SYS","⚠ BLE 已斷線！馬達控制已中止，改由驅動器通訊逾時保護接手","text-red-400");
+    if (directSwingActive || posCtrlActive)
+        log("SYS","⚠ 若馬達仍在轉,請確認已設定 05-17/05-19 通訊逾時 + 05-21=2","text-red-400");
 }
 function handleBLEData(event){
     const view=event.target.value;
@@ -2276,6 +2305,81 @@ function directSwingWait(ms, deadline) {
     });
 }
 
+// ── 斷線保護：驅動器通訊逾時 watchdog 參數 ──────────────────────────
+const REG_COMM = { TO485: 0x0510, TO232: 0x0512, ACTION: 0x0514 };  // 05-17 / 05-19 / 05-21
+
+async function writeCommProtection() {
+    if (!isConnected) return alert('請先連線');
+    const to = parseInt(document.getElementById('commTimeoutMs').value) || 500;
+    if (to < 200 || to > 10000) return alert('逾時建議 200~10000ms');
+    if (!confirm(`寫入斷線保護？\n\n05-17 RS485通訊逾時 = ${to}ms\n05-19 RS232通訊逾時 = ${to}ms\n05-21 保護行為 = 2 (Alarm+清虛擬I/O)\n\n寫入前會先 STOP。之後藍牙斷線 ${to}ms 內馬達自動停。`)) return;
+
+    const st = document.getElementById('commGuardStatus');
+    st.textContent = '寫入中…'; st.className = 'text-[10px] font-mono text-amber-300';
+    try {
+        await withPollPaused(async () => {
+            await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);   // 先 STOP
+            await delay(300);
+            const writeVerify = async (addr, val, name) => {
+                _lastExcept = null;
+                await sendRTU(buildFC06(SLAVE_ID, addr, val), false);
+                await delay(connectionType === 'ble' ? 400 : 200);
+                if (_lastExcept) throw new Error(`${name} 被拒絕 (Exception 0x${_lastExcept.code.toString(16)})`);
+                log('SYS', `🛡 ${name} (${addr.toString(16).toUpperCase()}h) = ${val}`, 'text-amber-300');
+            };
+            await writeVerify(REG_COMM.TO485, to, '05-17 RS485逾時');
+            await writeVerify(REG_COMM.TO232, to, '05-19 RS232逾時');
+            await writeVerify(REG_COMM.ACTION, 2, '05-21 保護行為=2');
+        });
+        st.textContent = `已啟用 ${to}ms`; st.className = 'text-[10px] font-mono text-emerald-400';
+        log('SYS', `🛡 斷線保護已寫入：逾時 ${to}ms → Alarm+清虛擬I/O`, 'text-emerald-400');
+        alert(`✅ 斷線保護已啟用。\n\n藍牙斷線 ${to}ms 內,馬達會自動停並進 Alarm。\n\n建議：先小角度、低速實測一次拔藍牙,確認馬達確實會停,再放展示品。`);
+    } catch (e) {
+        st.textContent = '寫入失敗'; st.className = 'text-[10px] font-mono text-red-400';
+        log('ERR', `🛡 斷線保護寫入失敗：${e.message}`, 'text-red-400');
+        alert(`寫入失敗：${e.message}\n\n若為 RUN 中被拒,請先確認馬達已停。`);
+    }
+}
+
+let _commReadWant = null, _commReadVal = null;
+async function readCommProtection() {
+    if (!isConnected) return alert('請先連線');
+    await withPollPaused(async () => {
+        const read1 = async (addr) => {
+            _lastRead1Addr = addr; _commReadWant = addr; _commReadVal = null;
+            await sendRTU(buildFC03(SLAVE_ID, addr, 1), false);
+            await delay(connectionType === 'ble' ? 500 : 200);
+            return _commReadVal;
+        };
+        const v485 = await read1(REG_COMM.TO485);
+        const v232 = await read1(REG_COMM.TO232);
+        const vact = await read1(REG_COMM.ACTION);
+        _commReadWant = null;                       // 還原,避免攔截後續控制模式讀取
+        const st = document.getElementById('commGuardStatus');
+        const ok = (v485 > 0 || v232 > 0) && vact === 2;
+        st.textContent = ok ? `已啟用 485=${v485} 232=${v232}` : '未啟用';
+        st.className = 'text-[10px] font-mono ' + (ok ? 'text-emerald-400' : 'text-amber-400');
+        log('SYS', `🛡 讀取：05-17=${v485}ms  05-19=${v232}ms  05-21=${vact}${ok?' ✅已啟用':' ⚠未啟用'}`, ok?'text-emerald-400':'text-amber-400');
+    });
+}
+
+// ── 心跳等待：行程期間持續重送當前方向指令，餵驅動器通訊 watchdog ──
+// 藍牙一斷 → 心跳送不出去 → 驅動器通訊逾時(05-17/05-19)清虛擬I/O+Alarm → 自動停
+const SWING_HEARTBEAT_MS = 150;
+async function swingWaitWithHeartbeat(ms, deadline, netValue) {
+    let remaining = ms;
+    while (remaining > 0 && !directSwingStopRequested && Date.now() < deadline) {
+        // 重送當前方向(idempotent，維持運轉狀態的同時餵狗)
+        try { if (isConnected) await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, netValue), false); }
+        catch (_) { /* 送失敗代表鏈路已斷，讓驅動器 watchdog 接手 */ }
+        const chunk = Math.min(SWING_HEARTBEAT_MS, remaining);
+        const ok = await directSwingWait(chunk, deadline);
+        if (!ok) return false;      // 停止要求 / 計時延遲過大 / 到期
+        remaining -= chunk;
+    }
+    return !directSwingStopRequested && Date.now() < deadline;
+}
+
 async function sendDirectStopBurst() {
     let delivered = false;
     for (let i = 0; i < 3; i++) {
@@ -2330,16 +2434,17 @@ async function startDirectBleSwing() {
         setOscillationStatus(`中心 → +${s.angle}°`, 'text-emerald-300');
         log('SYS', '↔ 直接方向：1400h = 1（CW）', 'text-emerald-300');
         await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, runValue(0)), false);
-        if (!await directSwingWait(s.halfStrokeMs, deadline)) return;
+        // 心跳版等待：行程期間持續重送當前方向,餵驅動器 watchdog（斷線即停）
+        if (!await swingWaitWithHeartbeat(s.halfStrokeMs, deadline, runValue(0))) return;
 
         while (!directSwingStopRequested && Date.now() < deadline) {
             setOscillationStatus(`+${s.angle}° → -${s.angle}°`, 'text-cyan-300');
             if (!await sendDirectDirection(3, 'CCW')) break;
-            if (!await directSwingWait(s.fullStrokeMs, deadline)) break;
+            if (!await swingWaitWithHeartbeat(s.fullStrokeMs, deadline, 3)) break;
 
             setOscillationStatus(`-${s.angle}° → +${s.angle}°`, 'text-emerald-300');
             if (!await sendDirectDirection(1, 'CW')) break;
-            if (!await directSwingWait(s.fullStrokeMs, deadline)) break;
+            if (!await swingWaitWithHeartbeat(s.fullStrokeMs, deadline, 1)) break;
         }
         if (!directSwingStopRequested && Date.now() >= deadline) {
             log('SYS', `↔ 已達 ${s.safetySec} 秒安全上限，自動停止直接擺動`, 'text-amber-400');
