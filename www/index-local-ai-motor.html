@@ -1714,10 +1714,37 @@ function showCtrlMode(v) {
 
 // ── 軟體閉環位置控制 ─────────────────────────────────────────────────
 function getCurPosCounts() {
-    // FC03 0x460D = HMI Data14 = Encoder H,  FC03 0x460E = HMI Data15 = Encoder L
+    // FC03 0x460D = M1:馬達Encoder絕對位置H, 0x460E = L（32-bit 有號）
     let v = (encHigh & 0xFFFF) * 65536 + (encLow & 0xFFFF);
     if (v > 0x7FFFFFFF) v -= 0x100000000;
     return v;
+}
+
+// ── 防 tearing 的安全 encoder 讀取 ──────────────────────────────────
+// 連續運轉時,若 H/L 兩字錯框或封包沾黏,組出的 32-bit 值會暴衝。
+// 對策:讀前清空 RTU 緩衝(丟半截封包)、讀後用「速度合理性」把離譜值濾掉並重讀。
+let _encLastGood = null;              // { pos, t }
+// 每 ms 最多合理移動的 counts。驅動器無載全轉速 4188RPM≈349cnt/ms,取 6000RPM 裕度。
+const ENC_MAX_CPMS = 500;
+
+async function readEncoderSafe(RX) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+        rtuBufLen = 0;                               // 丟掉殘留/半截封包,避免錯框
+        await sendRTU(buildFC03(SLAVE_ID, 0x460D, 2), false);
+        await delay(RX);
+        const pos = getCurPosCounts();
+        const now = Date.now();
+        if (!_encLastGood) { _encLastGood = { pos, t: now }; return pos; }
+        const dt = Math.max(1, now - _encLastGood.t);
+        const maxDelta = ENC_MAX_CPMS * dt + 200;    // 200 counts 量測底噪裕度
+        if (Math.abs(pos - _encLastGood.pos) <= maxDelta) {
+            _encLastGood = { pos, t: now };
+            return pos;                              // 合理,接受
+        }
+        log('SYS', `📍 encoder 跳變 ${pos - _encLastGood.pos}cnt/${dt}ms 判為錯框,丟棄重讀(${attempt+1}/4)`, 'text-amber-400');
+    }
+    // 連續失敗:沿用上次良好值,絕不讓暴衝值進入控制迴圈
+    return _encLastGood ? _encLastGood.pos : getCurPosCounts();
 }
 
 function zeroPosRef() {
@@ -1823,11 +1850,7 @@ async function _posPass(remainCounts, targetAll, pass) {
                `→ ${rpmCmd}RPM，提前停 ${stopLead}cnt，逾時 ${Math.round(timeout)}ms`, 'text-blue-400');
 
     const fc06 = async (a, v) => { await sendRTU(buildFC06(SLAVE_ID, a, v), false); await delay(40); };
-    const readPos = async () => {
-        await sendRTU(buildFC03(SLAVE_ID, 0x460D, 2), false);
-        await delay(RX);
-        return getCurPosCounts();
-    };
+    const readPos = () => readEncoderSafe(RX);   // 防 tearing 的安全讀取
 
     const from = getCurPosCounts();
     let reason = '到位';
@@ -1885,6 +1908,7 @@ async function softGoToPos(overrideDeg) {
 
     posCtrlActive = true; posCtrlAbort = false;
     clearInterval(pollTimer); pollTimer = null;
+    _encLastGood = null;                 // 重置安全讀取基準,本次移動重新播種
 
     const startAll  = getCurPosCounts();
     const targetAll = startAll + deltaCounts;
