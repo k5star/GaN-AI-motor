@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaN Motor LOCAL AI ROBOT</title>
+    <title>GaN Motor LOCAL AI ROBOT v2.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -142,7 +142,7 @@
 <nav class="border-b border-slate-700 px-3 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md shrink-0 h-12 md:h-14">
     <div class="flex items-center gap-2">
         <div>
-            <h1 class="text-sm md:text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-purple-400">LOCAL AI</span> <span class="text-emerald-400">ROBOT</span></h1>
+            <h1 class="text-sm md:text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-purple-400">LOCAL AI</span> <span class="text-emerald-400">ROBOT</span> <span class="text-[10px] text-slate-500 font-mono">v2.0</span></h1>
             <p id="navSubtitle" class="text-[9px] md:text-[10px] text-slate-500 font-mono -mt-0.5">ID:1 | 115200 8N1 | Modbus RTU</p>
         </div>
     </div>
@@ -259,30 +259,6 @@
                     ↩ 還原出廠預設 01-11 = 2
                 </button>
 
-                <!-- 01-12 轉速(Duty)設定方法 —— 決定驅動器從哪裡拿轉速命令 -->
-                <div class="mt-2 pt-2 border-t border-slate-700">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-[10px] text-slate-400 font-bold uppercase">轉速來源</span>
-                            <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-cyan-400">01-12 / 010Bh</span>
-                        </div>
-                        <span id="spdSrcBadge" class="text-[10px] font-mono text-slate-500">尚未讀取</span>
-                    </div>
-                    <div class="flex items-center gap-1">
-                        <button onclick="readSpdSrc()"
-                                class="bg-blue-800/70 hover:bg-blue-700 text-blue-200 px-2 py-1 rounded text-[10px] font-bold border border-blue-600/40">📖 讀取</button>
-                        <span class="text-[10px] text-slate-500 ml-1">設為</span>
-                        <input type="number" id="spdSrcVal" value="0" min="0" max="7"
-                               class="bg-slate-800 border border-slate-600 rounded w-12 px-1 text-xs text-center text-white focus:border-cyan-500 outline-none">
-                        <button onclick="writeSpdSrc()"
-                                class="bg-cyan-800/70 hover:bg-cyan-700 text-cyan-100 px-2 py-1 rounded text-[10px] font-bold border border-cyan-600/40">✏️ 寫入</button>
-                    </div>
-                    <div class="text-[9px] text-slate-500 mt-1 leading-relaxed">
-                        <b class="text-amber-400">目前若為 1 = Multi-Drive，轉速來自 MDL 協定，寫 0300h 不會生效</b>
-                        （症狀：0300h echo 正常但 D01 指令轉速恆為 0）。<br>
-                        數值對應請在 A_HMI 點 01-12 查看選項清單，確認後再填入。
-                    </div>
-                </div>
                 <div id="modeHint" class="text-[9px] text-slate-500 mt-2 leading-relaxed">
                     連線後會自動讀取。<b class="text-emerald-400">出廠預設 = 2</b>，
                     速度控制原本就是在這個值下正常運作，改動前請先確認有必要。
@@ -381,42 +357,121 @@
                     </div>
                     <span id="posStatusBadge" class="text-[9px] font-mono text-slate-500">待命</span>
                 </div>
-                <!-- 轉速下限（0300h 拒收過小的值） -->
-                <div class="flex items-center gap-1 mb-1">
-                    <label class="text-[10px] w-12 text-slate-400 shrink-0">最低RPM</label>
-                    <input type="number" id="posMinRpm" value="200" step="50" min="10" max="1000"
-                           onchange="POS_MIN_RPM=parseInt(this.value)||200"
-                           class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
-                    <button onclick="probeMinRpm()"
-                            class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-2 py-0.5 rounded text-[10px]">探測下限</button>
-                    <span class="text-[9px] text-slate-600">0300h 有下限，太小會被拒</span>
+                <div class="flex items-center gap-2 mb-2 text-[9px]">
+                    <span class="text-cyan-300 font-mono">02-14 = 1 組合位置</span>
+                    <button onclick="readPositionValue()"
+                            class="bg-cyan-800/70 hover:bg-cyan-700 text-cyan-100 px-2 py-0.5 rounded font-bold">讀取位置</button>
+                    <span id="posRawValue" class="text-slate-500 font-mono">尚未讀取</span>
                 </div>
-                <!-- 減速比：馬達 encoder 在馬達端，輸出端 = 馬達 ÷ 減速比 -->
-                <div class="flex items-center gap-1 mb-1">
-                    <label class="text-[10px] w-12 text-slate-400 shrink-0">減速比</label>
-                    <input type="number" id="posGear" value="9" step="0.1" min="0.1"
-                           onchange="POS_GEAR=parseFloat(this.value)||1; _updatePosUI(getCurPosCounts(),null)"
-                           class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
-                    <span class="text-[9px] text-slate-600">:1　馬達轉 N 圈 = 輸出轉 1 圈（encoder 在馬達端）</span>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 mb-3 bg-slate-950/50 border border-slate-700 rounded">
+                    <label class="text-xs text-slate-300">
+                        <span class="block mb-1 font-bold">位置最高轉速</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="posMinRpm" value="200" step="50" min="50" max="2000"
+                                   class="bg-slate-800 border border-slate-600 rounded w-full h-10 px-3 text-base text-white focus:border-blue-500 outline-none">
+                            <span class="text-slate-500">RPM</span>
+                        </div>
+                        <span class="block mt-1 text-[10px] text-slate-500">可設 50–2000；低於驅動器下限時會安全停止</span>
+                    </label>
+                    <label class="text-xs text-slate-300">
+                        <span class="block mb-1 font-bold">目標設定方式</span>
+                        <select id="posTargetMode" onchange="updatePositionTargetMode()"
+                                class="bg-slate-800 border border-slate-600 rounded w-full h-10 px-3 text-base text-white focus:border-blue-500 outline-none">
+                            <option value="degree">角度</option>
+                            <option value="clock">時鐘方向</option>
+                        </select>
+                    </label>
+                    <label id="posDegreeField" class="text-xs text-slate-300">
+                        <span class="block mb-1 font-bold">目標角度</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="posRotVal" value="90" min="0" max="360" step="1"
+                                   oninput="updatePositionTargetCount()"
+                                   class="bg-slate-800 border border-slate-600 rounded w-full h-10 px-3 text-base text-white focus:border-blue-500 outline-none">
+                            <span class="text-slate-500">°</span>
+                        </div>
+                    </label>
+                    <label id="posClockField" class="hidden text-xs text-slate-300">
+                        <span class="block mb-1 font-bold">時鐘方向</span>
+                        <select id="posClockTarget" onchange="selectClockSetting()"
+                                class="bg-slate-800 border border-slate-600 rounded w-full h-10 px-3 text-base text-white focus:border-blue-500 outline-none">
+                            <option value="0">12 點（0 count）</option>
+                            <option value="90">3 點（45000 count）</option>
+                            <option value="180">6 點（90000 count）</option>
+                            <option value="270">9 點（135000 count）</option>
+                        </select>
+                    </label>
+                    <div class="md:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <button onclick="savePositionSettings()" class="h-11 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-bold">保存參數</button>
+                        <button onclick="startSavedPosition()" class="h-11 md:col-span-2 bg-blue-700 hover:bg-blue-600 text-white rounded font-bold">啟動位置控制</button>
+                        <button onclick="abortPosCtrl()" class="h-11 bg-red-700 hover:bg-red-600 text-white rounded font-bold">STOP</button>
+                    </div>
+                    <div class="md:col-span-3 flex items-center justify-between text-xs">
+                        <span id="posSavedStatus" class="text-slate-500">尚未保存</span>
+                        <button onclick="zeroPosRef()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded">設定目前為 ZERO</button>
+                    </div>
                 </div>
-                <!-- 目標輸入（輸出端角度）+ GO + STOP -->
-                <div class="flex items-center gap-1 mb-1">
-                    <label class="text-[10px] w-12 text-slate-400 shrink-0">輸出(°)</label>
-                    <input type="number" id="posRotVal" value="90" step="45"
-                           class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
-                    <button onclick="softGoToPos()"
-                            class="bg-blue-700 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">GO</button>
-                    <button onclick="abortPosCtrl()"
-                            class="bg-red-700 hover:bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">STOP</button>
-                    <button onclick="zeroPosRef()"
-                            class="bg-slate-600 hover:bg-slate-500 text-slate-300 px-2 py-0.5 rounded text-[10px]">ZERO</button>
-                </div>
-                <!-- 快捷按鈕 -->
+                <!-- 常用絕對角度快捷按鈕（與轉盤共用同一座標） -->
                 <div class="grid grid-cols-4 gap-1 mb-2">
-                    <button onclick="softGoToPos(-180)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">-180°</button>
-                    <button onclick="softGoToPos(-90)"  class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">-90°</button>
-                    <button onclick="softGoToPos(90)"   class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">+90°</button>
-                    <button onclick="softGoToPos(180)"  class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">+180°</button>
+                    <button onclick="selectPositionPreset(30)"  class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-300">30°<br><span class="text-[10px] text-slate-500">15000</span></button>
+                    <button onclick="selectPositionPreset(60)"  class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-300">60°<br><span class="text-[10px] text-slate-500">30000</span></button>
+                    <button onclick="selectPositionPreset(90)"  class="bg-blue-800 hover:bg-blue-700 text-xs py-2 rounded text-blue-100">90°<br><span class="text-[10px] text-blue-300">45000</span></button>
+                    <button onclick="selectPositionPreset(120)" class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-300">120°<br><span class="text-[10px] text-slate-500">60000</span></button>
+                </div>
+                <div class="text-[9px] text-cyan-300 mb-2">目標 count：<span id="posTargetCount" class="font-mono font-bold">45000</span> / 180000（輸出端，ZERO＝0°）</div>
+                <!-- 時鐘位置：以輸出端一圈 180000 count、ZERO 為 12 點 -->
+                <div class="text-[9px] text-cyan-300 mb-1">時鐘位置（ZERO＝12 點；輸出端 1 圈＝180000 count）</div>
+                <div class="grid grid-cols-4 gap-1 mb-2">
+                    <button onclick="selectPositionPreset(0, 'clock')" class="bg-emerald-800 hover:bg-emerald-700 text-xs py-2 rounded text-emerald-100">
+                        12 點<br><span class="text-[9px] text-emerald-300">0 / 180000</span>
+                    </button>
+                    <button onclick="selectPositionPreset(90, 'clock')" class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-200">
+                        3 點<br><span class="text-[9px] text-slate-400">45000</span>
+                    </button>
+                    <button onclick="selectPositionPreset(180, 'clock')" class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-200">
+                        6 點<br><span class="text-[9px] text-slate-400">90000</span>
+                    </button>
+                    <button onclick="selectPositionPreset(270, 'clock')" class="bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded text-slate-200">
+                        9 點<br><span class="text-[9px] text-slate-400">135000</span>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-1 mb-2">
+                    <button onclick="moveRelativeDegrees(-360)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1 rounded text-slate-300">-360° 一圈</button>
+                    <button onclick="moveRelativeDegrees(360)" class="bg-blue-800 hover:bg-blue-700 text-[10px] py-1 rounded text-blue-100">+360° 一圈</button>
+                </div>
+                <!-- BLE 直接擺動：運轉期間不讀 Encoder，不拆 30° 分段 -->
+                <div class="p-3 mb-3 border border-emerald-700 bg-emerald-950/20 rounded">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <div class="text-sm font-bold text-emerald-300">BLE 直接擺動</div>
+                            <div class="text-[10px] text-slate-500">無位置回授、無 30° 分段；以時間估算 +60° / -60°</div>
+                        </div>
+                        <span id="oscStatus" class="text-xs font-mono text-slate-500">待命</span>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                        <label class="text-xs text-slate-300">擺動轉速 RPM
+                            <input id="oscRpm" type="number" value="50" min="50" max="2000" step="10" oninput="updateDirectSwingTiming()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                        </label>
+                        <label class="text-xs text-slate-300">正負擺幅 °
+                            <input id="oscAngle" type="number" value="60" min="10" max="150" step="5" oninput="updateDirectSwingTiming()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                        </label>
+                        <label class="text-xs text-slate-300">時間修正倍率
+                            <input id="oscTimeScale" type="number" value="1.00" min="0.20" max="3.00" step="0.05" oninput="updateDirectSwingTiming()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                        </label>
+                        <label class="text-xs text-slate-300">安全停止 秒
+                            <input id="oscSafetySec" type="number" value="60" min="5" max="300" step="5" oninput="updateDirectSwingTiming()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                            <span class="text-[10px] text-slate-500">到時自動 STOP</span>
+                        </label>
+                    </div>
+                    <div id="oscTimingInfo" class="text-[10px] text-cyan-300 mb-3">啟動時計算 60° / 120° 換向時間</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <button onclick="zeroPosRef()" class="h-11 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded font-bold">設定目前為擺動中心</button>
+                        <button id="oscStartBtn" onclick="startDirectBleSwing()" class="h-11 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-bold">啟動直接擺動</button>
+                        <button onclick="stopDirectBleSwing()" class="h-11 bg-red-700 hover:bg-red-600 text-white rounded font-bold">立即停止</button>
+                    </div>
                 </div>
                 <!-- 位置顯示 -->
                 <div class="grid grid-cols-2 gap-1 text-[10px]">
@@ -455,6 +510,10 @@
                         <div class="text-slate-500">目標 Pos：<span id="npTgtPos" class="text-emerald-300">--</span></div>
                         <div class="text-slate-500">當前 Index：<span id="npCurIdx" class="text-blue-300">--</span></div>
                         <div class="text-slate-500">當前 Pos：<span id="npCurPos" class="text-blue-300">--</span></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1 text-[9px] font-mono">
+                        <div class="text-slate-500">控制：<span id="npMode" class="text-slate-300">--</span></div>
+                        <div class="text-slate-500">狀態：<span id="npMotorState" class="text-slate-300">--</span></div>
                     </div>
                     <div class="text-[9px] text-slate-600 mt-1" id="npCalc">Index=圈數(有號), Pos=圈內 0~4×解析度</div>
                 </div>
@@ -747,20 +806,20 @@ const REG = {
     POS_CUR_IDX: 0x000E,  // 當前位置Index（唯讀）
     POS_CUR_POS: 0x000F,  // 當前位置Pos（唯讀）
     CTRL_MODE:   0x010A,  // 參數 01-11 控制模式 0=Speed 1=Duty 2=Position
-    SPD_OP_MODE: 0x010B,  // 參數 01-12 速度控制OP Mode
     POS_OP_MODE: 0x010C,  // 參數 01-13 位置控制OP Mode
 };
 // 參數位址 = 群組×256 + (編號−1)   例：01-11 → 1*256+10 = 0x010A
 const paramAddr = (g, n) => (g & 0xFF) * 256 + (n - 1);
-// Encoder 每轉計數（參數 01-06 Encoder解析度），指「馬達端」每轉。
+// Encoder 每轉 PPR（參數 01-06）。AB 相四倍頻後，馬達端每圈為 PPR × 4 counts。
 const POS_CPR = 5000;
 // 減速比：馬達轉 POS_GEAR 圈 = 輸出轉 1 圈。encoder 裝在馬達端，
-// 所以「輸出端 1 圈」= POS_CPR × POS_GEAR 個 encoder counts。
+// 所以「輸出端 1 圈」= PPR × 4 × POS_GEAR = 180000 counts。
 let POS_GEAR = 9;
-// 輸出端角度(度) → 馬達 encoder counts
-const outDeg2counts = deg => Math.round(deg / 360 * POS_CPR * POS_GEAR);
-// 馬達 encoder counts → 輸出端角度(度)
-const counts2outDeg = cnt => cnt / (POS_CPR * POS_GEAR) * 360;
+const motorCountsPerRev = () => POS_CPR * 4;
+const outputCountsPerRev = () => motorCountsPerRev() * POS_GEAR;
+// 輸出端角度(度) ↔ 02-14=1 的 32-bit 組合 position counts
+const outDeg2counts = deg => Math.round(deg / 360 * outputCountsPerRev());
+const counts2outDeg = cnt => cnt / outputCountsPerRev() * 360;
 // 0300h 轉速暫存器有下限，低於下限會回 Exception 0x04。實測 50 被拒、300 可接受。
 // 位置控制降速時不得低於此值；若仍被拒，請往上調。
 let POS_MIN_RPM = 200;
@@ -773,7 +832,7 @@ let ctrlMode = null;   // 目前驅動器的 01-11 值（null = 尚未讀取）
 const BIT = { START_STOP: 0x01, CCW_CW: 0x02, ALM_RST: 0x04, STOP_MODE: 0x08 };
 
 // ===================================================================
-// 標準指令 Schema（v1.0）
+// 標準指令 Schema（v2.0）
 // 這份 schema 是 validator、system prompt、訓練資料的唯一來源
 // 邊緣部署時 rule engine 同樣以此為基準
 // ===================================================================
@@ -790,7 +849,7 @@ const MOTOR_CMD_SCHEMA = {
         query:      { required: ['question'] },
         sequence:   { required: ['steps'] },
         repeat:     { required: ['count','steps'], count:[1,999] },
-        goToPos:    { required: ['rotations'], rotations:[-6553,6553] }, // 組合形式(02-14=1)：rotations=圈數(浮點，可負)
+        goToPos:    { required: ['degrees'], degrees:[0,360] }, // ZERO 基準的輸出端絕對角度
         none:       { required: [] }
     }
 };
@@ -849,13 +908,23 @@ const NUS_TX_CHAR  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 let bleDevice=null, bleServer=null, bleRxChar=null, bleTxChar=null, bleMode=null, hm10Char=null;
 let connectionType=null, isConnected=false, keepReading=false, pollTimer=null;
 let currentDir='CW', currentValues=new Array(16).fill(0);
-let encHigh=0, encLow=0; // FC03 0x460D/0x460E = HMI Data14/15 = M1 Encoder 絕對位置 H/L
+// 02-14 = 1：4615h/4616h 為 32-bit 組合形式的目前位置高／低位。
+let encHigh=0, encLow=0;
 let isRecording=false, logData=[];
 let rtuBuffer=new Uint8Array(256), rtuBufLen=0;
 let bleQueue=[], bleQueueRunning=false;
 const VALID_STATUS = new Set([0,2,3,4,5,6,7,8]);
 // 軟體閉環位置控制
 let posCtrlActive=false, posCtrlAbort=false, posZeroOffset=0;
+let _pendingEncoderRead = null;
+// 以實測接近一輸出端圈的 Raw 差值約 178648，驗證理論值 5000×4×9=180000。
+const POSITION_SCALE_VERIFIED = true;
+const POSITION_TEST_MAX_DEG = 30;
+const POSITION_TEST_RPM = 200;
+// 200 RPM 實測三趟 STOP 後滑行約 9471~11157 counts；以 10000 counts 作校正起點。
+const POSITION_TEST_STOP_LEAD_CNT = 10000;
+// Encoder 失聯時的 30°/200 RPM 實測硬停止：102ms=10238cnt、400ms=35389cnt，內插取 160ms。
+const POSITION_TEST_HARD_STOP_MS = 160;
 
 // ===================================================================
 // CRC16 & RTU 封包
@@ -923,22 +992,31 @@ function parseFC03Response(frame, byteCount) {
     // 單一暫存器回應 (qty=1 → byteCount=2)：依最後一次請求的位址分派
     if (byteCount === 2) {
         const v = (frame[3] << 8) | frame[4];
-        if (_lastRead1Addr === REG.SPD_OP_MODE) showSpdSrc(v);
-        else showCtrlMode(v);
+        showCtrlMode(v);
         return;
     }
-    // Encoder poll response (FC03 0x460D qty=2 → byteCount=4)
+    // 舊的單獨位置讀取回應（不再作為閉環來源）。
     if (byteCount === 4) {
         encHigh = (frame[3] << 8) | frame[4];
         encLow  = (frame[5] << 8) | frame[6];
         if (!posCtrlActive) _updatePosUI(getCurPosCounts(), null);
         return;
     }
-    // 原生位置讀取 (4613h qty=4 → byteCount=8)
-    if (byteCount === 8 && _natPosPending) {
+    // A_HMI Page3 原生位置讀取：4613h~4616h = 目標 H/L、當前 H/L。
+    if (byteCount === 8) {
         const regs = [];
         for (let i=0;i<4;i++) regs.push((frame[3+i*2]<<8)|frame[4+i*2]);
-        _showNativePos(regs);
+        encHigh = regs[2];
+        encLow  = regs[3];
+        const pos = getCurPosCounts();
+        if (_pendingEncoderRead) {
+            const pending = _pendingEncoderRead;
+            _pendingEncoderRead = null;
+            clearTimeout(pending.timer);
+            pending.resolve(pos);
+        }
+        if (_natPosPending) _showNativePos(regs);
+        if (!posCtrlActive) _updatePosUI(pos, null);
         return;
     }
     // 參數快照掃描中：導向收集器，不可寫入 currentValues（會污染儀表板）
@@ -1306,14 +1384,11 @@ async function runTrace() {
         spun ? 'text-emerald-400' : 'text-amber-400');
 
     // 特徵診斷：進得了 RUN、0300h 寫得進去，但 D01 恆為 0
-    // → 驅動器的轉速來源不是 0300h（01-12 轉速設定方法設成了別的來源）
     let hint = '';
     if (ranOK && !gotCmd && !spun) {
         hint = '驅動器有進入 RUN、0300h 也寫得進去，但「指令轉速」始終是 0。\n' +
-               '代表轉速命令不是取自 0300h —— 請檢查參數 01-12（轉速設定方法）。\n' +
-               '若為 1 = Multi-Drive，轉速來自 MDL 協定，Modbus 寫 0300h 不會生效。';
-        log('ERR', '→ 進得了 RUN 但 D01 恆為 0：轉速來源不是 0300h，請檢查 01-12（轉速設定方法）', 'text-red-400');
-        readSpdSrc();     // 順手把 01-12 現值讀回來
+               '請檢查驅動器目前的運轉條件與外部控制設定。';
+        log('ERR', '→ 進得了 RUN 但 D01 恆為 0：請檢查驅動器運轉條件與外部控制設定', 'text-red-400');
     } else if (!ranOK) {
         hint = '驅動器沒有進入 RUN 狀態，請先確認 Alarm 與 STO 狀態。';
     } else if (gotCmd && !spun) {
@@ -1605,68 +1680,6 @@ function copyDumpText() {
                    ta.select(); document.execCommand('copy'); ta.remove(); alert('已複製到剪貼簿。'); });
 }
 
-// ── 01-12 轉速(Duty)設定方法 (010Bh) ─────────────────────────────────
-// A_HMI 診斷頁顯示為「M1: 轉速(Duty)設定方法」。若為 Multi-Drive，
-// 轉速命令來自 MDL 協定，寫 0300h 會被接受但不會生效（D01 恆為 0）。
-let _pendingSpdSrc = null;
-
-async function readSpdSrc() {
-    if (!isConnected) return alert('請先連線');
-    const wasPolling = !!pollTimer;
-    clearInterval(pollTimer); pollTimer = null;
-    _pollPaused = true;
-    try {
-        _lastRead1Addr = REG.SPD_OP_MODE;
-        await sendRTU(buildFC03(SLAVE_ID, REG.SPD_OP_MODE, 1), false);
-        await delay(connectionType === 'ble' ? 600 : 250);
-    } finally {
-        _pollPaused = false;
-        if (wasPolling && isConnected && !posCtrlActive) startPolling();
-    }
-}
-
-async function writeSpdSrc() {
-    if (!isConnected) return alert('請先連線');
-    const v = parseInt(document.getElementById('spdSrcVal').value);
-    if (isNaN(v)) return alert('請先填入數值');
-    if (!confirm(`確定將 01-12（轉速設定方法）寫入 ${v} ？\n\n` +
-                 `這會改變驅動器從哪裡取得轉速命令。\n` +
-                 `請先在 A_HMI 點選 01-12 確認該數值的意義。`)) return;
-
-    if (currentValues[0] === 2) {
-        log('SYS', '⚠ 馬達在 RUN 狀態，先送 STOP', 'text-amber-400');
-        await sendCmd(REG.NET_IO, 0x0000);
-        await delay(500);
-    }
-    log('SYS', `⚙ 01-12 (010Bh) ← ${v}`, 'text-cyan-400');
-    _pendingSpdSrc = v;
-    _lastExcept = null;
-    await withPollPaused(async () => {
-        await sendRTU(buildFC06(SLAVE_ID, REG.SPD_OP_MODE, v), false);
-        await delay(500);
-    });
-    if (_lastExcept) {
-        log('ERR', `❌ 01-12 寫入被拒絕（Exception 0x${_lastExcept.code.toString(16)}）`, 'text-red-400');
-        _pendingSpdSrc = null;
-        return;
-    }
-    await readSpdSrc();
-}
-
-function showSpdSrc(v) {
-    const el = document.getElementById('spdSrcBadge');
-    const isMDL = v === 1;
-    el.textContent = `01-12 = ${v}${isMDL ? ' (Multi-Drive)' : ''}`;
-    el.className = 'text-[10px] font-mono ' + (isMDL ? 'text-amber-400' : 'text-emerald-400');
-    document.getElementById('spdSrcVal').value = v;
-    log('SYS', `⚙ 轉速來源：01-12 = ${v}${isMDL ? ' → Multi-Drive（0300h 不會生效）' : ''}`,
-        isMDL ? 'text-amber-400' : 'text-emerald-400');
-    if (_pendingSpdSrc !== null && _pendingSpdSrc !== v) {
-        log('ERR', `❌ 01-12 寫入未生效：要求 ${_pendingSpdSrc}，回讀仍為 ${v}`, 'text-red-400');
-    }
-    _pendingSpdSrc = null;
-}
-
 // ── 控制模式 01-11 (010Ah) ───────────────────────────────────────────
 async function setCtrlMode(mode) {
     if (!isConnected) return alert('請先連線');
@@ -1691,14 +1704,9 @@ function startPolling() {
     clearInterval(pollTimer); pollTimer = null;
     if (!isConnected || _pollPaused || posCtrlActive) return;   // 暫停期間不得偷偷啟動
     const pollPkt = buildFC03(SLAVE_ID, 0x0000, 16);
-    const encPkt  = buildFC03(SLAVE_ID, 0x460D, 2);
-    const isBLE   = connectionType === 'ble';
-    let seq = 0;
     pollTimer = setInterval(() => {
         sendRTU(pollPkt);
-        if (++seq % (isBLE ? 2 : 3) === 0)
-            setTimeout(() => { if (isConnected) sendRTU(encPkt); }, isBLE ? 450 : 80);
-    }, isBLE ? 500 : 150);
+    }, connectionType === 'ble' ? 500 : 150);
 }
 
 async function readCtrlMode() {
@@ -1755,7 +1763,7 @@ function showCtrlMode(v) {
 
 // ── 軟體閉環位置控制 ─────────────────────────────────────────────────
 function getCurPosCounts() {
-    // FC03 0x460D = M1:馬達Encoder絕對位置H, 0x460E = L（32-bit 有號）
+    // 02-14 = 1：4615h/4616h 合併為有號 32-bit 組合位置值。
     let v = (encHigh & 0xFFFF) * 65536 + (encLow & 0xFFFF);
     if (v > 0x7FFFFFFF) v -= 0x100000000;
     return v;
@@ -1763,29 +1771,89 @@ function getCurPosCounts() {
 
 // ── 防 tearing 的安全 encoder 讀取 ──────────────────────────────────
 // 連續運轉時,若 H/L 兩字錯框或封包沾黏,組出的 32-bit 值會暴衝。
-// 對策:讀前清空 RTU 緩衝(丟半截封包)、讀後用「速度合理性」把離譜值濾掉並重讀。
+// 對策:每次等待對應的 FC03 回應，並以連續兩筆合理值建立可信基準。
 let _encLastGood = null;              // { pos, t }
-// 每 ms 最多合理移動的 counts。驅動器無載全轉速 4188RPM≈349cnt/ms,取 6000RPM 裕度。
-const ENC_MAX_CPMS = 500;
+// Encoder 合理速度由每一趟實際命令 RPM 決定；此值只作非運動讀取的保守上限。
+const ENC_MAX_CPMS = 50;
 
-async function readEncoderSafe(RX) {
+async function requestEncoderPosition(timeoutMs) {
+    if (_pendingEncoderRead) throw new Error('Encoder 讀取尚未完成');
+    return new Promise(async (resolve, reject) => {
+        const timer = setTimeout(() => {
+            if (_pendingEncoderRead?.resolve === resolve) _pendingEncoderRead = null;
+            reject(new Error(`Encoder 回應逾時 (${timeoutMs}ms)`));
+        }, timeoutMs);
+        _pendingEncoderRead = { resolve, reject, timer };
+        try {
+            await sendRTU(buildFC03(SLAVE_ID, 0x4613, 4), false);
+        } catch (error) {
+            clearTimeout(timer);
+            _pendingEncoderRead = null;
+            reject(error);
+        }
+    });
+}
+
+function cancelPendingEncoderRead(message = 'Encoder 讀取已取消') {
+    const pending = _pendingEncoderRead;
+    if (!pending) return false;
+    clearTimeout(pending.timer);
+    _pendingEncoderRead = null;
+    pending.reject(new Error(message));
+    return true;
+}
+
+async function readEncoderSafe(RX, maxCpms = ENC_MAX_CPMS) {
     for (let attempt = 0; attempt < 4; attempt++) {
-        rtuBufLen = 0;                               // 丟掉殘留/半截封包,避免錯框
-        await sendRTU(buildFC03(SLAVE_ID, 0x460D, 2), false);
-        await delay(RX);
-        const pos = getCurPosCounts();
+        let pos;
+        try {
+            pos = await requestEncoderPosition(Math.max(RX * 3, connectionType === 'ble' ? 1500 : 400));
+        } catch (error) {
+            // 位置閉環不能使用前一次的舊位置；任一回讀逾時都必須立即停止。
+            throw new Error(`${error.message}，不可使用舊 Encoder 位置`);
+        }
         const now = Date.now();
-        if (!_encLastGood) { _encLastGood = { pos, t: now }; return pos; }
+        if (!_encLastGood) {
+            _encLastGood = { pos, t: now };
+            continue; // 首筆不直接採用；需第二筆驗證才允許控制馬達
+        }
         const dt = Math.max(1, now - _encLastGood.t);
-        const maxDelta = ENC_MAX_CPMS * dt + 200;    // 200 counts 量測底噪裕度
+        const maxDelta = maxCpms * dt + 200;         // 200 counts 量測底噪裕度
         if (Math.abs(pos - _encLastGood.pos) <= maxDelta) {
             _encLastGood = { pos, t: now };
             return pos;                              // 合理,接受
         }
         log('SYS', `📍 encoder 跳變 ${pos - _encLastGood.pos}cnt/${dt}ms 判為錯框,丟棄重讀(${attempt+1}/4)`, 'text-amber-400');
     }
-    // 連續失敗:沿用上次良好值,絕不讓暴衝值進入控制迴圈
-    return _encLastGood ? _encLastGood.pos : getCurPosCounts();
+    throw new Error('Encoder 連續讀取失敗，已拒絕繼續位置控制');
+}
+
+async function readPositionValue() {
+    if (!isConnected) return alert('請先連線');
+    if (directSwingActive) return alert('直接擺動執行中，位置讀取已鎖定；請先停止擺動');
+    try {
+        await withPollPaused(async () => {
+            const raw = await requestEncoderPosition(connectionType === 'ble' ? 1500 : 600);
+            const el = document.getElementById('posRawValue');
+            if (el) el.textContent = `H=${encHigh}  L=${encLow}  Raw=${raw}`;
+            log('SYS', `📍 組合位置 4615h/4616h：H=${encHigh}、L=${encLow}、Raw=${raw}`, 'text-cyan-300');
+        });
+    } catch (error) {
+        log('ERR', `📍 組合位置讀取失敗：${error.message}`, 'text-red-400');
+    }
+}
+
+async function ensureCurrentPosition() {
+    if (!isConnected) throw new Error('請先連線');
+    return withPollPaused(async () => {
+        _encLastGood = null;
+        const raw = await readEncoderSafe(connectionType === 'ble' ? 420 : 90, 25);
+        const el = document.getElementById('posRawValue');
+        if (el) el.textContent = `Raw=${raw}`;
+        _updatePosUI(raw, null);
+        log('SYS', `📍 自動讀取目前位置：${normalizeAngle(counts2outDeg(raw - posZeroOffset)).toFixed(1)}°，Raw=${raw}`, 'text-cyan-300');
+        return raw;
+    });
 }
 
 function zeroPosRef() {
@@ -1795,24 +1863,34 @@ function zeroPosRef() {
 }
 
 function abortPosCtrl() {
-    if (posCtrlActive) { posCtrlAbort = true; }
+    posCtrlAbort = true;
+    if (isConnected) sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+    log('SYS', '📍 位置控制 STOP：已阻止目前與後續分段', 'text-red-400');
 }
 
 function _updatePosUI(curCounts, targetCounts) {
     const curEl = document.getElementById('posCurDisp');
     const tgtEl = document.getElementById('posTgtDisp');
     const cntEl = document.getElementById('posCurCnt');
-    // 顯示以「輸出端」角度為準（馬達 counts ÷ 減速比）
-    if (curEl) curEl.textContent = counts2outDeg(curCounts - posZeroOffset).toFixed(1);
+    if (!POSITION_SCALE_VERIFIED) {
+        if (curEl) curEl.textContent = '--';
+        if (tgtEl) tgtEl.textContent = '--';
+        if (cntEl) cntEl.textContent = `組合位置 Raw=${curCounts}（相對 ZERO：${Math.round(curCounts - posZeroOffset)} count）`;
+        dialCurAngle = null;
+        drawPosDial();
+        return;
+    }
+    // 控制面板與轉盤都用 ZERO 基準的輸出端絕對角度（0~359.9°）。
+    const curOutDeg = counts2outDeg(curCounts - posZeroOffset);
+    if (curEl) curEl.textContent = normalizeAngle(curOutDeg).toFixed(1);
     if (tgtEl) tgtEl.textContent = targetCounts !== null
-        ? counts2outDeg(targetCounts - posZeroOffset).toFixed(1) : '--';
+        ? normalizeAngle(counts2outDeg(targetCounts - posZeroOffset)).toFixed(1) : '--';
     if (cntEl) {
-        const motorDeg = (curCounts - posZeroOffset) / POS_CPR * 360;
+        const motorDeg = (curCounts - posZeroOffset) / motorCountsPerRev() * 360;
         cntEl.textContent = `馬達 ${curCounts} cnt（馬達端 ${motorDeg.toFixed(0)}° ÷${POS_GEAR} = 輸出）`;
     }
     // 同步圓形轉盤的藍針（輸出端角度 mod 360）
-    const outDeg = counts2outDeg(curCounts - posZeroOffset);
-    dialCurAngle = ((outDeg % 360) + 360) % 360;
+    dialCurAngle = normalizeAngle(curOutDeg);
     drawPosDial();
 }
 
@@ -1895,19 +1973,502 @@ function _posDialFromEvent(e) {
     const y = p.clientY - rect.top  - c.height/2;
     let a = Math.atan2(y, x) * 180/Math.PI + 90;   // 0° 在正上
     dialTargetAngle = Math.round(((a % 360) + 360) % 360);
+    document.getElementById('posRotVal').value = dialTargetAngle;
+    updatePositionTargetCount();
     drawPosDial();
 }
 
 function dialSetTargetToCurrent() {
     if (dialCurAngle === null) return;
     dialTargetAngle = Math.round(dialCurAngle);
+    document.getElementById('posRotVal').value = dialTargetAngle;
+    updatePositionTargetCount();
     drawPosDial();
+}
+
+function normalizeAngle(degrees) {
+    return ((degrees % 360) + 360) % 360;
+}
+
+function updatePositionTargetCount() {
+    const input = document.getElementById('posRotVal');
+    const output = document.getElementById('posTargetCount');
+    if (!input || !output) return;
+    const angle = Math.max(0, Math.min(360, Number(input.value) || 0));
+    output.textContent = outDeg2counts(angle);
+}
+
+const POSITION_SETTINGS_KEY = 'ganMotorPositionSettingsV2';
+
+function updatePositionTargetMode() {
+    const mode = document.getElementById('posTargetMode')?.value || 'degree';
+    document.getElementById('posDegreeField')?.classList.toggle('hidden', mode !== 'degree');
+    document.getElementById('posClockField')?.classList.toggle('hidden', mode !== 'clock');
+    if (mode === 'clock') selectClockSetting();
+}
+
+function selectClockSetting() {
+    const angle = Number(document.getElementById('posClockTarget')?.value || 0);
+    const input = document.getElementById('posRotVal');
+    if (input) input.value = angle;
+    dialTargetAngle = normalizeAngle(angle);
+    updatePositionTargetCount();
+    drawPosDial();
+}
+
+function selectPositionPreset(angle, mode = 'degree') {
+    const modeEl = document.getElementById('posTargetMode');
+    const angleEl = document.getElementById('posRotVal');
+    const clockEl = document.getElementById('posClockTarget');
+    if (modeEl) modeEl.value = mode;
+    if (angleEl) angleEl.value = angle;
+    if (clockEl && [0, 90, 180, 270].includes(Number(angle))) clockEl.value = String(angle);
+    updatePositionTargetMode();
+    dialTargetAngle = normalizeAngle(Number(angle));
+    updatePositionTargetCount();
+    drawPosDial();
+    const status = document.getElementById('posSavedStatus');
+    if (status) { status.textContent = `已選擇 ${angle}°，請保存或直接啟動`; status.className = 'text-amber-300'; }
+}
+
+function savePositionSettings(silent = false) {
+    const rpm = Math.round(Number(document.getElementById('posMinRpm')?.value));
+    const mode = document.getElementById('posTargetMode')?.value || 'degree';
+    const angle = mode === 'clock'
+        ? Number(document.getElementById('posClockTarget')?.value)
+        : Number(document.getElementById('posRotVal')?.value);
+    if (!Number.isFinite(rpm) || rpm < 50 || rpm > 2000) {
+        if (!silent) alert('位置轉速請設定在 50 到 2000 RPM');
+        return null;
+    }
+    if (!Number.isFinite(angle) || angle < 0 || angle > 360) {
+        if (!silent) alert('目標角度請設定在 0° 到 360°');
+        return null;
+    }
+    POS_MIN_RPM = rpm;
+    document.getElementById('posRotVal').value = angle;
+    dialTargetAngle = normalizeAngle(angle);
+    const settings = { rpm, mode, angle };
+    localStorage.setItem(POSITION_SETTINGS_KEY, JSON.stringify(settings));
+    updatePositionTargetCount();
+    drawPosDial();
+    const status = document.getElementById('posSavedStatus');
+    if (status) { status.textContent = `已保存：${rpm} RPM｜${mode === 'clock' ? '時鐘' : '角度'} ${angle}°｜${outDeg2counts(angle)} count`; status.className = 'text-emerald-400'; }
+    if (!silent) log('SYS', `💾 位置參數已保存：${rpm}RPM，目標 ${angle}° = ${outDeg2counts(angle)} count`, 'text-emerald-400');
+    return settings;
+}
+
+function loadPositionSettings() {
+    try {
+        const settings = JSON.parse(localStorage.getItem(POSITION_SETTINGS_KEY) || 'null');
+        if (!settings) return;
+        document.getElementById('posMinRpm').value = settings.rpm || 200;
+        document.getElementById('posTargetMode').value = settings.mode || 'degree';
+        document.getElementById('posRotVal').value = settings.angle ?? 90;
+        if ([0, 90, 180, 270].includes(Number(settings.angle))) document.getElementById('posClockTarget').value = String(settings.angle);
+        POS_MIN_RPM = Number(settings.rpm) || 200;
+        dialTargetAngle = normalizeAngle(Number(settings.angle) || 0);
+        updatePositionTargetMode();
+        updatePositionTargetCount();
+        drawPosDial();
+        const status = document.getElementById('posSavedStatus');
+        if (status) { status.textContent = `已載入：${POS_MIN_RPM} RPM｜目標 ${settings.angle}°`; status.className = 'text-emerald-400'; }
+    } catch (error) {
+        localStorage.removeItem(POSITION_SETTINGS_KEY);
+    }
+}
+
+async function startSavedPosition() {
+    const settings = savePositionSettings(true);
+    if (!settings) return alert('請先確認位置參數');
+    log('SYS', `▶ 啟動位置控制：${settings.rpm}RPM，目標 ${settings.angle}° = ${outDeg2counts(settings.angle)} count`, 'text-blue-300');
+    await goToAngleTarget(settings.angle);
+}
+
+const OSC_SETTINGS_KEY = 'ganMotorOscillationSettingsV2';
+let oscillationActive = false;
+let oscillationStopRequested = false;
+
+function setOscillationStatus(text, color = 'text-slate-500') {
+    const el = document.getElementById('oscStatus');
+    if (el) { el.textContent = text; el.className = `text-xs font-mono ${color}`; }
+}
+
+function readOscillationSettings() {
+    const rpm = Math.round(Number(document.getElementById('oscRpm')?.value));
+    const angle = Number(document.getElementById('oscAngle')?.value);
+    const dwell = Math.round(Number(document.getElementById('oscDwell')?.value));
+    const cycles = Math.round(Number(document.getElementById('oscCycles')?.value));
+    if (!Number.isFinite(rpm) || rpm < 50 || rpm > 2000) throw new Error('擺動轉速必須是 50–2000 RPM');
+    if (!Number.isFinite(angle) || angle < 30 || angle > 150) throw new Error('擺幅必須是 ±30° 到 ±150°');
+    if (!Number.isFinite(dwell) || dwell < 0 || dwell > 10000) throw new Error('端點停留時間必須是 0–10000ms');
+    if (!Number.isFinite(cycles) || cycles < 0 || cycles > 999) throw new Error('循環次數必須是 0–999');
+    return { rpm, angle, dwell, cycles };
+}
+
+function loadOscillationSettings() {
+    try {
+        const settings = JSON.parse(localStorage.getItem(OSC_SETTINGS_KEY) || 'null');
+        if (!settings) return;
+        document.getElementById('oscRpm').value = settings.rpm ?? 50;
+        document.getElementById('oscAngle').value = settings.angle ?? 60;
+        document.getElementById('oscDwell').value = settings.dwell ?? 500;
+        document.getElementById('oscCycles').value = settings.cycles ?? 0;
+    } catch (error) {
+        localStorage.removeItem(OSC_SETTINGS_KEY);
+    }
+}
+
+async function waitOscillationDwell(ms) {
+    const until = Date.now() + ms;
+    while (!oscillationStopRequested && Date.now() < until) await delay(Math.min(100, until - Date.now()));
+}
+
+async function startOscillationDemo() {
+    if (!isConnected) return alert('請先連線');
+    if (oscillationActive || posCtrlActive) return alert('位置控制或擺動正在執行，請先停止');
+
+    let settings;
+    try { settings = readOscillationSettings(); }
+    catch (error) { return alert(error.message); }
+
+    localStorage.setItem(OSC_SETTINGS_KEY, JSON.stringify(settings));
+    POS_MIN_RPM = settings.rpm;
+    document.getElementById('posMinRpm').value = settings.rpm;
+    oscillationActive = true;
+    oscillationStopRequested = false;
+    const btn = document.getElementById('oscStartBtn');
+    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+    const positiveTarget = settings.angle;
+    const negativeTarget = normalizeAngle(-settings.angle);
+    let completed = 0;
+    log('SYS', `↔ 展示擺動啟動：${settings.rpm}RPM，+${settings.angle}° / -${settings.angle}°，停留 ${settings.dwell}ms，${settings.cycles === 0 ? '持續循環' : `${settings.cycles} 次`}`, 'text-emerald-300');
+
+    try {
+        while (!oscillationStopRequested && (settings.cycles === 0 || completed < settings.cycles)) {
+            setOscillationStatus(`第 ${completed + 1} 循環 → +${settings.angle}°`, 'text-emerald-300');
+            if (await goToAngleTarget(positiveTarget) !== true) throw new Error(`無法到達 +${settings.angle}°`);
+            await waitOscillationDwell(settings.dwell);
+            if (oscillationStopRequested) break;
+
+            setOscillationStatus(`第 ${completed + 1} 循環 → -${settings.angle}°`, 'text-cyan-300');
+            if (await goToAngleTarget(negativeTarget) !== true) throw new Error(`無法到達 -${settings.angle}°`);
+            completed++;
+            await waitOscillationDwell(settings.dwell);
+        }
+        if (!oscillationStopRequested) {
+            setOscillationStatus(`完成 ${completed} 循環`, 'text-emerald-400');
+            log('SYS', `↔ 展示擺動完成：${completed} 循環`, 'text-emerald-400');
+        }
+    } catch (error) {
+        oscillationStopRequested = true;
+        await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+        setOscillationStatus(`停止：${error.message}`, 'text-red-400');
+        log('ERR', `↔ 展示擺動停止：${error.message}`, 'text-red-400');
+    } finally {
+        oscillationActive = false;
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+    }
+}
+
+function stopOscillationDemo() {
+    oscillationStopRequested = true;
+    abortPosCtrl();
+    setOscillationStatus('手動停止', 'text-red-400');
+    log('SYS', '↔ 展示擺動：已要求停止', 'text-red-400');
+}
+
+const DIRECT_SWING_KEY = 'ganMotorDirectSwingV2';
+let directSwingActive = false;
+let directSwingStopRequested = false;
+
+function readDirectSwingSettings() {
+    const rpm = Math.round(Number(document.getElementById('oscRpm')?.value));
+    const angle = Number(document.getElementById('oscAngle')?.value);
+    const timeScale = Number(document.getElementById('oscTimeScale')?.value);
+    const safetySec = Math.round(Number(document.getElementById('oscSafetySec')?.value));
+    if (!Number.isFinite(rpm) || rpm < 50 || rpm > 2000) throw new Error('擺動轉速必須是 50–2000 RPM');
+    if (!Number.isFinite(angle) || angle < 10 || angle > 150) throw new Error('正負擺幅必須是 10°–150°');
+    if (!Number.isFinite(timeScale) || timeScale < 0.2 || timeScale > 3) throw new Error('時間修正倍率必須是 0.20–3.00');
+    if (!Number.isFinite(safetySec) || safetySec < 5 || safetySec > 300) throw new Error('安全停止時間必須是 5–300 秒');
+    const halfStrokeMs = angle * POS_GEAR * 60000 / (360 * rpm) * timeScale;
+    return { rpm, angle, timeScale, safetySec, halfStrokeMs, fullStrokeMs: halfStrokeMs * 2 };
+}
+
+function updateDirectSwingTiming() {
+    const el = document.getElementById('oscTimingInfo');
+    if (!el) return;
+    try {
+        const s = readDirectSwingSettings();
+        el.textContent = `中心→+${s.angle}°：${Math.round(s.halfStrokeMs)}ms｜+${s.angle}°→-${s.angle}°：${Math.round(s.fullStrokeMs)}ms｜無 Encoder 回授`;
+        el.className = 'text-[10px] text-cyan-300 mb-3';
+    } catch (error) {
+        el.textContent = error.message;
+        el.className = 'text-[10px] text-red-400 mb-3';
+    }
+}
+
+function loadDirectSwingSettings() {
+    try {
+        const s = JSON.parse(localStorage.getItem(DIRECT_SWING_KEY) || 'null');
+        if (s) {
+            document.getElementById('oscRpm').value = s.rpm ?? 50;
+            document.getElementById('oscAngle').value = s.angle ?? 60;
+            document.getElementById('oscTimeScale').value = s.timeScale ?? 1;
+            document.getElementById('oscSafetySec').value = s.safetySec ?? 60;
+        }
+    } catch (error) {
+        localStorage.removeItem(DIRECT_SWING_KEY);
+    }
+    updateDirectSwingTiming();
+}
+
+let directSwingTimerWorker = null;
+let directSwingTimerResolve = null;
+
+function cancelDirectSwingTimer() {
+    if (directSwingTimerWorker) directSwingTimerWorker.terminate();
+    directSwingTimerWorker = null;
+    if (directSwingTimerResolve) directSwingTimerResolve(false);
+    directSwingTimerResolve = null;
+}
+
+function directSwingWait(ms, deadline) {
+    if (directSwingStopRequested || Date.now() >= deadline) return Promise.resolve(false);
+    cancelDirectSwingTimer();
+    const duration = Math.max(1, Math.min(ms, deadline - Date.now()));
+    const expectedAt = Date.now() + duration;
+    return new Promise(resolve => {
+        directSwingTimerResolve = resolve;
+        const workerCode = `self.onmessage=e=>setTimeout(()=>self.postMessage(Date.now()),e.data);`;
+        directSwingTimerWorker = new Worker(URL.createObjectURL(new Blob([workerCode], { type:'text/javascript' })));
+        directSwingTimerWorker.onmessage = event => {
+            const lateMs = Math.max(0, Number(event.data) - expectedAt);
+            directSwingTimerWorker.terminate();
+            directSwingTimerWorker = null;
+            directSwingTimerResolve = null;
+            if (lateMs > 500) {
+                directSwingStopRequested = true;
+                log('ERR', `↔ 擺動計時延遲 ${lateMs}ms，已要求 STOP，避免角度持續超轉`, 'text-red-400');
+                resolve(false);
+                return;
+            }
+            resolve(!directSwingStopRequested && Date.now() < deadline);
+        };
+        directSwingTimerWorker.postMessage(duration);
+    });
+}
+
+async function sendDirectStopBurst() {
+    let delivered = false;
+    for (let i = 0; i < 3; i++) {
+        try {
+            if (isConnected) {
+                await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+                delivered = true;
+            }
+        } catch (error) {
+            log('ERR', `BLE STOP 第 ${i + 1} 次送出失敗：${error.message}`, 'text-red-400');
+        }
+        if (i < 2) await delay(80);
+    }
+    return delivered;
+}
+
+async function sendDirectDirection(netValue, label) {
+    await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+    await delay(150);
+    if (directSwingStopRequested) return false;
+    log('SYS', `↔ 直接換向：1400h = ${netValue}（${label}）`, 'text-cyan-300');
+    await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, netValue), false);
+    return true;
+}
+
+async function startDirectBleSwing() {
+    if (!isConnected) return alert('請先連線');
+    if (directSwingActive || posCtrlActive || oscillationActive) return alert('目前已有馬達控制正在執行，請先停止');
+
+    let s;
+    try { s = readDirectSwingSettings(); }
+    catch (error) { return alert(error.message); }
+
+    localStorage.setItem(DIRECT_SWING_KEY, JSON.stringify(s));
+    directSwingActive = true;
+    directSwingStopRequested = false;
+    clearInterval(pollTimer); pollTimer = null;
+    _pollPaused = true;
+    const btn = document.getElementById('oscStartBtn');
+    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+    const deadline = Date.now() + s.safetySec * 1000;
+    const runValue = dirBit => BIT.START_STOP | dirBit;
+
+    try {
+        await sendDirectStopBurst();
+        _lastExcept = null;
+        await sendRTU(buildFC06(SLAVE_ID, REG.SPD_RAM0, s.rpm), false);
+        await delay(connectionType === 'ble' ? 600 : 120);
+        if (_lastExcept) throw new Error(`${s.rpm}RPM 被驅動器拒絕`);
+
+        log('SYS', `↔ BLE 直接擺動：${s.rpm}RPM，±${s.angle}°，首段 ${Math.round(s.halfStrokeMs)}ms，往返段 ${Math.round(s.fullStrokeMs)}ms；運轉期間不讀 Encoder`, 'text-emerald-300');
+        setOscillationStatus(`中心 → +${s.angle}°`, 'text-emerald-300');
+        log('SYS', '↔ 直接方向：1400h = 1（CW）', 'text-emerald-300');
+        await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, runValue(0)), false);
+        if (!await directSwingWait(s.halfStrokeMs, deadline)) return;
+
+        while (!directSwingStopRequested && Date.now() < deadline) {
+            setOscillationStatus(`+${s.angle}° → -${s.angle}°`, 'text-cyan-300');
+            if (!await sendDirectDirection(3, 'CCW')) break;
+            if (!await directSwingWait(s.fullStrokeMs, deadline)) break;
+
+            setOscillationStatus(`-${s.angle}° → +${s.angle}°`, 'text-emerald-300');
+            if (!await sendDirectDirection(1, 'CW')) break;
+            if (!await directSwingWait(s.fullStrokeMs, deadline)) break;
+        }
+        if (!directSwingStopRequested && Date.now() >= deadline) {
+            log('SYS', `↔ 已達 ${s.safetySec} 秒安全上限，自動停止直接擺動`, 'text-amber-400');
+            setOscillationStatus('安全時間到，自動停止', 'text-amber-400');
+        }
+    } catch (error) {
+        log('ERR', `↔ BLE 直接擺動中止：${error.message}`, 'text-red-400');
+        setOscillationStatus(`中止：${error.message}`, 'text-red-400');
+    } finally {
+        directSwingStopRequested = true;
+        cancelDirectSwingTimer();
+        const delivered = await sendDirectStopBurst();
+        directSwingActive = false;
+        _pollPaused = false;
+        if (isConnected) startPolling();
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+        if (!delivered) setOscillationStatus('警告：BLE 中斷，STOP 未確認', 'text-red-400');
+        else if (!document.getElementById('oscStatus')?.textContent?.includes('中止')) setOscillationStatus('已停止', 'text-slate-400');
+    }
+}
+
+async function stopDirectBleSwing() {
+    directSwingStopRequested = true;
+    cancelDirectSwingTimer();
+    setOscillationStatus('正在送出 STOP…', 'text-red-400');
+    const delivered = await sendDirectStopBurst();
+    setOscillationStatus(delivered ? 'STOP 已送出' : '警告：STOP 未確認', delivered ? 'text-red-400' : 'text-red-500');
+    log(delivered ? 'SYS' : 'ERR', delivered ? '↔ BLE 直接擺動：STOP 已重送 3 次' : '↔ BLE 中斷：STOP 未確認送達', 'text-red-400');
+}
+
+async function goToAngleTarget(target) {
+    if (ctrlMode === 2) {
+        const msg = '目前已切換為驅動器原生 Position 模式。原生目標位置命令位址尚未經手冊確認，為避免誤動作，GO 已鎖定。';
+        log('WARN', msg, 'text-amber-400');
+        alert(msg);
+        return;
+    }
+    const input = document.getElementById('posRotVal');
+    const raw = target === undefined ? Number(input.value) : Number(target);
+    if (!Number.isFinite(raw) || raw < 0 || raw > 360) return alert('請輸入 0 到 360 的目標角度');
+    dialTargetAngle = Math.round(normalizeAngle(raw));
+    input.value = dialTargetAngle;
+    updatePositionTargetCount();
+    drawPosDial();
+    return dialGo();
+}
+
+// 時鐘位置以 ZERO 為 12 點，角度與輸出端 count 共用同一套換算。
+async function goToClockPosition(angle) {
+    const clockAngle = Number(angle);
+    if (![0, 90, 180, 270].includes(clockAngle)) return;
+    const targetCounts = outDeg2counts(clockAngle);
+    const label = clockAngle === 0 ? '12' : clockAngle === 90 ? '3' : clockAngle === 180 ? '6' : '9';
+    log('SYS', `🕘 時鐘定位：${label} 點 → ${clockAngle}°，目標 ${targetCounts} count`, 'text-cyan-300');
+    return goToAngleTarget(clockAngle);
+}
+
+const ANGLE_TEST_TARGETS = [30, 60, 90];
+const ANGLE_TEST_MAX_VERIFY_ERROR_DEG = 5;
+
+function renderAngleTestResults(results) {
+    const el = document.getElementById('angleTestResult');
+    if (!el) return;
+    el.classList.remove('hidden');
+    const rows = results.map(r => {
+        const color = Math.abs(r.error) <= 3 ? 'text-emerald-400' : 'text-amber-400';
+        return `<div class="grid grid-cols-3 gap-2"><span>${r.target}° → ${r.actual.toFixed(2)}°</span>` +
+               `<span class="${color}">誤差 ${r.error >= 0 ? '+' : ''}${r.error.toFixed(2)}°</span>` +
+               `<span class="text-slate-500">Raw ${r.raw}</span></div>`;
+    });
+    el.innerHTML = `<div class="text-slate-400 mb-1">30 / 60 / 90° 測試結果</div>${rows.join('')}`;
+}
+
+async function runAngleTest() {
+    if (!isConnected) return alert('請先連線');
+    if (ctrlMode === 2) {
+        return alert('目前為驅動器原生 Position 模式。30/60/90 測試僅適用舊的軟體閉環，已鎖定以避免誤送速度命令。');
+    }
+    if (posCtrlActive) return alert('位置控制執行中，請先停止');
+    if (POS_MIN_RPM !== POSITION_TEST_RPM) {
+        return alert(`測試要求最低 RPM 為 ${POSITION_TEST_RPM}`);
+    }
+    if (!confirm('將以 200 RPM 分三趟各移動 30°，依序量測 30°、60°、90°。\n每一趟完成後都會 STOP 並讀取位置。確定開始？')) return;
+
+    const btn = document.getElementById('angleTestBtn');
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    const resultEl = document.getElementById('angleTestResult');
+    resultEl.classList.remove('hidden');
+    resultEl.textContent = '校正基準位置中...';
+
+    const RX = connectionType === 'ble' ? 420 : 90;
+    const maxCpms = Math.max(25, (POSITION_TEST_RPM / 60 * motorCountsPerRev()) / 1000 * 2.5 + 10);
+    const results = [];
+    try {
+        // 測試全程暫停背景 poll，避免基準／位置回讀與 0000h 狀態封包交錯。
+        clearInterval(pollTimer); pollTimer = null;
+        _pollPaused = true;
+        posCtrlAbort = false;
+        await delay(connectionType === 'ble' ? 500 : 150);
+        _encLastGood = null;
+        const baseline = await readEncoderSafe(RX, maxCpms);
+        posZeroOffset = baseline;
+        dialTargetAngle = 0;
+        _updatePosUI(baseline, null);
+        log('SYS', `🧪 30/60/90 測試：ZERO = ${baseline} Raw`, 'text-indigo-300');
+
+        let priorTarget = 0;
+        for (const target of ANGLE_TEST_TARGETS) {
+            if (posCtrlAbort) throw new Error('測試已手動中止');
+            const step = target - priorTarget;
+            log('SYS', `🧪 測試目標 ${target}°：執行 +${step}°`, 'text-indigo-300');
+            await softGoToPos(step);
+            if (posCtrlAbort) throw new Error(`測試在 ${target}° 中止`);
+
+            await delay(350);
+            _encLastGood = null;
+            const raw = await readEncoderSafe(RX, maxCpms);
+            const actual = counts2outDeg(raw - baseline);
+            const error = actual - target;
+            results.push({ target, actual, error, raw });
+            renderAngleTestResults(results);
+            log('SYS', `🧪 ${target}° → 實際 ${actual.toFixed(2)}°，誤差 ${error.toFixed(2)}°`,
+                Math.abs(error) <= 3 ? 'text-emerald-400' : 'text-amber-400');
+            if (Math.abs(error) > ANGLE_TEST_MAX_VERIFY_ERROR_DEG) {
+                throw new Error(`驗證位置與控制回授不一致：${target}° 實測誤差 ${error.toFixed(2)}°，已停止後續測試`);
+            }
+            priorTarget = target;
+        }
+    } catch (error) {
+        log('ERR', `🧪 角度測試停止：${error.message}`, 'text-red-400');
+        if (!results.length) resultEl.textContent = `測試未完成：${error.message}`;
+    } finally {
+        await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+        _pollPaused = false;
+        if (isConnected) startPolling();
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
 }
 
 // ── 原生位置讀取(唯讀,固定 46xx 區,不需切 WatchPage）──────────────
 let _natPosPending = false;
 async function readNativePos() {
     if (!isConnected) return alert('請先連線');
+    if (directSwingActive) return alert('直接擺動執行中，原生位置讀取已鎖定；請先停止擺動');
     await withPollPaused(async () => {
         _natPosPending = true;
         // 4613h~4616h：目標Index/Pos、當前Index/Pos，一次讀 4 個
@@ -1924,26 +2485,139 @@ function _showNativePos(regs) {
     document.getElementById('npTgtPos').textContent = tp;
     document.getElementById('npCurIdx').textContent = sIdx(ci);
     document.getElementById('npCurPos').textContent = cp;
-    // 圈內滿刻度 = 4×Encoder解析度(01-06)。用 POS_CPR 推估(實機需確認)
-    const perRev = POS_CPR * 4;
-    const curTurns = sIdx(ci) + cp / perRev;
-    document.getElementById('npCalc').textContent =
-        `當前 ≈ ${curTurns.toFixed(3)} 圈（Pos 滿刻度假設 ${perRev}=4×${POS_CPR}）→ 輸出 ${(curTurns/POS_GEAR*360).toFixed(1)}°`;
-    log('SYS', `🧭 原生位置 目標(${sIdx(ti)},${tp}) 當前(${sIdx(ci)},${cp})`, 'text-blue-300');
+    const toSigned32 = (hi, lo) => {
+        let value = (hi & 0xFFFF) * 65536 + (lo & 0xFFFF);
+        if (value > 0x7FFFFFFF) value -= 0x100000000;
+        return value;
+    };
+    const targetRaw = toSigned32(ti, tp);
+    const currentRaw = toSigned32(ci, cp);
+    const deltaRaw = targetRaw - currentRaw;
+    const state = currentValues[0];
+    const stateName = ({ 0: '停止', 1: '啟動中', 2: '運轉中', 3: '剎車中', 4: 'Free', 5: '故障', 6: 'Servo Off', 7: '定位中', 8: '位置保持' })[state] || `未知(${state})`;
+    const modeName = ctrlMode === 2 ? 'Position' : ctrlMode === 0 ? 'Speed' : ctrlMode === 1 ? 'Duty' : `未知(${ctrlMode})`;
+    const aligned = Math.abs(deltaRaw) <= 200;
+    let verdict;
+    if (ctrlMode !== 2) verdict = '非 Position 模式：不執行原生定位';
+    else if (state === 5) verdict = '驅動器故障：禁止定位';
+    else if (state === 6) verdict = 'Servo Off：MR/MA 會被拒絕';
+    else if (state === 7) verdict = `定位中：剩餘 ${deltaRaw >= 0 ? '+' : ''}${deltaRaw} step`;
+    else if (aligned) verdict = '目標已對齊，可安全待命';
+    else verdict = `目標未對齊：差 ${deltaRaw >= 0 ? '+' : ''}${deltaRaw} step，勿直接啟用 Servo`;
+
+    const calc = document.getElementById('npCalc');
+    calc.textContent = `Raw：目標 ${targetRaw}｜當前 ${currentRaw}｜${verdict}`;
+    calc.className = `text-[9px] mt-1 ${aligned ? 'text-emerald-400' : 'text-amber-400'}`;
+    document.getElementById('npMode').textContent = `01-11 = ${ctrlMode} (${modeName})`;
+    document.getElementById('npMotorState').textContent = `D00 = ${state} (${stateName})`;
+    log('SYS', `🧭 原生位置 目標(${sIdx(ti)},${tp}) 當前(${sIdx(ci)},${cp})｜差 ${deltaRaw} step｜${verdict}`, aligned ? 'text-emerald-400' : 'text-blue-300');
 }
 
-function dialGo() {
+const POSITION_MAX_TOTAL_DEG = 360;
+const POSITION_SEGMENT_VERIFY_TOL_DEG = 5;
+const POSITION_MAX_SEGMENTS = 15;
+const POSITION_MIN_SEGMENT_DEG = 20.9;
+let positionSequenceActive = false;
+
+function finishPositionSequence() {
+    positionSequenceActive = false;
+    if (isConnected) startPolling();
+}
+
+async function moveRelativeDegrees(totalDeg) {
+    const requested = Number(totalDeg);
+    if (!Number.isFinite(requested)) return false;
+    if (requested === 0) return true;
+    if (Math.abs(requested) > POSITION_MAX_TOTAL_DEG) {
+        return alert(`單次位置命令最多 ±${POSITION_MAX_TOTAL_DEG}°`);
+    }
+    if (posCtrlActive) return alert('位置控制執行中，請先停止');
+
+    posCtrlAbort = false;
+    positionSequenceActive = true;
+    clearInterval(pollTimer); pollTimer = null;
+    let remaining = requested;
+    let movedTotal = 0;
+    let sequenceStartRaw = null;
+    let lastFinalRaw = null;
+    log('SYS', `📍 分段位置控制：要求 ${requested > 0 ? '+' : ''}${requested}°，每段最多 ${POSITION_TEST_MAX_DEG}°`, 'text-cyan-300');
+
+    for (let segment = 1; segment <= POSITION_MAX_SEGMENTS && Math.abs(remaining) > POSITION_SEGMENT_VERIFY_TOL_DEG; segment++) {
+        if (posCtrlAbort) {
+            log('SYS', `📍 分段位置控制已在第 ${segment} 段前停止`, 'text-red-400');
+            finishPositionSequence();
+            return false;
+        }
+        const step = Math.sign(remaining) * Math.min(POSITION_TEST_MAX_DEG, Math.abs(remaining));
+        if (Math.abs(step) < POSITION_MIN_SEGMENT_DEG) {
+            log('SYS', `📍 剩餘 ${remaining.toFixed(2)}° 小於目前最小可控角度 ${POSITION_MIN_SEGMENT_DEG}°，停止修正`, 'text-amber-400');
+            break;
+        }
+        log('SYS', `📍 分段 ${segment}：剩餘 ${remaining.toFixed(2)}°，本段 ${step > 0 ? '+' : ''}${step.toFixed(2)}°`, 'text-blue-300');
+        const result = await softGoToPos(step, lastFinalRaw);
+        if (!result) { finishPositionSequence(); return false; }
+
+        if (sequenceStartRaw === null) sequenceStartRaw = result.startRaw;
+        const previousMovedTotal = movedTotal;
+        movedTotal = counts2outDeg(result.finalRaw - sequenceStartRaw);
+        let segmentActual = movedTotal - previousMovedTotal;
+        let segmentError = Math.abs(segmentActual - step);
+
+        // 延遲的 FC03 回覆可能被當成本段終點；異常時在停止狀態重新驗證一次絕對 Raw。
+        if (segmentError > POSITION_SEGMENT_VERIFY_TOL_DEG && !posCtrlAbort) {
+            try {
+                await delay(250);
+                _encLastGood = null;
+                const verifiedRaw = await readEncoderSafe(connectionType === 'ble' ? 420 : 90, 25);
+                movedTotal = counts2outDeg(verifiedRaw - sequenceStartRaw);
+                segmentActual = movedTotal - previousMovedTotal;
+                segmentError = Math.abs(segmentActual - step);
+                result.finalRaw = verifiedRaw;
+                log('SYS', `📍 分段 ${segment} 停止後複核：本段 ${segmentActual.toFixed(2)}°，累積 ${movedTotal.toFixed(2)}°`, 'text-cyan-300');
+            } catch (error) {
+                posCtrlAbort = true;
+                log('ERR', `📍 分段 ${segment} 停止後複核失敗：${error.message}`, 'text-red-400');
+            }
+        }
+
+        lastFinalRaw = result.finalRaw;
+        remaining = requested - movedTotal;
+        if (posCtrlAbort || segmentError > POSITION_SEGMENT_VERIFY_TOL_DEG) {
+            await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+            log('ERR', `📍 分段控制中止：第 ${segment} 段實際 ${segmentActual.toFixed(2)}°、誤差 ${segmentError.toFixed(2)}°，累積 ${movedTotal.toFixed(2)}°`, 'text-red-400');
+            finishPositionSequence();
+            return false;
+        }
+        await delay(300);
+    }
+
+    const finalError = Math.abs(requested - movedTotal);
+    const okay = finalError <= POSITION_SEGMENT_VERIFY_TOL_DEG;
+    log('SYS', `📍 分段位置${okay ? '完成' : '未到位'}：要求 ${requested.toFixed(2)}°，實際 ${movedTotal.toFixed(2)}°，誤差 ${finalError.toFixed(2)}°`,
+        okay ? 'text-emerald-400' : 'text-amber-400');
+    _setPosStatus(okay ? `✓ 360°分段誤差 ${finalError.toFixed(2)}°` : `分段精度極限 ${finalError.toFixed(2)}°`,
+        okay ? 'text-emerald-400' : 'text-amber-400');
+    finishPositionSequence();
+    return okay;
+}
+
+async function dialGo() {
     if (!isConnected) return alert('請先連線');
-    if (dialCurAngle === null) return alert('尚無目前角度：請先連線讓 encoder 讀回位置');
+    try {
+        await ensureCurrentPosition();
+    } catch (error) {
+        log('ERR', `📍 自動讀取目前角度失敗：${error.message}`, 'text-red-400');
+        return alert(`無法讀取目前角度，位置控制未啟動。\n\n${error.message}`);
+    }
     const d = angleDelta(dialCurAngle, dialTargetAngle);   // 走最短路徑（-180~180）
-    if (Math.abs(d) < 1) { log('SYS', '🎯 已在目標角度（差 <1°）', 'text-slate-400'); return; }
+    if (Math.abs(d) < 1) { log('SYS', '🎯 已在目標角度（差 <1°）', 'text-slate-400'); return true; }
     log('SYS', `🎯 轉盤：目前 ${dialCurAngle.toFixed(0)}° → 目標 ${dialTargetAngle}°，移動 ${d.toFixed(0)}°`, 'text-blue-400');
-    softGoToPos(d);
+    return moveRelativeDegrees(d);
 }
 
 // 位置控制參數
-const POS_TOL_CNT   = Math.round(POS_CPR * 0.01);   // 容差：1% 圈 ≈ 3.6°
-const POS_MAX_PASS  = 3;                            // 最多修正趟數
+const POS_TOL_CNT   = Math.round(motorCountsPerRev() * 0.01); // 容差：馬達端 1% 圈 ≈ 輸出 0.4°
+const POS_MAX_PASS  = 1;                            // 校正測試只跑一趟，不做自動補償
 
 // 探測 0300h 能接受的最低轉速：只寫轉速暫存器，全程不送 RUN，馬達不會動
 async function probeMinRpm() {
@@ -1989,7 +2663,7 @@ async function _posPass(remainCounts, targetAll, pass) {
     const sign   = remainCounts > 0 ? 1 : -1;
     const dirBit = remainCounts > 0 ? 0 : BIT.CCW_CW;
 
-    const cpsOf = rpm => rpm / 60 * POS_CPR;
+    const cpsOf = rpm => rpm / 60 * motorCountsPerRev();
     const aAcc  = cpsOf(MAX_RPM) / (ACC_MS / 1000);
     const aDec  = cpsOf(MAX_RPM) / (DEC_MS / 1000);
     // 三角形速度曲線上限（距離不夠時連加速都跑不完）
@@ -1999,26 +2673,51 @@ async function _posPass(remainCounts, targetAll, pass) {
     // 修正趟逐次降速，讓最後一趟走得慢而準
     const vPass = cpsOf(SPEED) / Math.pow(2, pass - 1);
     // ★ 0300h 有下限，低於 POS_MIN_RPM 會被驅動器回 Exception 0x04
-    const rpmWant = Math.round(Math.min(vPass, vTri, vSamp) / POS_CPR * 60);
-    const rpmCmd  = Math.max(POS_MIN_RPM, rpmWant);
-    if (rpmWant < POS_MIN_RPM)
-        log('SYS', `📍 規劃轉速 ${rpmWant}RPM 低於下限，改用 ${POS_MIN_RPM}RPM（精度會下降）`, 'text-amber-400');
+    const rpmWant = Math.round(Math.min(vPass, vTri, vSamp) / motorCountsPerRev() * 60);
+    const savedRpm = Math.max(50, Math.min(2000, Math.round(POS_MIN_RPM)));
+    // 軟體閉環在 30° 分段只驗證到 200RPM；展示可向下調速，不允許向上超過此值。
+    const rpmCmd = Math.min(savedRpm, POSITION_TEST_RPM);
+    if (savedRpm !== rpmCmd)
+        log('SYS', `📍 設定 ${savedRpm}RPM；30° 精準分段最高限制為 ${rpmCmd}RPM`, 'text-amber-300');
+    else
+        log('SYS', `📍 使用保存的控制速度 ${rpmCmd}RPM`, 'text-slate-400');
 
     const vReal   = cpsOf(rpmCmd);
     const decMs   = Math.round(vReal / aDec * 1000);
     const decDist = vReal * vReal / (2 * aDec);
-    const stopLead = Math.round(decDist + vReal * (RX / 1000) * 0.5);   // 減速距離 + 半個取樣週期
+    const modelStopLead = Math.round(decDist + vReal * (RX / 1000) * 0.5);
+    const speedRatio = rpmCmd / POSITION_TEST_RPM;
+    const stopLead = Math.min(Math.round(POSITION_TEST_STOP_LEAD_CNT * speedRatio), Math.max(0, D - POS_TOL_CNT));
+    const poweredDistance = Math.max(0, D - stopLead);
+    const accelTimeSec = vReal / aAcc;
+    const accelDistance = vReal * vReal / (2 * aAcc);
+    const poweredTimeSec = poweredDistance <= accelDistance
+        ? Math.sqrt(2 * poweredDistance / aAcc)
+        : accelTimeSec + (poweredDistance - accelDistance) / vReal;
+    // fc06() 在 RUN 寫入後會等待 40ms；硬停止計時需扣除這段已運轉時間。
+    const modelHardStopDelayMs = Math.max(40, Math.round(poweredTimeSec * 1000 - 40));
+    // 30°/200RPM 的 160ms 為實測基準；短距離按距離縮短，較高轉速仍保留啟動時間。
+    const lowSpeedTimeScale = Math.max(1, POSITION_TEST_RPM / rpmCmd) * (rpmCmd < POSITION_TEST_RPM ? 1.2 : 1);
+    const empiricalPulseMs = POSITION_TEST_HARD_STOP_MS * Math.min(1, D / outDeg2counts(30)) * lowSpeedTimeScale;
+    const hardStopDelayMs = D <= outDeg2counts(30)
+        ? Math.max(50, Math.round(empiricalPulseMs))
+        : Math.max(POSITION_TEST_HARD_STOP_MS, modelHardStopDelayMs + RX);
     const estMs   = (D / vReal) * 1000 + decMs + 500;
     const timeout = Math.min(60000, estMs * 4 + 3000);
 
     log('SYS', `📍 第${pass}趟：剩 ${remainCounts}cnt (輸出 ${counts2outDeg(remainCounts).toFixed(2)}°) ` +
-               `→ ${rpmCmd}RPM，提前停 ${stopLead}cnt，逾時 ${Math.round(timeout)}ms`, 'text-blue-400');
+               `→ ${rpmCmd}RPM，提前停 ${stopLead}cnt（模型值 ${modelStopLead}cnt），` +
+               `硬停止 ${hardStopDelayMs}ms（模型 ${modelHardStopDelayMs}ms），逾時 ${Math.round(timeout)}ms`, 'text-blue-400');
 
     const fc06 = async (a, v) => { await sendRTU(buildFC06(SLAVE_ID, a, v), false); await delay(40); };
-    const readPos = () => readEncoderSafe(RX);   // 防 tearing 的安全讀取
+    // 合理速度以本趟命令轉速為準；200 RPM 約 16.7 cnt/ms，保留加減速與量測裕度。
+    const maxCpms = Math.max(25, vReal / 1000 * 2.5 + 10);
+    const readPos = () => readEncoderSafe(RX, maxCpms);
 
-    const from = getCurPosCounts();
+    const from = _encLastGood?.pos ?? getCurPosCounts();
     let reason = '到位';
+    let hardStopTimer = null;
+    let hardStopTriggered = false;
     try {
         // ★ 寫轉速後先確認沒被拒絕，再送 RUN（否則會用錯的速度空轉）
         // 寫入前清空、期間不送其他指令 → 之後只要有例外就必定屬於這次寫入
@@ -2031,33 +2730,84 @@ async function _posPass(remainCounts, targetAll, pass) {
             return { reason: `轉速 ${rpmCmd}RPM 被拒絕`, from, to: from };
         }
         await fc06(REG.NET_IO, BIT.START_STOP | dirBit);
+        hardStopTimer = setTimeout(() => {
+            hardStopTriggered = true;
+            const cancelled = cancelPendingEncoderRead('Encoder 讀取由硬停止中止');
+            sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+            log('SYS', `📍 時間硬停止 ${hardStopDelayMs}ms：已送 1400h = 0${cancelled ? '，取消待回 Encoder 讀取' : ''}`, 'text-amber-400');
+        }, hardStopDelayMs);
         const t0 = Date.now();
         let last = from, stagnant = 0;
         while (!posCtrlAbort) {
             const pos = await readPos();
             _updatePosUI(pos, targetAll);
+            const travelled = pos - from;
+            const maxTravel = D + stopLead + POS_TOL_CNT * 2;
+            if (travelled * sign < -POS_TOL_CNT) {
+                reason = 'Encoder 方向異常';
+                posCtrlAbort = true;
+                log('ERR', `📍 Encoder 回授方向與命令相反（${travelled}cnt），已送 STOP`, 'text-red-400');
+                break;
+            }
+            if (Math.abs(travelled) > maxTravel) {
+                reason = 'Encoder 超過規劃距離';
+                posCtrlAbort = true;
+                log('ERR', `📍 Encoder 回授已超過本趟安全距離 ${maxTravel}cnt（實測 ${travelled}cnt），已送 STOP`, 'text-red-400');
+                break;
+            }
             if ((targetAll - pos) * sign <= stopLead) { reason = '到位'; break; }
             if (Date.now() - t0 > timeout) { reason = '逾時保護'; break; }
             if (currentValues[3] !== 0) { reason = `故障 ${alarmText(currentValues[3])}`; break; }
             if (Math.abs(pos - last) < 2) { if (++stagnant >= 10) { reason = 'Encoder 無變化'; break; } }
             else { stagnant = 0; last = pos; }
         }
-        if (posCtrlAbort) reason = '手動中止';
+        if (posCtrlAbort && reason === '到位') reason = '手動中止';
+    } catch (error) {
+        if (hardStopTriggered) {
+            reason = '時間硬停止，待停止後驗證';
+            log('SYS', `📍 ${error.message}；STOP 已優先送出，等待停止後位置驗證`, 'text-amber-400');
+        } else {
+            reason = 'Encoder 讀取失敗';
+            posCtrlAbort = true;
+            log('ERR', `📍 ${error.message}，已送 STOP 並中止位置控制`, 'text-red-400');
+        }
     } finally {
+        if (hardStopTimer !== null) clearTimeout(hardStopTimer);
         await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
         await delay(decMs + 300);
         await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
         await delay(200);
+        // STOP 前的最後讀值不是最終位置；必須在減速滑行結束後重新取樣。
+        try {
+            _encLastGood = null;
+            await readEncoderSafe(RX, maxCpms);
+        } catch (error) {
+            reason = '停止後位置讀取失敗';
+            posCtrlAbort = true;
+            log('ERR', `📍 ${error.message}，無法確認最終停止位置`, 'text-red-400');
+        }
     }
-    const to = await readPos();
+    const to = _encLastGood?.pos ?? from;
     log('SYS', `📍 第${pass}趟結束（${reason}）：走了 ${to - from}cnt (輸出 ${counts2outDeg(to-from).toFixed(2)}°)`,
         'text-slate-400');
     return { reason, from, to };
 }
 
 // 量測—修正式位置控制：不依賴模型準度，走完量誤差再補一趟
-async function softGoToPos(overrideDeg) {
+async function softGoToPos(overrideDeg, expectedStartRaw = null) {
     if (!isConnected) return alert('請先連線');
+    if (ctrlMode === 2) {
+        const msg = '驅動器已在原生 Position 模式；軟體閉環速度控制已鎖定，等待確認原生 Position 命令位址。';
+        log('WARN', msg, 'text-amber-400');
+        _setPosStatus('原生 Position 模式：等待命令位址確認', 'text-amber-400');
+        return;
+    }
+    if (!POSITION_SCALE_VERIFIED) {
+        const msg = '目前為 02-14 = 1 組合位置格式，尚未完成角度比例校正；位置控制已鎖定為唯讀，GO 不會啟動馬達。';
+        log('ERR', `📍 ${msg}`, 'text-amber-400');
+        alert(msg);
+        return;
+    }
     if (currentValues[3] !== 0 || currentValues[0] === 5) {
         log('ERR', `📍 位置控制中止：Alarm = ${alarmText(currentValues[3])}`, 'text-red-400');
         alert(`驅動器處於故障狀態，無法執行位置控制。\n\nAlarm = ${alarmText(currentValues[3])}\n請先按「⚠️ 清除故障」。`);
@@ -2068,29 +2818,74 @@ async function softGoToPos(overrideDeg) {
     // degrees 指「輸出端」角度，乘減速比換算成馬達 encoder counts
     const degrees = overrideDeg !== undefined
         ? overrideDeg : parseFloat(document.getElementById('posRotVal').value ?? '0');
+    if (Math.abs(degrees) > POSITION_TEST_MAX_DEG) {
+        const msg = `單一安全分段最多 ±${POSITION_TEST_MAX_DEG}°，本次要求 ${degrees.toFixed(1)}° 已拒絕。`;
+        log('ERR', `📍 ${msg}`, 'text-amber-400');
+        alert(msg);
+        return;
+    }
     const deltaCounts = outDeg2counts(degrees);
     if (deltaCounts === 0) return;
 
+    // 最小可達移動量：最低轉速下光「減速滑行 + 一個取樣週期」就會走這麼多，
+    // 小於此值時直接拒絕，避免低速慣性造成來回修正。
+    const _cpsMin = POSITION_TEST_RPM / 60 * motorCountsPerRev();
+    const _aDec   = (3000 / 60 * motorCountsPerRev()) / ((parseInt(document.getElementById('decVal')?.value)||2000)/1000);
+    const _rxSec  = (connectionType==='ble'?420:90) / 1000;
+    const minMove = Math.round(_cpsMin * _cpsMin / (2 * _aDec) + _cpsMin * _rxSec);
+    log('SYS', `📍 要求輸出 ${degrees}°（馬達 ${(degrees*POS_GEAR).toFixed(0)}° = ${deltaCounts}cnt）｜容差 ±${POS_TOL_CNT}cnt｜最小可達移動 ≈${minMove}cnt(輸出 ${counts2outDeg(minMove).toFixed(2)}°)`, 'text-blue-400');
+    if (Math.abs(deltaCounts) < minMove) {
+        log('SYS', `⚠ 目標移動量小於最小可達移動，最終誤差可能達 ±${counts2outDeg(minMove).toFixed(1)}° —— 9:1 下建議一次下較大角度`, 'text-amber-400');
+        alert(`目標 ${counts2outDeg(deltaCounts).toFixed(1)}° 小於目前最小可控移動 ${counts2outDeg(minMove).toFixed(1)}°，已拒絕執行。`);
+        return;
+    }
+
     posCtrlActive = true; posCtrlAbort = false;
     clearInterval(pollTimer); pollTimer = null;
-    _encLastGood = null;                 // 重置安全讀取基準,本次移動重新播種
+    _encLastGood = null;
+    await delay((connectionType === 'ble' ? 420 : 90) * 2); // 讓既有背景輪詢回應排空
 
-    const startAll  = getCurPosCounts();
+    let startAll;
+    try {
+        startAll = await readEncoderSafe(
+            connectionType === 'ble' ? 420 : 90,
+            Math.max(25, (POSITION_TEST_RPM / 60 * motorCountsPerRev()) / 1000 * 2.5 + 10)
+        );
+    } catch (error) {
+        posCtrlActive = false;
+        _setPosStatus('Encoder 讀取失敗', 'text-red-400');
+        log('ERR', `📍 ${error.message}，未啟動馬達`, 'text-red-400');
+        if (!positionSequenceActive) startPolling();
+        return;
+    }
+    if (expectedStartRaw !== null) {
+        const startTolerance = Math.abs(outDeg2counts(POSITION_SEGMENT_VERIFY_TOL_DEG));
+        for (let retry = 1; Math.abs(startAll - expectedStartRaw) > startTolerance && retry <= 3; retry++) {
+            log('SYS', `📍 分段起點讀值 ${startAll} 與上一段終點 ${expectedStartRaw} 不一致，排除延遲回覆(${retry}/3)`, 'text-amber-400');
+            await delay(250);
+            _encLastGood = null;
+            try {
+                startAll = await readEncoderSafe(connectionType === 'ble' ? 420 : 90, 25);
+            } catch (error) {
+                log('ERR', `📍 分段起點重讀失敗：${error.message}`, 'text-red-400');
+                break;
+            }
+        }
+        if (Math.abs(startAll - expectedStartRaw) > startTolerance) {
+            posCtrlActive = false;
+            posCtrlAbort = true;
+            _setPosStatus('分段起點讀值不一致', 'text-red-400');
+            log('ERR', `📍 分段起點無法確認，未啟動馬達（讀值 ${startAll}、預期 ${expectedStartRaw}）`, 'text-red-400');
+            if (!positionSequenceActive) startPolling();
+            return;
+        }
+    }
     const targetAll = startAll + deltaCounts;
     _setPosStatus('▶ 運行中', 'text-blue-400');
     _updatePosUI(startAll, targetAll);
 
-    // 最小可達移動量：最低轉速下光「減速滑行 + 一個取樣週期」就會走這麼多，
-    // 剩餘量小於它時再修正只會來回震盪，應接受誤差停手。
-    const _cpsMin = POS_MIN_RPM / 60 * POS_CPR;
-    const _aDec   = (3000 / 60 * POS_CPR) / ((parseInt(document.getElementById('decVal')?.value)||2000)/1000);
-    const _rxSec  = (connectionType==='ble'?420:90) / 1000;
-    const minMove = Math.round(_cpsMin * _cpsMin / (2 * _aDec) + _cpsMin * _rxSec);
-    log('SYS', `📍 要求輸出 ${degrees}°（馬達 ${(degrees*POS_GEAR).toFixed(0)}° = ${deltaCounts}cnt）｜容差 ±${POS_TOL_CNT}cnt｜最小可達移動 ≈${minMove}cnt(輸出 ${counts2outDeg(minMove).toFixed(2)}°)`, 'text-blue-400');
-    if (Math.abs(deltaCounts) < minMove)
-        log('SYS', `⚠ 目標移動量小於最小可達移動，最終誤差可能達 ±${counts2outDeg(minMove).toFixed(1)}° —— 9:1 下建議一次下較大角度`, 'text-amber-400');
-
     let lastReason = '';
+    let moveResult = null;
     try {
         for (let pass = 1; pass <= POS_MAX_PASS && !posCtrlAbort; pass++) {
             const cur = getCurPosCounts();
@@ -2112,21 +2907,24 @@ async function softGoToPos(overrideDeg) {
         await delay(200);
         const final = getCurPosCounts();
         _updatePosUI(final, targetAll);
-        startPolling();                                  // ★ 還原含 encoder 的完整輪詢
+        if (!positionSequenceActive) startPolling();      // 分段序列結束後由外層統一恢復
 
         const moved  = final - startAll;
         const errCnt = Math.abs(targetAll - final);
         const errDeg = counts2outDeg(errCnt);            // 誤差以輸出端角度表示
+        const movedDeg = counts2outDeg(moved);
         const okay   = errCnt <= POS_TOL_CNT;
-        if (posCtrlAbort) lastReason = '手動中止';
+        if (posCtrlAbort && (!lastReason || lastReason === '到位')) lastReason = '手動中止';
         _setPosStatus(okay ? `✓ 誤差${errDeg.toFixed(2)}°` : `${lastReason} 誤差${errDeg.toFixed(2)}°`,
                       okay ? 'text-emerald-400' : 'text-amber-400');
-        log('SYS', `📍 結束（${lastReason}）：輸出實際 ${counts2outDeg(moved).toFixed(2)}° / 要求 ${degrees}°，` +
+        log('SYS', `📍 結束（${lastReason}）：輸出實際 ${movedDeg.toFixed(2)}° / 要求 ${degrees}°，` +
                    `誤差 ${errDeg.toFixed(2)}°（馬達走 ${moved}cnt）`, okay ? 'text-emerald-400' : 'text-amber-400');
         if (lastReason === 'Encoder 無變化')
             log('ERR', '→ Encoder 完全沒變：馬達沒轉（堵轉／Hall 異常）或 460Dh 無回應', 'text-red-400');
+        moveResult = { reason: lastReason, startRaw: startAll, finalRaw: final, movedCounts: moved, movedDeg, errCnt, errDeg, okay };
         posCtrlActive = false;
     }
+    return moveResult;
 }
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
@@ -2140,7 +2938,7 @@ function updateDashboard(){
         if(idx===0){const s=MOTOR_STATUS[raw];disp=s?s.txt:`${raw}`;}
         // D14: 顯示 32-bit 組合 Encoder 位置（度）
         if(idx===14){
-            const deg=getCurPosCounts()/POS_CPR*360;
+            const deg=counts2outDeg(getCurPosCounts());
             disp=deg.toFixed(1);
         }
         // D15: 顯示 32-bit 原始計數
@@ -2320,24 +3118,24 @@ alarmReset | params: {}
 query      | params: {"question": "string"} ← 資訊不足時的唯一選擇
 sequence   | params: {"steps": [{action, params, delay}, ...]}
 repeat     | params: {"count": 整數1~999, "steps": [{action, params, delay}, ...]} ← 重複N次，禁止用sequence代替
-goToPos    | params: {"rotations": 浮點數(圈，可負)} ← 組合形式02-14=1，Encoder解析度5000
+goToPos    | params: {"degrees": 0~360} ← ZERO 基準的輸出端絕對角度
 none       | params: {} ← 超出馬達控制範圍時使用
 
-═══ goToPos 換算規則（組合形式 02-14=1）═══
-- Encoder解析度 = 5000（每圈5000計數）
-- rotations 直接填圈數（支援小數與負數）
-- 1圈   → rotations:1
-- 1.5圈 → rotations:1.5
-- -2圈（反轉）→ rotations:-2
-- 0.5圈 → rotations:0.5
-- 每次命令為相對移動量
+═══ goToPos 換算規則（輸出端）═══
+- 輸出端 1 圈 = 360° = 180000 count
+- degrees 填目標絕對角度，系統會先讀目前角度，再換算相對移動 count
+- 90°  → 45000 count
+- 180° → 90000 count
+- 270° → 135000 count
+- 360° → 180000 count
+- 例如目前 30°、目標 90°：只移動 +60° = 30000 count
 
 ═══ 必須觸發 query 的情況 ═══
 - 說「啟動」「開始」但未給轉速 → query問rpm
 - 說「加速」「轉快一點」但未給具體數字 → query問rpm
 - 說「換方向」但不知道要換成哪個 → query問dir
 - 時間模糊（「轉一下」「稍微轉一下」）→ query問秒數
-- 位置控制：說「移動」但未給圈數 → query問rotations
+- 位置控制：說「移動」但未給角度 → query問degrees
 - 任何必填參數缺失 → 一律query，禁止猜測
 
 ═══ 少樣本示範（Few-shot Examples）═══
@@ -2430,6 +3228,9 @@ function saveAISettings() {
 
 // 頁面載入後顯示 model badge
 window.addEventListener('DOMContentLoaded', () => {
+    loadPositionSettings();
+    loadDirectSwingSettings();
+    updatePositionTargetCount();
     document.getElementById('aiModelBadge').innerText = aiConfig.model || '未設定';
     // 自動填入 Gist 欄位（優先 localStorage，其次 DEFAULT 常數）
     const _gt = document.getElementById('gistToken');
@@ -2876,12 +3677,15 @@ async function executeAIAction(cmd) {
             await alarmReset();
             break;
         case 'goToPos': {
-            const rotations = params.rotations ?? 0;
-            const degrees = rotations * 360;
-            const el = document.getElementById('posRotVal');
-            if (el) el.value = degrees;
-            aiLog('系統', `📍 位置：${rotations}圈 = ${degrees}°`, '#34d399');
-            await softGoToPos(degrees);
+            const degrees = params.degrees !== undefined
+                ? Number(params.degrees)
+                : Number(params.rotations ?? 0) * 360;
+            if (!Number.isFinite(degrees) || Math.abs(degrees) > POSITION_MAX_TOTAL_DEG) {
+                throw new Error(`位置角度必須在 ±${POSITION_MAX_TOTAL_DEG}° 內`);
+            }
+            if (degrees < 0 || degrees > 360) throw new Error('絕對位置角度必須在 0° 到 360° 內');
+            aiLog('系統', `📍 目標位置：${degrees}° = ${outDeg2counts(degrees)} count（將自動讀取目前角度）`, '#34d399');
+            await goToAngleTarget(degrees);
             break;
         }
         case 'sequence': {
