@@ -194,6 +194,15 @@
                     <span id="cmdStatus" class="text-[10px] text-slate-500 font-normal normal-case">Ready — Modbus RTU ID=1 | 1400h NET-IO</span>
                 </h2>
                 <div class="flex gap-2">
+                    <button onclick="dumpAllParams()" class="bg-indigo-700/60 hover:bg-indigo-600 text-indigo-100 border border-indigo-500/50 px-3 py-1 rounded text-xs font-bold transition">
+                        📋 參數快照（唯讀）
+                    </button>
+                    <button onclick="releaseRun()" class="bg-rose-700/60 hover:bg-rose-600 text-rose-100 border border-rose-500/50 px-3 py-1 rounded text-xs font-bold transition">
+                        🛑 解除 RUN 鎖定
+                    </button>
+                    <button onclick="runTrace()" class="bg-cyan-700/50 hover:bg-cyan-600 text-cyan-200 border border-cyan-600/50 px-3 py-1 rounded text-xs font-bold transition">
+                        🎬 運轉追蹤
+                    </button>
                     <button onclick="alarmReset()" class="bg-amber-700/50 hover:bg-amber-600 text-amber-200 border border-amber-600/50 px-3 py-1 rounded text-xs font-bold transition">
                         ⚠️ 清除故障
                     </button>
@@ -215,6 +224,68 @@
                         <div class="text-[10px] font-bold text-slate-300">STO2</div>
                         <div class="text-[9px] font-mono text-slate-400" id="sto2Txt">等待連線</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ══ 控制模式 01-11 (010Ah) ══ -->
+            <div class="bg-slate-900/50 p-3 rounded-lg border border-amber-700/60 mb-3" id="modePanel">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase">控制模式</span>
+                        <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-amber-400">01-11 / 010Ah</span>
+                    </div>
+                    <span id="modeBadge" class="text-[10px] font-mono text-slate-500">尚未讀取</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1">
+                    <button onclick="setCtrlMode(0)" id="modeBtn0"
+                            class="bg-slate-700 hover:bg-slate-600 text-[10px] py-2 rounded text-slate-300 font-bold transition">
+                        Speed<div class="text-[8px] font-normal opacity-70">0</div>
+                    </button>
+                    <button onclick="setCtrlMode(1)" id="modeBtn1"
+                            class="bg-slate-700 hover:bg-slate-600 text-[10px] py-2 rounded text-slate-300 font-bold transition">
+                        Duty<div class="text-[8px] font-normal opacity-70">1</div>
+                    </button>
+                    <button onclick="setCtrlMode(2)" id="modeBtn2"
+                            class="bg-slate-700 hover:bg-emerald-700 text-[10px] py-2 rounded text-slate-300 font-bold transition">
+                        Position<div class="text-[8px] font-normal opacity-70">2 ★出廠預設</div>
+                    </button>
+                    <button onclick="readCtrlMode()"
+                            class="bg-blue-800/70 hover:bg-blue-700 text-[10px] py-2 rounded text-blue-200 font-bold transition border border-blue-600/40">
+                        📖 讀取<div class="text-[8px] font-normal opacity-70">現況</div>
+                    </button>
+                </div>
+                <button onclick="setCtrlMode(2)"
+                        class="w-full mt-2 bg-emerald-700 hover:bg-emerald-600 text-white py-2 rounded text-xs font-bold transition border border-emerald-500/50">
+                    ↩ 還原出廠預設 01-11 = 2
+                </button>
+
+                <!-- 01-12 轉速(Duty)設定方法 —— 決定驅動器從哪裡拿轉速命令 -->
+                <div class="mt-2 pt-2 border-t border-slate-700">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase">轉速來源</span>
+                            <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-cyan-400">01-12 / 010Bh</span>
+                        </div>
+                        <span id="spdSrcBadge" class="text-[10px] font-mono text-slate-500">尚未讀取</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="readSpdSrc()"
+                                class="bg-blue-800/70 hover:bg-blue-700 text-blue-200 px-2 py-1 rounded text-[10px] font-bold border border-blue-600/40">📖 讀取</button>
+                        <span class="text-[10px] text-slate-500 ml-1">設為</span>
+                        <input type="number" id="spdSrcVal" value="0" min="0" max="7"
+                               class="bg-slate-800 border border-slate-600 rounded w-12 px-1 text-xs text-center text-white focus:border-cyan-500 outline-none">
+                        <button onclick="writeSpdSrc()"
+                                class="bg-cyan-800/70 hover:bg-cyan-700 text-cyan-100 px-2 py-1 rounded text-[10px] font-bold border border-cyan-600/40">✏️ 寫入</button>
+                    </div>
+                    <div class="text-[9px] text-slate-500 mt-1 leading-relaxed">
+                        <b class="text-amber-400">目前若為 1 = Multi-Drive，轉速來自 MDL 協定，寫 0300h 不會生效</b>
+                        （症狀：0300h echo 正常但 D01 指令轉速恆為 0）。<br>
+                        數值對應請在 A_HMI 點 01-12 查看選項清單，確認後再填入。
+                    </div>
+                </div>
+                <div id="modeHint" class="text-[9px] text-slate-500 mt-2 leading-relaxed">
+                    連線後會自動讀取。<b class="text-emerald-400">出廠預設 = 2</b>，
+                    速度控制原本就是在這個值下正常運作，改動前請先確認有必要。
                 </div>
             </div>
 
@@ -254,7 +325,7 @@
                     <div class="flex justify-between items-end">
                         <div>
                             <span class="text-[10px] text-slate-400 font-bold uppercase">目標轉速</span>
-                            <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400 ml-1">RAM 3F08h</span>
+                            <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400 ml-1">RAM 0300h</span>
                         </div>
                         <span id="targetRpmDisp" class="text-xl font-mono font-bold text-emerald-400">0 <span class="text-xs text-slate-500">RPM</span></span>
                     </div>
@@ -280,7 +351,7 @@
                         <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-emerald-400">RAM</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <label class="text-[10px] w-14 text-slate-400 shrink-0">加速 4000h</label>
+                        <label class="text-[10px] w-14 text-slate-400 shrink-0">加速 0400h</label>
                         <input type="number" id="accVal" value="2000" min="1" max="60000"
                                class="bg-slate-800 border border-slate-600 rounded w-20 px-1 text-xs text-center focus:border-emerald-500 outline-none text-white">
                         <button onclick="sendCmd(0x0400, parseInt(document.getElementById('accVal').value))"
@@ -310,9 +381,27 @@
                     </div>
                     <span id="posStatusBadge" class="text-[9px] font-mono text-slate-500">待命</span>
                 </div>
-                <!-- 目標輸入 + GO + STOP -->
+                <!-- 轉速下限（0300h 拒收過小的值） -->
                 <div class="flex items-center gap-1 mb-1">
-                    <label class="text-[10px] w-12 text-slate-400 shrink-0">移動(°)</label>
+                    <label class="text-[10px] w-12 text-slate-400 shrink-0">最低RPM</label>
+                    <input type="number" id="posMinRpm" value="200" step="50" min="10" max="1000"
+                           onchange="POS_MIN_RPM=parseInt(this.value)||200"
+                           class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
+                    <button onclick="probeMinRpm()"
+                            class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-2 py-0.5 rounded text-[10px]">探測下限</button>
+                    <span class="text-[9px] text-slate-600">0300h 有下限，太小會被拒</span>
+                </div>
+                <!-- 減速比：馬達 encoder 在馬達端，輸出端 = 馬達 ÷ 減速比 -->
+                <div class="flex items-center gap-1 mb-1">
+                    <label class="text-[10px] w-12 text-slate-400 shrink-0">減速比</label>
+                    <input type="number" id="posGear" value="9" step="0.1" min="0.1"
+                           onchange="POS_GEAR=parseFloat(this.value)||1; _updatePosUI(getCurPosCounts(),null)"
+                           class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
+                    <span class="text-[9px] text-slate-600">:1　馬達轉 N 圈 = 輸出轉 1 圈（encoder 在馬達端）</span>
+                </div>
+                <!-- 目標輸入（輸出端角度）+ GO + STOP -->
+                <div class="flex items-center gap-1 mb-1">
+                    <label class="text-[10px] w-12 text-slate-400 shrink-0">輸出(°)</label>
                     <input type="number" id="posRotVal" value="90" step="45"
                            class="bg-slate-800 border border-slate-600 rounded w-16 px-1 text-xs text-center text-white focus:border-blue-500 outline-none">
                     <button onclick="softGoToPos()"
@@ -580,6 +669,33 @@
     </div>
 </div>
 
+<!-- ══ 參數快照（唯讀）══ -->
+<div id="dumpModal" class="hidden fixed inset-0 bg-black/80 z-[1000] items-center justify-center p-4" style="display:none">
+  <div class="bg-slate-900 border border-indigo-600/50 rounded-xl w-full max-w-4xl max-h-[88vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-2 border-b border-slate-700 shrink-0">
+      <div>
+        <span class="text-sm font-bold text-indigo-300">📋 參數快照</span>
+        <span class="text-[10px] text-slate-500 ml-2">唯讀，全程只送 FC03，不會寫入任何暫存器</span>
+      </div>
+      <div class="flex gap-2 items-center">
+        <button onclick="exportDumpCSV()" class="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs font-bold">💾 匯出 CSV</button>
+        <button onclick="copyDumpText()"  class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 rounded text-xs font-bold">📄 複製文字</button>
+        <label class="bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded text-xs font-bold cursor-pointer">
+          📂 載入基準比對
+          <input type="file" accept=".csv" class="hidden" onchange="loadBaselineCSV(this.files[0]); this.value='';">
+        </label>
+        <button id="clearBaseBtn" onclick="clearBaseline()"
+                class="hidden bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1 rounded text-xs">✕ 清除基準</button>
+        <button onclick="document.getElementById('dumpModal').style.display='none'"
+                class="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1 rounded text-xs">關閉</button>
+      </div>
+    </div>
+    <div id="dumpProgress" class="px-4 py-1 text-[11px] text-slate-400 font-mono shrink-0"></div>
+    <div class="overflow-auto px-4 py-2 flex-1">
+      <table class="w-full text-[11px] font-mono border-collapse" id="dumpTable"></table>
+    </div>
+  </div>
+</div>
 
 <script>
 // ===================================================================
@@ -596,7 +712,30 @@ const REG = {
     POS_TGT_POS: 0x000D,  // 目標位置Pos（圈內計數 0~4999，解析度5000）
     POS_CUR_IDX: 0x000E,  // 當前位置Index（唯讀）
     POS_CUR_POS: 0x000F,  // 當前位置Pos（唯讀）
+    CTRL_MODE:   0x010A,  // 參數 01-11 控制模式 0=Speed 1=Duty 2=Position
+    SPD_OP_MODE: 0x010B,  // 參數 01-12 速度控制OP Mode
+    POS_OP_MODE: 0x010C,  // 參數 01-13 位置控制OP Mode
 };
+// 參數位址 = 群組×256 + (編號−1)   例：01-11 → 1*256+10 = 0x010A
+const paramAddr = (g, n) => (g & 0xFF) * 256 + (n - 1);
+// Encoder 每轉計數（參數 01-06 Encoder解析度），指「馬達端」每轉。
+const POS_CPR = 5000;
+// 減速比：馬達轉 POS_GEAR 圈 = 輸出轉 1 圈。encoder 裝在馬達端，
+// 所以「輸出端 1 圈」= POS_CPR × POS_GEAR 個 encoder counts。
+let POS_GEAR = 9;
+// 輸出端角度(度) → 馬達 encoder counts
+const outDeg2counts = deg => Math.round(deg / 360 * POS_CPR * POS_GEAR);
+// 馬達 encoder counts → 輸出端角度(度)
+const counts2outDeg = cnt => cnt / (POS_CPR * POS_GEAR) * 360;
+// 0300h 轉速暫存器有下限，低於下限會回 Exception 0x04。實測 50 被拒、300 可接受。
+// 位置控制降速時不得低於此值；若仍被拒，請往上調。
+let POS_MIN_RPM = 200;
+// 最近一次 Modbus 例外回應（供指令送出後判斷是否被拒絕）
+let _lastExcept = null;
+// 最近一次「讀單一暫存器」的位址，用來分派 byteCount=2 的回應
+let _lastRead1Addr = null;
+const CTRL_MODE_NAME = { 0:'Speed 速度', 1:'Duty', 2:'Position 位置' };
+let ctrlMode = null;   // 目前驅動器的 01-11 值（null = 尚未讀取）
 const BIT = { START_STOP: 0x01, CCW_CW: 0x02, ALM_RST: 0x04, STOP_MODE: 0x08 };
 
 // ===================================================================
@@ -622,16 +761,29 @@ const MOTOR_CMD_SCHEMA = {
     }
 };
 const ACTION_WHITELIST = new Set(Object.keys(MOTOR_CMD_SCHEMA.actions));
+// 馬達狀態列舉 —— 取自驅動器定義檔 ddi2（OMS/RMS MD1 家族，0000h/4600h）
+// 原始定義：0=Stop,1=Starting,2=Running,3=Breaking,4=Freeing,5=Fault,6=Servo Off,7=Moving,8=SPK,9=STO
 const MOTOR_STATUS = {
-    0: { txt:'STOP',     icon:'⬛', clr:'text-slate-400' },
-    2: { txt:'RUN',      icon:'🟢', clr:'text-emerald-400' },
-    3: { txt:'EBRAKE',   icon:'🟠', clr:'text-orange-400' },
-    4: { txt:'FREE',     icon:'⚪', clr:'text-slate-400' },
-    5: { txt:'FAULT',    icon:'🔴', clr:'text-red-400' },
-    6: { txt:'INHIBIT',  icon:'🟡', clr:'text-yellow-400' },
-    7: { txt:'SERVO-ON', icon:'🟣', clr:'text-purple-400' },
-    8: { txt:'POS-KEEP', icon:'🔵', clr:'text-blue-400' },
+    0: { txt:'STOP',      icon:'⬛', clr:'text-slate-400' },
+    1: { txt:'Starting',  icon:'🟡', clr:'text-yellow-400' },
+    2: { txt:'RUN',       icon:'🟢', clr:'text-emerald-400' },
+    3: { txt:'Breaking',  icon:'🟠', clr:'text-orange-400' },
+    4: { txt:'Freeing',   icon:'⚪', clr:'text-slate-400' },
+    5: { txt:'FAULT',     icon:'🔴', clr:'text-red-400' },
+    6: { txt:'Servo Off', icon:'🟤', clr:'text-slate-400' },
+    7: { txt:'Moving',    icon:'🔵', clr:'text-blue-400' },
+    8: { txt:'SPK',       icon:'🟣', clr:'text-purple-400' },
+    9: { txt:'STO',       icon:'🛑', clr:'text-red-400' },
 };
+// 報警碼 —— 取自驅動器定義檔 ddi2「M1:報警狀態」0003h 完整列舉
+const ALARM_NAME = {
+    0:'正常', 1:'過電流', 2:'過載', 3:'Hall', 4:'過電壓', 5:'低電壓',
+    6:'Mos OT', 7:'啟動不良', 8:'EEP', 9:'RGN OT', 10:'Motor OT',
+    12:'過速', 13:'Encoder Error', 14:'PWR ON RUN', 15:'EXT Error',
+    16:'PowLoss(MotorNFault)', 20:'Hall序列', 21:'指令', 22:'參數(EEP)',
+};
+const alarmText = c => c === 0 ? '正常' : `${c} = ${ALARM_NAME[c] || '未知碼（請查驅動器手冊）'}`;
+
 const motorDataConfig = [
     { id:'D00', addr:0x0000, name:'馬達狀態',  unit:'',    scale:1,    note:'0=STOP 2=RUN 5=FAULT' },
     { id:'D01', addr:0x0001, name:'指令轉速',  unit:'RPM', scale:1,    note:'' },
@@ -727,18 +879,34 @@ function tryParseRTU() {
             if(rtuBufLen<5)break;
             const frame=rtuBuffer.slice(0,5);
             const dataCRC=crc16(frame.slice(0,3)),frameCRC=frame[3]|(frame[4]<<8);
-            if(dataCRC===frameCRC){const ERR={1:'Illegal Function',2:'Illegal Address',3:'Illegal Value',4:'Device Failure'};log("ERR",`Exception Code=0x${frame[2].toString(16).toUpperCase()} ${ERR[frame[2]]||''}`,"text-red-400");}
+            if(dataCRC===frameCRC){const ERR={1:'Illegal Function',2:'Illegal Address',3:'Illegal Value',4:'Device Failure'};_lastExcept={code:frame[2],t:Date.now()};log("ERR",`Exception Code=0x${frame[2].toString(16).toUpperCase()} ${ERR[frame[2]]||''}`,"text-red-400");}
             rtuBuffer.copyWithin(0,5);rtuBufLen-=5;continue;
         }
         rtuBuffer.copyWithin(0,1);rtuBufLen-=1;
     }
 }
 function parseFC03Response(frame, byteCount) {
+    // 單一暫存器回應 (qty=1 → byteCount=2)：依最後一次請求的位址分派
+    if (byteCount === 2) {
+        const v = (frame[3] << 8) | frame[4];
+        if (_lastRead1Addr === REG.SPD_OP_MODE) showSpdSrc(v);
+        else showCtrlMode(v);
+        return;
+    }
     // Encoder poll response (FC03 0x460D qty=2 → byteCount=4)
     if (byteCount === 4) {
         encHigh = (frame[3] << 8) | frame[4];
         encLow  = (frame[5] << 8) | frame[6];
         if (!posCtrlActive) _updatePosUI(getCurPosCounts(), null);
+        return;
+    }
+    // 參數快照掃描中：導向收集器，不可寫入 currentValues（會污染儀表板）
+    if (_dumpAddr !== null && dumpData) {
+        const n = Math.floor(byteCount/2);
+        const vals = [];
+        for (let i=0;i<n;i++){ let v=(frame[3+i*2]<<8)|frame[4+i*2]; if(v>32767)v-=65536; vals.push(v); }
+        if (_dumpAddr === 0x0000) dumpData.monitor = vals;
+        else vals.forEach((v,i)=>{ dumpData.params[_dumpAddr+i] = v; });
         return;
     }
     // Normal 16-register status poll (0x0000 qty=16 → byteCount=32)
@@ -825,13 +993,8 @@ async function connectSerial(){
     document.getElementById('navSubtitle').innerText=`🔌 COM | 115200 8N1 | Modbus RTU | ID=${SLAVE_ID}`;
     log("SYS",`Connected via Web Serial 115200 RTU  Slave ID=${SLAVE_ID}`,"text-emerald-400");
     readLoopSerial();
-    const pollPkt=buildFC03(SLAVE_ID,0x0000,16);
-    const encPkt =buildFC03(SLAVE_ID,0x460D,2);
-    let _eSeq=0;
-    pollTimer=setInterval(()=>{
-        sendRTU(pollPkt);
-        if(++_eSeq%3===0) setTimeout(()=>{if(isConnected)sendRTU(encPkt);},80);
-    },150);
+    startPolling();
+    setTimeout(()=>{if(isConnected)readCtrlMode();},600);   // 連線後自動讀 01-11
 }
 
 async function connectBLE(){
@@ -855,13 +1018,8 @@ async function connectBLE(){
     btn.innerHTML="🔴 斷線";btn.className=btn.className.replace('bg-emerald-700','bg-red-600');
     document.getElementById('navSubtitle').innerText=`📡 BLE: ${bleDevice.name||'LTC8116'} | Modbus RTU | ID=${SLAVE_ID}`;
     log("SYS",`Connected via BLE RTU  Slave ID=${SLAVE_ID}`,"text-emerald-400");
-    const pollPkt=buildFC03(SLAVE_ID,0x0000,16);
-    const encPkt =buildFC03(SLAVE_ID,0x460D,2);
-    let _eSeq=0;
-    pollTimer=setInterval(()=>{
-        sendRTU(pollPkt);
-        if(++_eSeq%2===0) setTimeout(()=>{if(isConnected)sendRTU(encPkt);},450);
-    },500);
+    startPolling();
+    setTimeout(()=>{if(isConnected)readCtrlMode();},1200);  // 連線後自動讀 01-11（BLE 較慢）
 }
 
 function onBLEDisconnect(){
@@ -896,21 +1054,51 @@ async function processBLEQueue(){
     }
     bleQueueRunning=false;
 }
+// 序列寫入互斥鎖：WritableStream 同時只允許一個 writer，
+// 背景輪詢是非同步觸發的，不排隊就會撞出 "WritableStream is locked"
+let _txChain = Promise.resolve();
+
 async function sendRTU(buf,showLog=false){
     if(!isConnected)return;
-    try{
-        if(connectionType==='serial'){if(!port||!port.writable)return;const w=port.writable.getWriter();await w.write(buf);w.releaseLock();if(showLog)log("TX",hex(buf),"text-emerald-300");}
-        else if(connectionType==='ble'){if(!bleRxChar)return;const isPoll=buf[1]===0x03&&buf[2]===0x00&&buf[3]===0x00;if(isPoll&&bleQueue.some(q=>!q.isPoll))return;if(isPoll&&bleQueue.some(q=>q.isPoll))return;bleQueue.push({buf,showLog,isPoll});processBLEQueue();}
-    }catch(e){log("ERR",`Send failed: ${e.message}`,"text-red-400");}
+    if(connectionType==='ble'){
+        try{
+            if(!bleRxChar)return;
+            const isPoll=buf[1]===0x03&&buf[2]===0x00&&buf[3]===0x00;
+            if(isPoll&&bleQueue.some(q=>!q.isPoll))return;
+            if(isPoll&&bleQueue.some(q=>q.isPoll))return;
+            bleQueue.push({buf,showLog,isPoll});processBLEQueue();
+        }catch(e){log("ERR",`Send failed: ${e.message}`,"text-red-400");}
+        return;
+    }
+    // serial：排入互斥佇列
+    const job = _txChain.then(async () => {
+        if(!isConnected||!port||!port.writable)return;
+        let w;
+        try{
+            w = port.writable.getWriter();
+            await w.write(buf);
+            if(showLog)log("TX",hex(buf),"text-emerald-300");
+        }catch(e){
+            log("ERR",`Send failed: ${e.message}`,"text-red-400");
+        }finally{
+            try{ if(w) w.releaseLock(); }catch(_){}
+        }
+    });
+    _txChain = job.catch(()=>{});
+    return job;
 }
 
 async function sendCmd(addr,val){
     if(!isConnected)return alert("請先連線");
-    clearInterval(pollTimer);
+    clearInterval(pollTimer); pollTimer=null;
     const buf=buildFC06(SLAVE_ID,addr,val);
     await sendRTU(buf,true);
     log("CMD",`FC06 → 0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`,"text-yellow-400");
-    setTimeout(()=>{if(isConnected){const poll=buildFC03(SLAVE_ID,0x0000,16);const rate=connectionType==='ble'?500:100;pollTimer=setInterval(()=>sendRTU(poll),rate);}},200);
+    // 200ms 後還原「狀態 + encoder」的完整輪詢；
+    // 但若外層正在 withPollPaused／位置控制中，就交給外層自己還原
+    setTimeout(()=>{
+        if(isConnected && !_pollPaused && !posCtrlActive) startPolling();
+    },200);
     const s=document.getElementById('cmdStatus');
     s.innerText=`→ 0x${addr.toString(16).toUpperCase().padStart(4,'0')}h = ${val}`;
     s.classList.add('text-yellow-400');setTimeout(()=>s.classList.remove('text-yellow-400'),1000);
@@ -926,7 +1114,60 @@ async function runMotor(){
     await sendCmd(REG.SPD_RAM0,rpm);await delay(150);await sendCmd(REG.NET_IO,netVal);
 }
 async function stopMotor(){if(!isConnected)return alert("請先連線");log("SYS","⏹ STOP → 1400h ← 0x0000","text-red-400");await sendCmd(REG.NET_IO,0x0000);}
-async function alarmReset(){if(!isConnected)return alert("請先連線");log("SYS","⚠ Alarm Reset → 0A00h ← 1","text-amber-400");await sendCmd(REG.ALM_RST,1);}
+// 指令序列期間暫停背景輪詢，避免與 poll 封包在同一條線上對撞（會產生 CRC 錯誤）
+let _pollPaused = false;
+async function withPollPaused(fn) {
+    clearInterval(pollTimer); pollTimer = null;
+    _pollPaused = true;
+    try { return await fn(); }
+    finally {
+        _pollPaused = false;
+        if (isConnected && !posCtrlActive) startPolling();
+    }
+}
+
+// A_HMI 明載：Alarm Reset 需 (a) 起停指令 START/STOP = Off (b) 確實有報警
+// 重點：Alarm Reset 是「邊緣觸發」，必須 0 → 1 → 0，只寫 1 不會動作
+async function alarmReset(){
+    if(!isConnected) return alert("請先連線");
+    const before = currentValues[3];
+    const stName0 = (MOTOR_STATUS[currentValues[0]]||{}).txt || currentValues[0];
+    log("SYS", `⚠ 清除故障：目前 Alarm = ${alarmText(before)}，狀態 = ${stName0}`, "text-amber-400");
+    if (before === 0) log("SYS", "目前無報警，Reset 會被拒絕（正常）", "text-slate-400");
+
+    const D = connectionType === 'ble' ? 500 : 250;
+
+    await withPollPaused(async () => {
+        // 1) START/STOP 必須 Off
+        log("SYS", "① 1400h ← 0（START/STOP Off）", "text-slate-400");
+        await sendCmd(REG.NET_IO, 0x0000);            await delay(D*2);
+
+        // 2) 0A00h 邊緣觸發 0 → 1 → 0
+        log("SYS", "② 0A00h 邊緣觸發：0 → 1 → 0", "text-amber-400");
+        await sendCmd(REG.ALM_RST, 0);                await delay(D);
+        await sendCmd(REG.ALM_RST, 1);                await delay(D*2);
+        await sendCmd(REG.ALM_RST, 0);                await delay(D*2);
+
+        // 3) 備援：1400h bit2 (ALM_RST) 同樣做邊緣
+        log("SYS", "③ 備援 1400h bit2 邊緣：0 → 4 → 0", "text-amber-400");
+        await sendCmd(REG.NET_IO, 0x0000);            await delay(D);
+        await sendCmd(REG.NET_IO, BIT.ALM_RST);       await delay(D*2);
+        await sendCmd(REG.NET_IO, 0x0000);            await delay(D*2);
+    });
+
+    await delay(connectionType==='ble' ? 1200 : 700);   // 等輪詢帶回新狀態
+
+    const after = currentValues[3], st = currentValues[0];
+    const stName = (MOTOR_STATUS[st]||{}).txt || `未知(${st})`;
+    if (after === 0) {
+        log("SYS", `✅ 故障已清除，Alarm = 0，狀態 = ${st} (${stName})`, "text-emerald-400");
+        alert(`✅ 故障已清除。\n\n狀態 = ${stName}\n\n接著建議先把 01-11 還原成 2（出廠預設）再測試。`);
+    } else {
+        log("ERR", `❌ 故障仍在：Alarm = ${alarmText(after)}，狀態 = ${st} (${stName})`, "text-red-400");
+        log("ERR", "→ 若邊緣觸發也清不掉，代表報警條件仍成立（過載未排除／馬達堵轉／需斷電重啟）", "text-red-400");
+        alert(`故障仍未清除（已試過 0A00h 與 1400h bit2 兩種邊緣觸發）。\n\nAlarm = ${alarmText(after)}\n狀態 = ${stName}\n\n請嘗試：\n1. 把 01-11 還原成 2（出廠預設）\n2. 驅動器斷電 30 秒後重新上電\n3. 確認馬達軸能否用手轉動`);
+    }
+}
 function setDir(dir){
     currentDir=dir;
     document.getElementById('dirCW').className =dir==='CW' ?"px-2 py-0.5 text-[10px] rounded bg-emerald-600 text-white transition":"px-2 py-0.5 text-[10px] rounded text-slate-400 hover:text-white transition";
@@ -936,6 +1177,541 @@ function setDir(dir){
 async function sendSpeedRAM(rpm){if(!isConnected)return;await sendCmd(REG.SPD_RAM0,rpm);}
 function updateRpmDisplay(val){document.getElementById('targetRpmDisp').innerHTML=`${val} <span class="text-xs text-slate-500">RPM</span>`;}
 function setRpm(val){document.getElementById('rpmSlider').value=val;updateRpmDisplay(val);sendSpeedRAM(val);}
+// ── 解除 RUN 鎖定 ────────────────────────────────────────────────────
+// 症狀：馬達狀態一直是 RUN，導致 01-xx 參數寫入被回 Exception 0x04
+// HMI 錯誤訊息明講：「起停指令(START/STOP) = On」時無法寫參數
+async function releaseRun() {
+    if (!isConnected) return alert('請先連線');
+    log('SYS', '━━━ 🛑 解除 RUN 鎖定 ━━━', 'text-rose-300');
+    log('SYS', `目前 D00 馬達狀態 = ${currentValues[0]}（2 = RUN）`, 'text-slate-400');
+
+    // 1400h 全 bit 清 0：bit0=RUN, bit1=CCW, bit2=ALM_RST, bit3=STOP_MODE
+    await withPollPaused(async () => {
+        for (let i = 1; i <= 3; i++) {
+            log('SYS', `第 ${i} 次送 1400h ← 0x0000（清掉所有 bit）`, 'text-slate-400');
+            await sendCmd(REG.NET_IO, 0x0000);
+            await delay(connectionType === 'ble' ? 800 : 400);
+        }
+    });
+    await delay(700);   // 等背景輪詢帶回最新狀態
+
+    const st = currentValues[0];
+    const stName = (MOTOR_STATUS[st] || {}).txt || `未知(${st})`;
+    if (st === 0) {
+        log('SYS', `✅ 已解除，D00 馬達狀態 = ${st} (${stName})`, 'text-emerald-400');
+        alert(`✅ 已回到 STOP（狀態 ${st} = ${stName}）。\n\n現在參數應該可以寫入了。`);
+    } else {
+        log('ERR', `❌ 未回到 STOP：D00 馬達狀態 = ${st} (${stName})`, 'text-red-400');
+        log('ERR', `→ D08 IO 輸入狀態 = ${currentValues[8]}，若 RUN 來自實體 IO，Modbus 解不掉`, 'text-red-400');
+        alert(`未回到 STOP。\n\n目前狀態 = ${st} (${stName})\nIO 輸入狀態 = ${currentValues[8]}\n\n若狀態是 SERVO-ON(7)，代表驅動器仍在激磁待命；\n若是 RUN(2)，可能由實體 IO 保持。\n請到 A_HMI「診斷 → IO State Input」確認。`);
+    }
+}
+
+// ── 運轉過程錄影：把 RUN 前後的完整狀態變化抓下來 ────────────────────
+// 取代先前那個「停機時看 D01」的錯誤診斷 —— 停機時 D01 本來就是 0
+async function runTrace() {
+    if (!isConnected) return alert('請先連線');
+    const rpm = parseInt(document.getElementById('rpmSlider').value) || 500;
+    if (rpm === 0) return alert('請先把目標轉速拉到非 0（例如 500）再執行');
+
+    // 故障狀態下驅動器會忽略所有 RUN 指令，先擋下避免白跑
+    if (currentValues[3] !== 0 || currentValues[0] === 5) {
+        const msg = `驅動器目前處於故障狀態\n\n狀態 = ${(MOTOR_STATUS[currentValues[0]]||{}).txt||currentValues[0]}\nAlarm = ${alarmText(currentValues[3])}\n\n故障未清除前 RUN 指令一律無效，\n請先按「⚠️ 清除故障」。`;
+        log('ERR', `❌ 追蹤中止：Alarm = ${alarmText(currentValues[3])}，故障狀態下 RUN 無效`, 'text-red-400');
+        alert(msg);
+        return;
+    }
+
+    const isCCW = (currentDir === 'CCW');
+    const netVal = BIT.START_STOP | (isCCW ? BIT.CCW_CW : 0);
+    const snaps = [];
+    const snap = tag => snaps.push({
+        t: tag,
+        D00: currentValues[0], D01: currentValues[1], D02: currentValues[2],
+        D03: currentValues[3], D04: currentValues[4],
+        D11: currentValues[11], D12: currentValues[12], D13: currentValues[13],
+    });
+
+    log('SYS', '━━━ 🎬 運轉過程追蹤開始 ━━━', 'text-cyan-300');
+    log('SYS', `01-11 = ${ctrlMode === null ? '未讀取' : ctrlMode}｜目標 ${rpm} RPM｜方向 ${currentDir}`, 'text-slate-400');
+
+    await sendCmd(REG.NET_IO, 0x0000);      // 確保停機（不寫 0300h=0，該暫存器拒收 0）
+    await delay(600); snap('STOP 後');
+
+    await sendCmd(REG.SPD_RAM0, rpm);
+    await delay(500); snap(`寫 0300h=${rpm} 後`);
+
+    await sendCmd(REG.NET_IO, netVal);
+    log('SYS', `已送 1400h = ${netVal}，開始取樣 3 秒…`, 'text-slate-400');
+    for (let i = 1; i <= 6; i++) { await delay(500); snap(`RUN +${i * 0.5}s`); }
+
+    await sendCmd(REG.NET_IO, 0x0000);
+    await delay(600); snap('再次 STOP 後');
+
+    log('SYS', '── 取樣結果（D00狀態 / D01指令 / D02實際 / D11 Duty）──', 'text-cyan-300');
+    for (const s of snaps) {
+        const nm = (MOTOR_STATUS[s.D00] || {}).txt || `?${s.D00}`;
+        log('SYS',
+            `${s.t.padEnd(16,'　')} D00=${s.D00}(${nm}) D01=${s.D01} D02=${s.D02} ` +
+            `Alarm=${alarmText(s.D03)} 轉向=${s.D04} Duty=${(s.D11*0.1).toFixed(1)}% C=${s.D12} D=${s.D13}`,
+            s.D02 !== 0 ? 'text-emerald-400' : 'text-slate-400');
+    }
+
+    const spun    = snaps.some(s => s.D02 !== 0);
+    const gotCmd  = snaps.some(s => s.D01 === rpm);
+    const ranOK   = snaps.some(s => s.D00 === 2);      // 有進入 RUN 狀態
+    log('SYS', '━━━ 🎬 追蹤結束 ━━━', 'text-cyan-300');
+    log('SYS', `實際轉速曾非 0：${spun ? '是 ✅' : '否 ❌'}｜指令轉速曾等於 ${rpm}：${gotCmd ? '是 ✅' : '否 ❌'}`,
+        spun ? 'text-emerald-400' : 'text-amber-400');
+
+    // 特徵診斷：進得了 RUN、0300h 寫得進去，但 D01 恆為 0
+    // → 驅動器的轉速來源不是 0300h（01-12 轉速設定方法設成了別的來源）
+    let hint = '';
+    if (ranOK && !gotCmd && !spun) {
+        hint = '驅動器有進入 RUN、0300h 也寫得進去，但「指令轉速」始終是 0。\n' +
+               '代表轉速命令不是取自 0300h —— 請檢查參數 01-12（轉速設定方法）。\n' +
+               '若為 1 = Multi-Drive，轉速來自 MDL 協定，Modbus 寫 0300h 不會生效。';
+        log('ERR', '→ 進得了 RUN 但 D01 恆為 0：轉速來源不是 0300h，請檢查 01-12（轉速設定方法）', 'text-red-400');
+        readSpdSrc();     // 順手把 01-12 現值讀回來
+    } else if (!ranOK) {
+        hint = '驅動器沒有進入 RUN 狀態，請先確認 Alarm 與 STO 狀態。';
+    } else if (gotCmd && !spun) {
+        hint = '轉速命令有進去但馬達不轉 —— 偏向機械或配線問題（堵轉／Hall 訊號）。';
+    }
+    alert(`追蹤完成。\n\n馬達實際轉動：${spun ? '有 ✅' : '沒有 ❌'}\n` +
+          `驅動器收到轉速命令：${gotCmd ? '有 ✅' : '沒有 ❌'}\n` +
+          `曾進入 RUN 狀態：${ranOK ? '有 ✅' : '沒有 ❌'}` +
+          (hint ? `\n\n【研判】\n${hint}` : '') +
+          `\n\n逐筆狀態在下方 TX/RX Log。`);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  參數快照（唯讀）—— 全程只送 FC03，絕不寫入任何暫存器
+// ═══════════════════════════════════════════════════════════════════
+// 依 A_HMI 狀態列提供的選項清單
+const ENUM_0111 = {0:'Speed',1:'Duty',2:'Position',3:'Torque(Reserved)',4:'CIA402_ECat',5:'CIA402_CAN'};
+const ENUM_0112 = {0:'AOX',1:'Digital',2:'XH0_PFM',3:'XH0_PWM',4:'Multi-Drive Lite',
+                   5:'類比訊號油門',6:'脈波訊號油門',7:'AOX/Digital 切換模式'};
+// 已知參數名稱（取自 A_HMI 參數頁與診斷頁）
+// 參數名稱 —— 取自驅動器定義檔 DRIVERLIST/OMS1MD1_V0100_Note_CH.mdi2（已去 "M1:" 前綴）
+// 註：01-17/01-23/01-24、06-03~05、07-17~22、09-25 在 OMS1/OMS2/RMS1 三型號間名稱略有差異，此處採 OMS1
+const PARAM_NAMES = {
+  '01-01':'馬達/Sensor類型','01-02':'Hall sensor 序列','01-03':'馬達極數','01-04':'無載全轉速',
+  '01-05':'馬達轉向CW定義','01-06':'Encoder解析度','01-07':'Encoder弦波驅動Offset',
+  '01-08':'Encoder checking time','01-09':'Encoder settling time','01-10':'Driver-Enable 設定',
+  '01-11':'控制模式','01-12':'速度控制OP Mode','01-13':'位置控制OP Mode',
+  '01-14':'外部輸入信號最小值行為','01-15':'停止時保持力','01-16':'Hall Offset for Enocder',
+  '01-21':'外加定位Sensor轉向CW定義','01-22':'外加定位Encoder解析度',
+  '02-01':'調速上限','02-02':'調速下限','02-03':'調整加減速上限','02-04':'調整加減速下限',
+  '02-05':'調整轉矩限制上限','02-06':'調整轉矩限制下限','02-07':'調整Duty上限','02-08':'調整Duty下限',
+  '02-09':'外部輸入調整信號範圍','02-10':'外部輸入調整信號增益值','02-11':'外部輸入調整信號OFFSET',
+  '02-12':'OFFSET對應轉速','02-13':'運轉規劃模式','02-14':'位置命令型式',
+  '02-15':'Encoder Speed Upate Rate','02-16':'控制參考電壓','02-18':'功率輸出額度',
+  '02-19':'馬達驅動PWM頻率','02-20':'X Digital Filter','02-22':'Low Speed RPM',
+  '02-25':'類比訊號油門類型','02-26':'油門訊號最大值','02-27':'Throttle Map','02-28':'Throttle DeadBand',
+  '02-29':'Throttle Pulse Max','02-30':'Throttle Pulse Min','02-32':'驅動器其他 IO 輸出邏輯',
+  '03-01':'數位轉速第0段 (RPM)','03-02':'數位轉速第1段 (RPM)','03-03':'數位轉速第2段 (RPM)','03-04':'數位轉速第3段 (RPM)',
+  '03-05':'數位Duty第0段','03-06':'數位Duty第1段','03-07':'數位Duty第2段','03-08':'數位Duty第3段',
+  '03-09':'數位轉矩限制第0段 (0.01A)','03-10':'數位轉矩限制第1段','03-11':'數位轉矩限制第2段','03-12':'數位轉矩限制第3段',
+  '03-13':'轉矩限制堵轉Alarm','03-14':'超過轉矩限制允許時間','03-15':'低於轉矩限制回復時間',
+  '04-01':'數位加速時間第0段 (ms)','04-02':'數位加速時間第1段','04-03':'數位加速時間第2段','04-04':'數位加速時間第3段',
+  '04-05':'數位緩加速時間第0段','04-06':'數位緩加速時間第1段','04-07':'數位緩加速時間第2段','04-08':'數位緩加速時間第3段',
+  '04-09':'數位減速時間第0段 (ms)','04-10':'數位減速時間第1段','04-11':'數位減速時間第2段','04-12':'數位減速時間第3段',
+  '04-13':'數位緩減速時間第0段','04-14':'數位緩減速時間第1段','04-15':'數位緩減速時間第2段','04-16':'數位緩減速時間第3段',
+  '05-01':'馬達過溫設定','05-02':'初期運轉禁止','05-03':'馬達回饋訊號保護功能','05-04':'過速 Alarm 轉速',
+  '05-05':'異常自動解除時間','05-06':'設定可自動解除的異常','05-07':'M1_ER 偵測敏感度','05-08':'Hall Alarm Delay',
+  '05-09':'OVP UVP Alarm Delay','05-10':'過電壓保護點','05-11':'過電壓回復點','05-12':'低電壓保護點',
+  '05-13':'低電壓回復點','05-14':'LVP保護點','05-15':'過電流保護','05-16':'過功率保護',
+  '05-17':'RS485通訊逾時','05-18':'RS485通訊異常次數','05-19':'RS232通訊逾時','05-20':'RS232通訊異常次數',
+  '05-21':'通訊異常保護行為','05-22':'回生保護','05-23':'CAN 通訊逾時','05-24':'Analog Pos Min',
+  '05-25':'Analog Pos Max','05-26':'Fault Reaction BITF H','05-27':'Fault Reaction BITF L','05-28':'Fault Reaction Time',
+  '06-01':'X0 ( STO1 ) 功能','06-02':'X1 ( STO2 ) 功能','06-03':'X2功能 ( Always ON Input )','06-04':'X3功能 ( Always ON Input )',
+  '06-05':'X4功能 ( Always ON Input )','06-06':'X5功能 ( Always ON Input )','06-07':'X6功能 ( Always ON Input )',
+  '06-08':'X7 ( Always ON Input )','06-09':'X8 ( Always ON Input )','06-10':'X9 ( Always ON Input )',
+  '06-11':'X10 ( Always ON Input )','06-12':'X11 ( Always ON Input )','06-13':'X12 ( Always ON Input )',
+  '06-14':'X13 ( Always ON Input )','06-15':'SC/CC 模式','06-16':'I/O輸入作動準位',
+  '06-17':'Y0功能 (ENC1_A_OUT)','06-18':'Y1功能 (ENC1_B_OUT)','06-19':'Y2功能 (ENC2_A_OUT)(保留)',
+  '06-20':'Y3功能 (ENC2_B_OUT)(保留)','06-21':'Y4 ( MB )功能','06-28':'Encoder Out Mode',
+  '06-29':'M-Brake 作動機制','06-30':'轉速到達範圍(VA)','06-31':'EN-OUT轉速','06-32':'I/O輸出作動準位',
+  '07-01':'控制演算法','07-02':'控制常數Kp','07-03':'速度控制常數1','07-04':'速度控制常數2',
+  '07-05':'扭力PID控制常數P','07-06':'扭力PID控制常數I','07-07':'Id PID控制常數P','07-08':'Id PID控制常數I',
+  '07-09':'單次最大回補量','07-10':'控制補償修正','07-11':'工程參數',
+  '08-01':'正反轉模式','08-05':'急停額外作動時間','08-06':'緊急加速度','08-07':'緊急減速度',
+  '08-08':'轉矩變化率','08-09':'SPK保持力1','08-10':'SPK保持力2','08-11':'SPK Lock Delay',
+  '08-12':'相位提前','08-13':'相位提前角度','08-14':'Phase Offset','08-16':'Encoder Divider',
+};
+const MONITOR_NAMES = ['馬達狀態','指令轉速(RPM)','實際轉速(RPM)','Alarm No.','轉向(0=CW)','運轉段數',
+  'Hall Cnt','輸出功率(W)','IO輸入狀態','BUS電壓(0.01V)','輸出電流(0.01A)','輸出Duty(0.1%)',
+  '狀態C','狀態D','Encoder H','Encoder L'];
+
+let dumpData = null;          // { params:{addr:val}, monitor:[...], groups:[], ts }
+let _dumpAddr = null;         // 掃描中的起始位址（非 null 時，FC03 回應導向快照收集器）
+let baseMap  = null;          // 比對基準：{ 位址hex(如'0100h') : 數值 }，來自載入的 CSV
+let baseName = '';            // 基準檔名
+
+// 解析先前匯出的 CSV → { '0100h': 28, ... }。容錯：只認「位址欄」與「數值欄」。
+function parseSnapshotCSV(text) {
+    text = text.replace(/^﻿/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return {};
+    // 逗號分隔、去除外層引號、還原 "" → "
+    const splitRow = l => {
+        const out = []; let cur = '', q = false;
+        for (let i = 0; i < l.length; i++) {
+            const c = l[i];
+            if (q) { if (c === '"') { if (l[i+1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+            else if (c === '"') q = true;
+            else if (c === ',') { out.push(cur); cur = ''; }
+            else cur += c;
+        }
+        out.push(cur); return out;
+    };
+    const header = splitRow(lines[0]).map(h => h.trim());
+    let iAddr = header.indexOf('位址'), iVal = header.indexOf('數值');
+    if (iAddr < 0) iAddr = 1;      // 依匯出格式的預設欄位順序
+    if (iVal  < 0) iVal  = 4;
+    const map = {};
+    for (let i = 1; i < lines.length; i++) {
+        const cols = splitRow(lines[i]);
+        const addr = (cols[iAddr] || '').trim();
+        const val  = (cols[iVal]  || '').trim();
+        if (/^[0-9A-Fa-f]{1,4}h$/.test(addr) && val !== '' && !isNaN(Number(val)))
+            map[addr.toUpperCase()] = Number(val);
+    }
+    return map;
+}
+
+function loadBaselineCSV(file) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = e => {
+        try {
+            baseMap = parseSnapshotCSV(e.target.result);
+            baseName = file.name;
+            const n = Object.keys(baseMap).length;
+            if (!n) { alert('這個 CSV 讀不到任何「位址/數值」欄，請確認是本工具匯出的檔案。'); baseMap = null; return; }
+            document.getElementById('clearBaseBtn').classList.remove('hidden');
+            log('SYS', `📂 已載入基準「${file.name}」（${n} 筆），開始比對`, 'text-amber-300');
+            if (dumpData) renderDump();
+            else alert(`基準已載入（${n} 筆）。\n請按「📋 參數快照」抓目前值即可自動比對。`);
+        } catch(err) { alert('CSV 解析失敗：' + err.message); }
+    };
+    r.readAsText(file, 'utf-8');
+}
+
+function clearBaseline() {
+    baseMap = null; baseName = '';
+    document.getElementById('clearBaseBtn').classList.add('hidden');
+    if (dumpData) renderDump();
+}
+
+// 依位址查基準值；找不到回 undefined
+const baseOf = addrHex => baseMap ? baseMap[addrHex.toUpperCase()] : undefined;
+
+async function dumpAllParams() {
+    if (!isConnected) return alert('請先連線\n\n（若 A_HMI 正開著，需先關閉才能釋放 COM 埠）');
+    const groups = [1,2,3,4,5,6,7,8];
+    dumpData = { params:{}, monitor:null, groups, ts:new Date() };
+
+    const modal = document.getElementById('dumpModal');
+    modal.style.display = 'flex';
+    const prog = document.getElementById('dumpProgress');
+    document.getElementById('dumpTable').innerHTML = '';
+    log('SYS','━━━ 📋 參數快照開始（唯讀，只送 FC03）━━━','text-indigo-300');
+
+    await withPollPaused(async () => {
+        // 先抓一次監視資料 0x0000~0x000F
+        prog.textContent = '讀取監視資料 0000h × 16 …';
+        _dumpAddr = 0x0000;
+        await sendRTU(buildFC03(SLAVE_ID, 0x0000, 16), false);
+        await delay(connectionType==='ble'?700:300);
+
+        for (const g of groups) {
+            const base = paramAddr(g, 1);
+            prog.textContent = `讀取群組 ${String(g).padStart(2,'0')}-01~16（${base.toString(16).toUpperCase().padStart(4,'0')}h）…`;
+            _dumpAddr = base;
+            _lastExcept = null;
+            await sendRTU(buildFC03(SLAVE_ID, base, 16), false);
+            await delay(connectionType==='ble'?700:300);
+            if (_lastExcept) log('SYS',`　群組 ${g} 無回應（Exception 0x${_lastExcept.code.toString(16)}）`,'text-slate-500');
+        }
+        _dumpAddr = null;
+    });
+
+    const n = Object.keys(dumpData.params).length;
+    prog.textContent = `完成：${n} 個暫存器　${dumpData.ts.toLocaleString('zh-TW')}`;
+    log('SYS',`📋 快照完成：讀到 ${n} 個參數暫存器（未寫入任何值）`,'text-emerald-400');
+    renderDump();
+}
+
+function renderDump() {
+    if (!dumpData) return;
+    const t = document.getElementById('dumpTable');
+    const cmp = !!baseMap;               // 是否處於比對模式
+    let diffCount = 0;
+    const span = cmp ? 6 : 5;
+
+    let h = `<thead><tr class="text-indigo-300 border-b border-slate-700">
+      <th class="text-left py-1 px-2">位址</th><th class="text-left px-2">參數</th>
+      <th class="text-left px-2">名稱</th><th class="text-right px-2">目前值</th>` +
+      (cmp ? `<th class="text-right px-2 text-amber-300">基準值</th>` : ``) +
+      `<th class="text-left px-2">說明</th></tr></thead><tbody>`;
+
+    // 一列的產生器：cur=目前值, addrHex, 供比對
+    const row = (addrHex, label, name, cur, note, curColor) => {
+        const b = cmp ? baseOf(addrHex) : undefined;
+        const diff = cmp && b !== undefined && Number(b) !== Number(cur);
+        if (diff) diffCount++;
+        const trCls = diff ? 'bg-rose-900/40 border-b border-rose-700/40'
+                           : 'border-b border-slate-800/60';
+        const curCls = diff ? 'text-rose-300' : curColor;
+        let baseCell = '';
+        if (cmp) baseCell = `<td class="px-2 text-right ${diff?'text-amber-300':'text-slate-500'}">`
+                          + (b === undefined ? '—' : b) + (diff ? ' ⚠' : '') + `</td>`;
+        return `<tr class="${trCls}">
+          <td class="py-0.5 px-2 text-slate-500">${addrHex}</td>
+          <td class="px-2 ${label.includes('-')?'text-amber-300':'text-slate-600'}">${label}</td>
+          <td class="px-2 text-slate-300">${name}</td>
+          <td class="px-2 text-right font-bold ${curCls}">${cur}</td>
+          ${baseCell}
+          <td class="px-2 text-slate-500">${note}</td></tr>`;
+    };
+
+    if (dumpData.monitor) {
+        h += `<tr><td colspan="${span}" class="pt-2 pb-1 px-2 text-cyan-400 font-bold">— 監視資料（唯讀，會即時變動，比對僅供參考）—</td></tr>`;
+        dumpData.monitor.forEach((v,i)=>{
+            let note = '';
+            if (i===0) note = (MOTOR_STATUS[v]||{}).txt || '';
+            if (i===3) note = alarmText(v);
+            h += row(i.toString(16).toUpperCase().padStart(4,'0')+'h',
+                     'D'+String(i).padStart(2,'0'), MONITOR_NAMES[i]||'', v, note, 'text-cyan-300');
+        });
+    }
+
+    for (const g of dumpData.groups) {
+        const rows = [];
+        for (let n=1;n<=16;n++){
+            const a = paramAddr(g,n);
+            if (!(a in dumpData.params)) continue;
+            const key = `${String(g).padStart(2,'0')}-${String(n).padStart(2,'0')}`;
+            const v = dumpData.params[a];
+            let note = '';
+            if (key==='01-11') note = ENUM_0111[v] ? `${v} = ${ENUM_0111[v]}` : '';
+            if (key==='01-12') note = ENUM_0112[v] ? `${v} = ${ENUM_0112[v]}` : '';
+            rows.push(row(a.toString(16).toUpperCase().padStart(4,'0')+'h',
+                          key, PARAM_NAMES[key]||'', v, note, 'text-emerald-300'));
+        }
+        if (rows.length)
+            h += `<tr><td colspan="${span}" class="pt-2 pb-1 px-2 text-indigo-400 font-bold">— 群組 ${String(g).padStart(2,'0')} —</td></tr>` + rows.join('');
+    }
+    t.innerHTML = h + '</tbody>';
+
+    // 進度列附加比對結果
+    const prog = document.getElementById('dumpProgress');
+    if (cmp) {
+        const base = prog.textContent.split('　｜比對')[0];
+        prog.innerHTML = base +
+            `　｜比對基準「${baseName}」：` +
+            (diffCount ? `<span class="text-rose-400 font-bold">${diffCount} 個差異（紅底標示）</span>`
+                       : `<span class="text-emerald-400 font-bold">完全一致 ✓</span>`);
+    }
+}
+
+function dumpToRows() {
+    const rows = [['類別','位址','參數','名稱','數值','說明']];
+    if (dumpData.monitor) dumpData.monitor.forEach((v,i)=>{
+        let note='';
+        if(i===0) note=(MOTOR_STATUS[v]||{}).txt||'';
+        if(i===3) note=alarmText(v);
+        rows.push(['監視', i.toString(16).toUpperCase().padStart(4,'0')+'h',
+                   'D'+String(i).padStart(2,'0'), MONITOR_NAMES[i]||'', v, note]);
+    });
+    for (const g of dumpData.groups) for (let n=1;n<=16;n++){
+        const a=paramAddr(g,n); if(!(a in dumpData.params)) continue;
+        const key=`${String(g).padStart(2,'0')}-${String(n).padStart(2,'0')}`;
+        const v=dumpData.params[a];
+        let note='';
+        if(key==='01-11') note=ENUM_0111[v]?`${v} = ${ENUM_0111[v]}`:'';
+        if(key==='01-12') note=ENUM_0112[v]?`${v} = ${ENUM_0112[v]}`:'';
+        rows.push(['參數', a.toString(16).toUpperCase().padStart(4,'0')+'h', key,
+                   PARAM_NAMES[key]||'', v, note]);
+    }
+    return rows;
+}
+
+function exportDumpCSV() {
+    if (!dumpData) return alert('請先執行參數快照');
+    const rows = dumpToRows();
+    const csv = '﻿' + rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+    const ts = dumpData.ts;
+    const name = `motor_params_${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}_${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}.csv`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download = name; a.click();
+    log('SYS',`📋 已匯出 ${name}`,'text-emerald-400');
+}
+
+function copyDumpText() {
+    if (!dumpData) return alert('請先執行參數快照');
+    const rows = dumpToRows();
+    const w = [0,0,0,0,0,0];
+    rows.forEach(r=>r.forEach((c,i)=>{ w[i]=Math.max(w[i], String(c).length); }));
+    const txt = `馬達參數快照  ${dumpData.ts.toLocaleString('zh-TW')}\n` +
+        rows.map(r=>r.map((c,i)=>String(c).padEnd(w[i])).join('  ').trimEnd()).join('\n');
+    navigator.clipboard.writeText(txt)
+      .then(()=>alert('已複製到剪貼簿，可直接貼給 Claude。'))
+      .catch(()=>{ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta);
+                   ta.select(); document.execCommand('copy'); ta.remove(); alert('已複製到剪貼簿。'); });
+}
+
+// ── 01-12 轉速(Duty)設定方法 (010Bh) ─────────────────────────────────
+// A_HMI 診斷頁顯示為「M1: 轉速(Duty)設定方法」。若為 Multi-Drive，
+// 轉速命令來自 MDL 協定，寫 0300h 會被接受但不會生效（D01 恆為 0）。
+let _pendingSpdSrc = null;
+
+async function readSpdSrc() {
+    if (!isConnected) return alert('請先連線');
+    const wasPolling = !!pollTimer;
+    clearInterval(pollTimer); pollTimer = null;
+    _pollPaused = true;
+    try {
+        _lastRead1Addr = REG.SPD_OP_MODE;
+        await sendRTU(buildFC03(SLAVE_ID, REG.SPD_OP_MODE, 1), false);
+        await delay(connectionType === 'ble' ? 600 : 250);
+    } finally {
+        _pollPaused = false;
+        if (wasPolling && isConnected && !posCtrlActive) startPolling();
+    }
+}
+
+async function writeSpdSrc() {
+    if (!isConnected) return alert('請先連線');
+    const v = parseInt(document.getElementById('spdSrcVal').value);
+    if (isNaN(v)) return alert('請先填入數值');
+    if (!confirm(`確定將 01-12（轉速設定方法）寫入 ${v} ？\n\n` +
+                 `這會改變驅動器從哪裡取得轉速命令。\n` +
+                 `請先在 A_HMI 點選 01-12 確認該數值的意義。`)) return;
+
+    if (currentValues[0] === 2) {      // RUN 中無法寫 01-xx
+        log('SYS', '⚠ 馬達在 RUN 狀態，先送 STOP', 'text-amber-400');
+        await sendCmd(REG.NET_IO, 0x0000);
+        await delay(500);
+    }
+    log('SYS', `⚙ 01-12 (010Bh) ← ${v}`, 'text-cyan-400');
+    _pendingSpdSrc = v;
+    _lastExcept = null;
+    await withPollPaused(async () => {
+        await sendRTU(buildFC06(SLAVE_ID, REG.SPD_OP_MODE, v), false);
+        await delay(500);
+    });
+    if (_lastExcept) {
+        log('ERR', `❌ 01-12 寫入被拒絕（Exception 0x${_lastExcept.code.toString(16)}）`, 'text-red-400');
+        _pendingSpdSrc = null;
+        return;
+    }
+    await readSpdSrc();
+}
+
+function showSpdSrc(v) {
+    const el = document.getElementById('spdSrcBadge');
+    const isMDL = v === 1;
+    el.textContent = `01-12 = ${v}${isMDL ? ' (Multi-Drive)' : ''}`;
+    el.className = 'text-[10px] font-mono ' + (isMDL ? 'text-amber-400' : 'text-emerald-400');
+    document.getElementById('spdSrcVal').value = v;
+    log('SYS', `⚙ 轉速來源：01-12 = ${v}${isMDL ? ' → Multi-Drive（0300h 不會生效）' : ''}`,
+        isMDL ? 'text-amber-400' : 'text-emerald-400');
+    if (_pendingSpdSrc !== null && _pendingSpdSrc !== v) {
+        log('ERR', `❌ 01-12 寫入未生效：要求 ${_pendingSpdSrc}，回讀仍為 ${v}`, 'text-red-400');
+    }
+    _pendingSpdSrc = null;
+}
+
+// ── 控制模式 01-11 (010Ah) ───────────────────────────────────────────
+async function setCtrlMode(mode) {
+    if (!isConnected) return alert('請先連線');
+    // 01-xx 屬馬達參數群組，驅動器在 RUN 狀態下會回 Exception 0x04 拒絕寫入
+    if (currentValues[0] === 2) {
+        log('SYS', '⚠ 馬達在 RUN 狀態，先送 STOP 才能修改 01-xx 參數', 'text-amber-400');
+        await sendCmd(REG.NET_IO, 0x0000);
+        await delay(500);
+    }
+    log('SYS', `⚙ 01-11 (010Ah) ← ${mode} (${CTRL_MODE_NAME[mode]})`, 'text-amber-400');
+    _pendingMode = mode;
+    await withPollPaused(async () => {
+        await sendCmd(REG.CTRL_MODE, mode);
+        await delay(500);
+    });
+    await readCtrlMode();          // 寫完立刻回讀確認
+}
+let _pendingMode = null;
+
+// 統一的背景輪詢（狀態 16 筆 + 定期夾帶 encoder），供連線與 readCtrlMode 共用
+function startPolling() {
+    clearInterval(pollTimer); pollTimer = null;
+    if (!isConnected || _pollPaused || posCtrlActive) return;   // 暫停期間不得偷偷啟動
+    const pollPkt = buildFC03(SLAVE_ID, 0x0000, 16);
+    const encPkt  = buildFC03(SLAVE_ID, 0x460D, 2);
+    const isBLE   = connectionType === 'ble';
+    let seq = 0;
+    pollTimer = setInterval(() => {
+        sendRTU(pollPkt);
+        if (++seq % (isBLE ? 2 : 3) === 0)
+            setTimeout(() => { if (isConnected) sendRTU(encPkt); }, isBLE ? 450 : 80);
+    }, isBLE ? 500 : 150);
+}
+
+async function readCtrlMode() {
+    if (!isConnected) return alert('請先連線');
+    // 暫停背景 poll，避免 16-reg 回應與 1-reg 回應交錯
+    const wasPolling = !!pollTimer;
+    clearInterval(pollTimer); pollTimer = null;
+    _lastRead1Addr = REG.CTRL_MODE;
+    await sendRTU(buildFC03(SLAVE_ID, REG.CTRL_MODE, 1), false);
+    await delay(connectionType === 'ble' ? 500 : 150);
+    if (wasPolling && !posCtrlActive) startPolling();   // 還原含 encoder 的完整輪詢
+}
+
+function showCtrlMode(v) {
+    ctrlMode = v;
+    const name = CTRL_MODE_NAME[v] || `未知(${v})`;
+    const badge = document.getElementById('modeBadge');
+    badge.textContent = `01-11 = ${v} → ${name}`;
+    badge.className = 'text-[10px] font-mono ' + (v === 0 ? 'text-emerald-400' : 'text-amber-400');
+
+    // 高亮目前模式
+    for (let i = 0; i <= 2; i++) {
+        const b = document.getElementById('modeBtn' + i);
+        if (!b) continue;
+        b.className = (i === v)
+            ? 'text-[10px] py-2 rounded font-bold transition ' +
+              (i === 0 ? 'bg-emerald-600 text-white ring-2 ring-emerald-400'
+                       : 'bg-amber-600 text-white ring-2 ring-amber-400')
+            : 'bg-slate-700 hover:bg-slate-600 text-[10px] py-2 rounded text-slate-300 font-bold transition';
+    }
+
+    // 提示文字（不再依模式停用位置面板 —— 實測 01-11=2 才是可動的設定）
+    const hint = document.getElementById('modeHint');
+    const posPanel = document.getElementById('posPanel');
+    posPanel.style.opacity = '1';
+    posPanel.style.pointerEvents = 'auto';
+    if (v === 2) {
+        hint.innerHTML = '<b class="text-emerald-400">✓ 01-11 = 2（出廠預設）</b> — 這是原本速度控制正常運作的設定。';
+    } else {
+        hint.innerHTML = `<b class="text-amber-400">⚠ 01-11 = ${v}，已偏離出廠預設 2</b> — ` +
+                         '若速度控制沒反應，請按 <b class="text-amber-400">Position</b> 還原成 2 再測。';
+    }
+    log('SYS', `⚙ 目前控制模式：01-11 = ${v} → ${name}`, v === 2 ? 'text-emerald-400' : 'text-amber-400');
+
+    // 寫入後回讀值與要求值不符 → 驅動器拒絕了這次修改，要明講
+    if (_pendingMode !== null && _pendingMode !== v) {
+        log('ERR', `❌ 寫入失敗：要求 01-11 = ${_pendingMode}，回讀仍為 ${v}（驅動器拒絕修改）`, 'text-red-400');
+        hint.innerHTML = `<b class="text-red-400">❌ 01-11 寫入失敗</b> — 要求 ${_pendingMode}，回讀仍為 ${v}。` +
+                         '此參數可能唯讀、需停機、或需在 A_HMI 上解鎖後才能修改。';
+        badge.className = 'text-[10px] font-mono text-red-400';
+    }
+    _pendingMode = null;
+}
+
 // ── 軟體閉環位置控制 ─────────────────────────────────────────────────
 function getCurPosCounts() {
     // FC03 0x460D = HMI Data14 = Encoder H,  FC03 0x460E = HMI Data15 = Encoder L
@@ -958,10 +1734,14 @@ function _updatePosUI(curCounts, targetCounts) {
     const curEl = document.getElementById('posCurDisp');
     const tgtEl = document.getElementById('posTgtDisp');
     const cntEl = document.getElementById('posCurCnt');
-    if (curEl) curEl.textContent = ((curCounts - posZeroOffset) / 5000 * 360).toFixed(1);
+    // 顯示以「輸出端」角度為準（馬達 counts ÷ 減速比）
+    if (curEl) curEl.textContent = counts2outDeg(curCounts - posZeroOffset).toFixed(1);
     if (tgtEl) tgtEl.textContent = targetCounts !== null
-        ? ((targetCounts - posZeroOffset) / 5000 * 360).toFixed(1) : '--';
-    if (cntEl) cntEl.textContent = `${curCounts} cnt`;
+        ? counts2outDeg(targetCounts - posZeroOffset).toFixed(1) : '--';
+    if (cntEl) {
+        const motorDeg = (curCounts - posZeroOffset) / POS_CPR * 360;
+        cntEl.textContent = `馬達 ${curCounts} cnt（馬達端 ${motorDeg.toFixed(0)}° ÷${POS_GEAR} = 輸出）`;
+    }
 }
 
 function _setPosStatus(txt, clr='text-slate-500') {
@@ -969,111 +1749,193 @@ function _setPosStatus(txt, clr='text-slate-500') {
     if (el) { el.textContent = txt; el.className = `text-[9px] font-mono ${clr}`; }
 }
 
-async function softGoToPos(overrideDeg) {
+// 位置控制參數
+const POS_TOL_CNT   = Math.round(POS_CPR * 0.01);   // 容差：1% 圈 ≈ 3.6°
+const POS_MAX_PASS  = 3;                            // 最多修正趟數
+
+// 探測 0300h 能接受的最低轉速：只寫轉速暫存器，全程不送 RUN，馬達不會動
+async function probeMinRpm() {
     if (!isConnected) return alert('請先連線');
-    if (posCtrlActive) { posCtrlAbort = true; await delay(400); }
+    log('SYS', '━━━ 🔎 探測 0300h 轉速下限（不會啟動馬達）━━━', 'text-cyan-300');
+    await withPollPaused(async () => {
+        await sendCmd(REG.NET_IO, 0x0000);          // 先確保停機
+        await delay(400);
+        const tries = [10, 30, 50, 80, 100, 150, 200, 250, 300];
+        let ok = null;
+        for (const v of tries) {
+            _lastExcept = null;
+            await sendRTU(buildFC06(SLAVE_ID, REG.SPD_RAM0, v), false);
+            await delay(connectionType === 'ble' ? 600 : 300);
+            const rejected = !!_lastExcept;   // 每次寫入前已清空，有值就是這次被拒
+            log('SYS', `　0300h ← ${String(v).padStart(4)} RPM　${rejected ? '❌ 被拒絕' : '✅ 接受'}`,
+                rejected ? 'text-slate-500' : 'text-emerald-400');
+            if (!rejected) { ok = v; break; }
+        }
+        if (ok !== null) {
+            POS_MIN_RPM = ok;
+            document.getElementById('posMinRpm').value = ok;
+            log('SYS', `🔎 最低可接受轉速 = ${ok} RPM，已套用到位置控制`, 'text-emerald-400');
+            alert(`探測完成。\n\n0300h 能接受的最低轉速 = ${ok} RPM\n已自動套用到位置控制。`);
+        } else {
+            log('ERR', '🔎 到 300 RPM 都被拒絕 —— 可能不是下限問題，請看 Alarm 狀態', 'text-red-400');
+            alert('到 300 RPM 都被拒絕。\n\n這代表問題不是轉速下限，\n請先確認驅動器是否處於故障狀態。');
+        }
+    });
+}
 
-    const degrees = overrideDeg !== undefined
-        ? overrideDeg
-        : parseFloat(document.getElementById('posRotVal').value ?? '0');
-    const deltaCounts = Math.round(degrees / 360 * 5000);
-    if (deltaCounts === 0) return;
+// 單趟移動：往 remainCounts 方向跑，靠 encoder 回授決定何時送 STOP
+// 回傳 { reason, from, to }
+async function _posPass(remainCounts, targetAll, pass) {
+    const isBLE = connectionType === 'ble';
+    const RX    = isBLE ? 420 : 90;
+    const MAX_RPM = 3000;
+    const ACC_MS  = parseInt(document.getElementById('accVal')?.value) || 2000;
+    const DEC_MS  = parseInt(document.getElementById('decVal')?.value) || 2000;
+    const SPEED   = Math.max(50, parseInt(document.getElementById('rpmSlider')?.value) || 300);
 
-    posCtrlActive = true;
-    posCtrlAbort  = false;
+    const D      = Math.abs(remainCounts);
+    const sign   = remainCounts > 0 ? 1 : -1;
+    const dirBit = remainCounts > 0 ? 0 : BIT.CCW_CW;
 
-    // 停背景 poll，避免 UART/BLE 封包碰撞
-    clearInterval(pollTimer); pollTimer = null;
+    const cpsOf = rpm => rpm / 60 * POS_CPR;
+    const aAcc  = cpsOf(MAX_RPM) / (ACC_MS / 1000);
+    const aDec  = cpsOf(MAX_RPM) / (DEC_MS / 1000);
+    // 三角形速度曲線上限（距離不夠時連加速都跑不完）
+    const vTri  = Math.sqrt(D / (1 / (2 * aAcc) + 1 / (2 * aDec)));
+    // 取樣解析度上限：一個取樣週期內最多走目標的 30%
+    const vSamp = D * 0.30 / (RX / 1000);
+    // 修正趟逐次降速，讓最後一趟走得慢而準
+    const vPass = cpsOf(SPEED) / Math.pow(2, pass - 1);
+    // ★ 0300h 有下限，低於 POS_MIN_RPM 會被驅動器回 Exception 0x04
+    const rpmWant = Math.round(Math.min(vPass, vTri, vSamp) / POS_CPR * 60);
+    const rpmCmd  = Math.max(POS_MIN_RPM, rpmWant);
+    if (rpmWant < POS_MIN_RPM)
+        log('SYS', `📍 規劃轉速 ${rpmWant}RPM 低於下限，改用 ${POS_MIN_RPM}RPM（精度會下降）`, 'text-amber-400');
 
-    const isBLE  = connectionType === 'ble';
-    const RX     = isBLE ? 420 : 80;      // FC03/FC06 往返等待 ms
+    const vReal   = cpsOf(rpmCmd);
+    const decMs   = Math.round(vReal / aDec * 1000);
+    const decDist = vReal * vReal / (2 * aDec);
+    const stopLead = Math.round(decDist + vReal * (RX / 1000) * 0.5);   // 減速距離 + 半個取樣週期
+    const estMs   = (D / vReal) * 1000 + decMs + 500;
+    const timeout = Math.min(60000, estMs * 4 + 3000);
 
-    // ── 時間預測式控制（比反饋迴圈更適合高 latency 的 BLE）──
-    // 前提：馬達必須在速度模式（01-11 = 1），位置模式無效
-    const SPEED    = Math.max(50, parseInt(document.getElementById('rpmSlider')?.value) || 300); // 連動目標轉速，最低 50 RPM
-    const MAX_RPM  = 3000; // 驅動器最大轉速（用於計算比例加減速）
-    const ACC_MS   = parseInt(document.getElementById('accVal')?.value) || 2000; // 讀取 UI 設定值
-    const DEC_MS   = parseInt(document.getElementById('decVal')?.value) || 2000; // 讀取 UI 設定值
+    log('SYS', `📍 第${pass}趟：剩 ${remainCounts}cnt (輸出 ${counts2outDeg(remainCounts).toFixed(2)}°) ` +
+               `→ ${rpmCmd}RPM，提前停 ${stopLead}cnt，逾時 ${Math.round(timeout)}ms`, 'text-blue-400');
 
-    const cps      = SPEED / 60 * 5000;                          // counts/s at SPEED RPM
-    const accMs    = Math.round(ACC_MS * SPEED / MAX_RPM);        // 實際加速時間
-    const decMs    = Math.round(DEC_MS * SPEED / MAX_RPM);        // 實際減速時間
-    const accDist  = Math.round(cps * accMs / 1000 / 2);         // 加速期間移動量
-    const decDist  = Math.round(cps * decMs / 1000 / 2);         // 減速期間移動量
-    const absDelta = Math.abs(deltaCounts);
-    const cruiseDist = Math.max(0, absDelta - accDist - decDist); // 等速期間移動量
-    const cruiseMs   = Math.round(cruiseDist / cps * 1000);       // 等速持續時間
-    const dir        = deltaCounts > 0 ? 'CW' : 'CCW';
-    const dirBit     = dir === 'CCW' ? BIT.CCW_CW : 0;
-
-    const startCounts  = getCurPosCounts();
-    const targetCounts = startCounts + deltaCounts;
-
-    _setPosStatus('▶ 運行中', 'text-blue-400');
-    _updatePosUI(startCounts, targetCounts);
-    log('SYS',
-        `📍 ${degrees}° @ ${SPEED}RPM | acc=${accMs}ms cruise=${cruiseMs}ms dec=${decMs}ms | 目標=${targetCounts}cnt`,
-        'text-blue-400');
-
-    // 送 FC06（輕量，30ms 等待）
-    const fc06 = async (addr, val) => {
-        await sendRTU(buildFC06(SLAVE_ID, addr, val), false);
-        await delay(30);
-    };
-    // 讀 Encoder 位置（FC03 0x460D qty=2 → parseFC03Response byteCount=4）
+    const fc06 = async (a, v) => { await sendRTU(buildFC06(SLAVE_ID, a, v), false); await delay(40); };
     const readPos = async () => {
         await sendRTU(buildFC03(SLAVE_ID, 0x460D, 2), false);
         await delay(RX);
         return getCurPosCounts();
     };
 
+    const from = getCurPosCounts();
+    let reason = '到位';
     try {
-        await fc06(REG.SPD_RAM0, SPEED);
+        // ★ 寫轉速後先確認沒被拒絕，再送 RUN（否則會用錯的速度空轉）
+        // 寫入前清空、期間不送其他指令 → 之後只要有例外就必定屬於這次寫入
+        _lastExcept = null;
+        await fc06(REG.SPD_RAM0, rpmCmd);
+        await delay(RX);
+        if (_lastExcept) {
+            log('ERR', `📍 0300h ← ${rpmCmd} 被拒絕（Exception 0x${_lastExcept.code.toString(16)}）：` +
+                       `轉速低於驅動器下限，請把 POS_MIN_RPM 調高`, 'text-red-400');
+            return { reason: `轉速 ${rpmCmd}RPM 被拒絕`, from, to: from };
+        }
         await fc06(REG.NET_IO, BIT.START_STOP | dirBit);
-
-        // START 已送出，重啟 encoder-only poll，讓位置面板即時更新
-        const _encPkt = buildFC03(SLAVE_ID, 0x460D, 2);
-        pollTimer = setInterval(() => sendRTU(_encPkt), isBLE ? 500 : 150);
-
-        // 等 acc + cruise 結束
-        const totalWait = accMs + cruiseMs;
-        for (let t = 0; t < totalWait && !posCtrlAbort; t += 100) {
-            await delay(Math.min(100, totalWait - t));
-            _updatePosUI(getCurPosCounts(), targetCounts);
+        const t0 = Date.now();
+        let last = from, stagnant = 0;
+        while (!posCtrlAbort) {
+            const pos = await readPos();
+            _updatePosUI(pos, targetAll);
+            if ((targetAll - pos) * sign <= stopLead) { reason = '到位'; break; }
+            if (Date.now() - t0 > timeout) { reason = '逾時保護'; break; }
+            if (currentValues[3] !== 0) { reason = `故障 ${alarmText(currentValues[3])}`; break; }
+            if (Math.abs(pos - last) < 2) { if (++stagnant >= 10) { reason = 'Encoder 無變化'; break; } }
+            else { stagnant = 0; last = pos; }
         }
-
-        // 發停車前先停 poll，讓可能在途的回應先收完
-        clearInterval(pollTimer); pollTimer = null;
-        await delay(isBLE ? 120 : 40);
-
-        // 發停車命令
-        if (!posCtrlAbort) {
-            await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
-        }
-        // 等減速完成
-        await delay(decMs + 250);
-
+        if (posCtrlAbort) reason = '手動中止';
     } finally {
-        // 確保停車
         await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
-        await delay(150);
+        await delay(decMs + 300);
+        await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+        await delay(200);
+    }
+    const to = await readPos();
+    log('SYS', `📍 第${pass}趟結束（${reason}）：走了 ${to - from}cnt (輸出 ${counts2outDeg(to-from).toFixed(2)}°)`,
+        'text-slate-400');
+    return { reason, from, to };
+}
 
-        // 讀最終位置
-        const final  = await readPos();
-        const errDeg = Math.round(Math.abs(targetCounts - final) / 5000 * 360);
-        _updatePosUI(final, targetCounts);
+// 量測—修正式位置控制：不依賴模型準度，走完量誤差再補一趟
+async function softGoToPos(overrideDeg) {
+    if (!isConnected) return alert('請先連線');
+    if (currentValues[3] !== 0 || currentValues[0] === 5) {
+        log('ERR', `📍 位置控制中止：Alarm = ${alarmText(currentValues[3])}`, 'text-red-400');
+        alert(`驅動器處於故障狀態，無法執行位置控制。\n\nAlarm = ${alarmText(currentValues[3])}\n請先按「⚠️ 清除故障」。`);
+        return;
+    }
+    if (posCtrlActive) { posCtrlAbort = true; await delay(400); }
 
-        // 重啟背景 poll
-        const pollPkt = buildFC03(SLAVE_ID, 0x0000, 16);
-        pollTimer = setInterval(() => sendRTU(pollPkt), isBLE ? 500 : 100);
+    // degrees 指「輸出端」角度，乘減速比換算成馬達 encoder counts
+    const degrees = overrideDeg !== undefined
+        ? overrideDeg : parseFloat(document.getElementById('posRotVal').value ?? '0');
+    const deltaCounts = outDeg2counts(degrees);
+    if (deltaCounts === 0) return;
 
-        if (posCtrlAbort) {
-            _setPosStatus('■ 中止', 'text-amber-400');
-            log('SYS', `📍 中止 位置=${((final-posZeroOffset)/5000*360).toFixed(1)}°`, 'text-amber-400');
-        } else {
-            _setPosStatus(`✓ 誤差${errDeg}°`, errDeg < 30 ? 'text-emerald-400' : 'text-amber-400');
-            log('SYS', `📍 完成：誤差=${errDeg}°`, 'text-emerald-400');
+    posCtrlActive = true; posCtrlAbort = false;
+    clearInterval(pollTimer); pollTimer = null;
+
+    const startAll  = getCurPosCounts();
+    const targetAll = startAll + deltaCounts;
+    _setPosStatus('▶ 運行中', 'text-blue-400');
+    _updatePosUI(startAll, targetAll);
+
+    // 最小可達移動量：最低轉速下光「減速滑行 + 一個取樣週期」就會走這麼多，
+    // 剩餘量小於它時再修正只會來回震盪，應接受誤差停手。
+    const _cpsMin = POS_MIN_RPM / 60 * POS_CPR;
+    const _aDec   = (3000 / 60 * POS_CPR) / ((parseInt(document.getElementById('decVal')?.value)||2000)/1000);
+    const _rxSec  = (connectionType==='ble'?420:90) / 1000;
+    const minMove = Math.round(_cpsMin * _cpsMin / (2 * _aDec) + _cpsMin * _rxSec);
+    log('SYS', `📍 要求輸出 ${degrees}°（馬達 ${(degrees*POS_GEAR).toFixed(0)}° = ${deltaCounts}cnt）｜容差 ±${POS_TOL_CNT}cnt｜最小可達移動 ≈${minMove}cnt(輸出 ${counts2outDeg(minMove).toFixed(2)}°)`, 'text-blue-400');
+    if (Math.abs(deltaCounts) < minMove)
+        log('SYS', `⚠ 目標移動量小於最小可達移動，最終誤差可能達 ±${counts2outDeg(minMove).toFixed(1)}° —— 9:1 下建議一次下較大角度`, 'text-amber-400');
+
+    let lastReason = '';
+    try {
+        for (let pass = 1; pass <= POS_MAX_PASS && !posCtrlAbort; pass++) {
+            const cur = getCurPosCounts();
+            const remain = targetAll - cur;
+            if (Math.abs(remain) <= POS_TOL_CNT) { lastReason = '到位'; break; }
+            // 剩餘量已小於最小可達移動 → 再修只會震盪，接受目前誤差
+            if (pass > 1 && Math.abs(remain) < minMove) {
+                lastReason = '已達精度極限';
+                log('SYS', `📍 剩 ${remain}cnt 小於最小可達移動 ${minMove}cnt，停手避免震盪`, 'text-amber-400');
+                break;
+            }
+            const r = await _posPass(remain, targetAll, pass);
+            lastReason = r.reason;
+            if (r.reason !== '到位') break;              // 故障／逾時／堵轉就不再補
+            if (Math.abs(r.to - r.from) < 2) break;      // 完全沒動，補也沒用
         }
+    } finally {
+        await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+        await delay(200);
+        const final = getCurPosCounts();
+        _updatePosUI(final, targetAll);
+        startPolling();                                  // ★ 還原含 encoder 的完整輪詢
+
+        const moved  = final - startAll;
+        const errCnt = Math.abs(targetAll - final);
+        const errDeg = counts2outDeg(errCnt);            // 誤差以輸出端角度表示
+        const okay   = errCnt <= POS_TOL_CNT;
+        if (posCtrlAbort) lastReason = '手動中止';
+        _setPosStatus(okay ? `✓ 誤差${errDeg.toFixed(2)}°` : `${lastReason} 誤差${errDeg.toFixed(2)}°`,
+                      okay ? 'text-emerald-400' : 'text-amber-400');
+        log('SYS', `📍 結束（${lastReason}）：輸出實際 ${counts2outDeg(moved).toFixed(2)}° / 要求 ${degrees}°，` +
+                   `誤差 ${errDeg.toFixed(2)}°（馬達走 ${moved}cnt）`, okay ? 'text-emerald-400' : 'text-amber-400');
+        if (lastReason === 'Encoder 無變化')
+            log('ERR', '→ Encoder 完全沒變：馬達沒轉（堵轉／Hall 異常）或 460Dh 無回應', 'text-red-400');
         posCtrlActive = false;
     }
 }
@@ -1089,7 +1951,7 @@ function updateDashboard(){
         if(idx===0){const s=MOTOR_STATUS[raw];disp=s?s.txt:`${raw}`;}
         // D14: 顯示 32-bit 組合 Encoder 位置（度）
         if(idx===14){
-            const deg=getCurPosCounts()/5000*360;
+            const deg=getCurPosCounts()/POS_CPR*360;
             disp=deg.toFixed(1);
         }
         // D15: 顯示 32-bit 原始計數
@@ -1109,7 +1971,7 @@ function updateDashboard(){
     const statusEl=document.getElementById('alarmStatus'),detailEl=document.getElementById('alarmDetail');
     const s=MOTOR_STATUS[statusCode]||{txt:`Unknown(${statusCode})`,icon:'❓',clr:'text-slate-400'};
     statusEl.innerText=s.txt;statusEl.className=`text-sm font-bold ${s.clr}`;icon.innerText=s.icon;
-    if(almCode!==0||statusCode===5){box.classList.add('alarm-active');icon.classList.remove('grayscale');statusEl.innerText=`ALARM (${almCode})`;detailEl.innerText=`Alarm Code: ${almCode}  |  狀態: ${s.txt}`;}
+    if(almCode!==0||statusCode===5){box.classList.add('alarm-active');icon.classList.remove('grayscale');statusEl.innerText=`⚠ ${ALARM_NAME[almCode]||`故障 ${almCode}`}`;detailEl.innerText=`Alarm ${alarmText(almCode)}  |  狀態: ${s.txt}  |  故障未清除前 RUN 無效`;}
     else{box.classList.remove('alarm-active');icon.classList.toggle('grayscale',statusCode!==2);detailEl.innerText=`狀態: ${s.txt}  |  ${currentValues[2]} RPM`;}
     const busV=currentValues[9]*0.01,stoActive=busV>10;
     updateSTO('sto1',stoActive,stoActive?'ON - 安全':'未供電');
