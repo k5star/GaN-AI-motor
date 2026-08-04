@@ -1803,13 +1803,26 @@ function cancelPendingEncoderRead(message = 'Encoder 讀取已取消') {
     return true;
 }
 
-async function readEncoderSafe(RX, maxCpms = ENC_MAX_CPMS) {
-    for (let attempt = 0; attempt < 4; attempt++) {
+// opts.retryOnTimeout：僅用於「移動前」的初次讀取（馬達停著）—— 允許逾時重試。
+//                       運轉中的閉環讀取維持 false，逾時立即停止不可用舊位置。
+// opts.timeoutMs：覆寫單次讀取逾時（毫秒）。
+async function readEncoderSafe(RX, maxCpms = ENC_MAX_CPMS, opts = {}) {
+    const { retryOnTimeout = false, timeoutMs = null } = opts;
+    const to = timeoutMs || Math.max(RX * 3, connectionType === 'ble' ? 1500 : 400);
+    let timeouts = 0;
+    for (let attempt = 0; attempt < 6; attempt++) {
         let pos;
         try {
-            pos = await requestEncoderPosition(Math.max(RX * 3, connectionType === 'ble' ? 1500 : 400));
+            pos = await requestEncoderPosition(to);
         } catch (error) {
-            // 位置閉環不能使用前一次的舊位置；任一回讀逾時都必須立即停止。
+            if (retryOnTimeout && timeouts < 4) {
+                timeouts++;
+                log('SYS', `📍 encoder 回應逾時，重試 (${timeouts}/4)…`, 'text-amber-400');
+                _encLastGood = null;           // 重試需重新以兩筆驗證
+                await delay(150);
+                continue;
+            }
+            // 運轉中或重試用盡：位置閉環不能用舊位置，立即停止。
             throw new Error(`${error.message}，不可使用舊 Encoder 位置`);
         }
         const now = Date.now();
@@ -1823,7 +1836,7 @@ async function readEncoderSafe(RX, maxCpms = ENC_MAX_CPMS) {
             _encLastGood = { pos, t: now };
             return pos;                              // 合理,接受
         }
-        log('SYS', `📍 encoder 跳變 ${pos - _encLastGood.pos}cnt/${dt}ms 判為錯框,丟棄重讀(${attempt+1}/4)`, 'text-amber-400');
+        log('SYS', `📍 encoder 跳變 ${pos - _encLastGood.pos}cnt/${dt}ms 判為錯框,丟棄重讀(${attempt+1}/6)`, 'text-amber-400');
     }
     throw new Error('Encoder 連續讀取失敗，已拒絕繼續位置控制');
 }
@@ -1847,7 +1860,11 @@ async function ensureCurrentPosition() {
     if (!isConnected) throw new Error('請先連線');
     return withPollPaused(async () => {
         _encLastGood = null;
-        const raw = await readEncoderSafe(connectionType === 'ble' ? 420 : 90, 25);
+        await delay(connectionType === 'ble' ? 250 : 120);   // 給驅動器喘息（剛下完 setSpeed 可能忙）
+        // 移動前的初次讀取：容許逾時重試、拉長逾時（馬達停著，安全）
+        const raw = await readEncoderSafe(
+            connectionType === 'ble' ? 420 : 90, 25,
+            { retryOnTimeout: true, timeoutMs: connectionType === 'ble' ? 1500 : 800 });
         const el = document.getElementById('posRawValue');
         if (el) el.textContent = `Raw=${raw}`;
         _updatePosUI(raw, null);
@@ -2847,9 +2864,11 @@ async function softGoToPos(overrideDeg, expectedStartRaw = null) {
 
     let startAll;
     try {
+        // 段落啟動前的起點讀取（馬達停著）：容許逾時重試、拉長逾時
         startAll = await readEncoderSafe(
             connectionType === 'ble' ? 420 : 90,
-            Math.max(25, (POSITION_TEST_RPM / 60 * motorCountsPerRev()) / 1000 * 2.5 + 10)
+            Math.max(25, (POSITION_TEST_RPM / 60 * motorCountsPerRev()) / 1000 * 2.5 + 10),
+            { retryOnTimeout: true, timeoutMs: connectionType === 'ble' ? 1500 : 800 }
         );
     } catch (error) {
         posCtrlActive = false;
