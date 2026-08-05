@@ -494,6 +494,46 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ══ 步進定位展示（安全,每步 encoder 閉環,不會暴衝）══ -->
+                <div class="p-3 mb-3 border border-blue-600 bg-blue-950/20 rounded">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <div class="text-sm font-bold text-blue-300">🎯 步進定位展示（推薦，安全）</div>
+                            <div class="text-[10px] text-slate-500">每步 encoder 閉環轉固定角度→停→下一步，不會連續暴衝</div>
+                        </div>
+                        <span id="stepDemoStatus" class="text-xs font-mono text-slate-500">待命</span>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                        <label class="text-xs text-slate-300">每步角度 °
+                            <input id="stepDeg" type="number" value="30" min="21" max="30" step="1" oninput="updateStepDemoInfo()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                            <span class="text-[9px] text-amber-400">≥21°（20°低於可控下限）</span>
+                        </label>
+                        <label class="text-xs text-slate-300">步數
+                            <input id="stepCount" type="number" value="20" min="1" max="200" step="1" oninput="updateStepDemoInfo()"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                        </label>
+                        <label class="text-xs text-slate-300">每步停頓 ms
+                            <input id="stepPause" type="number" value="500" min="100" max="5000" step="100"
+                                   class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-3 text-base text-white">
+                        </label>
+                        <label class="text-xs text-slate-300">方向模式
+                            <select id="stepMode" onchange="updateStepDemoInfo()" class="mt-1 w-full h-10 bg-slate-800 border border-slate-600 rounded px-2 text-sm text-white">
+                                <option value="same">同向累積(＋)</option>
+                                <option value="osc">往復擺動(＋－)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="stepDemoBtn" onclick="runSteppedDemo()" class="h-11 bg-blue-700 hover:bg-blue-600 text-white rounded font-bold">▶ 開始步進展示</button>
+                        <button onclick="stopSteppedDemo()" class="h-11 bg-red-700 hover:bg-red-600 text-white rounded font-bold">■ 停止</button>
+                    </div>
+                    <div class="text-[10px] text-slate-500 mt-2 leading-relaxed" id="stepDemoInfo">
+                        20 步 × 30° = 累積 600°（≈1.67 圈）。每步轉完馬達停住,斷線只影響當下一步。
+                    </div>
+                </div>
+
                 <!-- 位置顯示 -->
                 <div class="grid grid-cols-2 gap-1 text-[10px]">
                     <div class="text-slate-500">當前：<span id="posCurDisp" class="text-blue-300 font-mono">--</span><span class="text-slate-600"> °</span></div>
@@ -2721,6 +2761,76 @@ async function moveRelativeDegrees(totalDeg) {
         okay ? 'text-emerald-400' : 'text-amber-400');
     finishPositionSequence();
     return okay;
+}
+
+// ── 步進定位展示：重複「有界 encoder 閉環移動 → 停」，不會連續暴衝 ──
+let steppedDemoActive = false, steppedDemoAbort = false;
+
+function stopSteppedDemo() {
+    steppedDemoAbort = true;
+    posCtrlAbort = true;                 // 中止當下那一步
+    if (isConnected) sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+    log('SYS', '🎯 步進展示：已要求停止', 'text-red-400');
+}
+
+async function runSteppedDemo() {
+    if (!isConnected) return alert('請先連線');
+    if (steppedDemoActive || posCtrlActive || directSwingActive)
+        return alert('目前已有馬達控制在執行，請先停止');
+
+    const stepDeg = parseFloat(document.getElementById('stepDeg').value) || 30;
+    const count   = parseInt(document.getElementById('stepCount').value) || 20;
+    const pauseMs = parseInt(document.getElementById('stepPause').value) || 500;
+    const mode    = document.getElementById('stepMode').value;   // same | osc
+    if (stepDeg < POSITION_MIN_SEGMENT_DEG)
+        return alert(`每步角度需 ≥ ${Math.ceil(POSITION_MIN_SEGMENT_DEG)}°（20° 低於驅動器可控下限，會不動）`);
+
+    steppedDemoActive = true; steppedDemoAbort = false;
+    const btn = document.getElementById('stepDemoBtn');
+    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+    const st = document.getElementById('stepDemoStatus');
+    log('SYS', `🎯 步進展示開始：${count} 步 × ${stepDeg}°（${mode === 'osc' ? '往復' : '同向'}），每步停 ${pauseMs}ms`, 'text-blue-300');
+
+    let done = 0;
+    try {
+        for (let i = 1; i <= count && !steppedDemoAbort; i++) {
+            posCtrlAbort = false;                        // 每步重置
+            const dir = (mode === 'osc' && i % 2 === 0) ? -1 : 1;
+            st.textContent = `第 ${i}/${count} 步（${dir > 0 ? '+' : '-'}${stepDeg}°）`;
+            st.className = 'text-xs font-mono text-blue-300';
+            const ok = await moveRelativeDegrees(dir * stepDeg);
+            if (steppedDemoAbort) break;
+            if (!ok) {
+                log('ERR', `🎯 第 ${i} 步未到位/失敗，為安全停止整個展示`, 'text-red-400');
+                st.textContent = `第 ${i} 步失敗，已停`; st.className = 'text-xs font-mono text-red-400';
+                break;
+            }
+            done = i;
+            if (i < count && !steppedDemoAbort) await delay(pauseMs);
+        }
+    } catch (e) {
+        log('ERR', `🎯 步進展示異常：${e.message}`, 'text-red-400');
+    } finally {
+        if (isConnected) await sendRTU(buildFC06(SLAVE_ID, REG.NET_IO, 0), false);
+        steppedDemoActive = false;
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+        const msg = steppedDemoAbort ? `已停止（完成 ${done} 步）` : `完成 ${done} 步`;
+        st.textContent = msg; st.className = 'text-xs font-mono ' + (steppedDemoAbort ? 'text-amber-400' : 'text-emerald-400');
+        log('SYS', `🎯 步進展示結束：${msg}`, steppedDemoAbort ? 'text-amber-400' : 'text-emerald-400');
+        if (isConnected && !posCtrlActive) startPolling();
+    }
+}
+
+// 依輸入即時更新步進展示說明
+function updateStepDemoInfo() {
+    const d = parseFloat(document.getElementById('stepDeg')?.value) || 30;
+    const c = parseInt(document.getElementById('stepCount')?.value) || 20;
+    const mode = document.getElementById('stepMode')?.value;
+    const el = document.getElementById('stepDemoInfo'); if (!el) return;
+    if (mode === 'osc')
+        el.textContent = `${c} 步 × ±${d}° 往復擺動。每步轉完馬達停住,斷線只影響當下一步。`;
+    else
+        el.textContent = `${c} 步 × ${d}° = 累積 ${(c*d).toFixed(0)}°（≈${(c*d/360).toFixed(2)} 圈）。每步轉完馬達停住,斷線只影響當下一步。`;
 }
 
 async function dialGo() {
