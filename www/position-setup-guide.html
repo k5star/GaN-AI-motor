@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GaN 馬達 — 原生位置控制設定與校正說明</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#172033; --bd:#334155;
+    --tx:#e2e8f0; --dim:#94a3b8; --faint:#64748b;
+    --ok:#34d399; --warn:#fbbf24; --err:#f87171; --info:#60a5fa; --accent:#2dd4bf;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f8fafc; --panel:#fff; --panel2:#f1f5f9; --bd:#cbd5e1;
+           --tx:#0f172a; --dim:#475569; --faint:#64748b;
+           --ok:#059669; --warn:#b45309; --err:#dc2626; --info:#2563eb; --accent:#0d9488; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:0;background:var(--bg);color:var(--tx);
+       font-family:"Segoe UI","Microsoft JhengHei",system-ui,sans-serif;line-height:1.75}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:1.7rem;margin:0 0 6px;letter-spacing:.5px}
+  .sub{color:var(--dim);font-size:.9rem;margin-bottom:26px}
+  h2{font-size:1.15rem;margin:34px 0 12px;padding-bottom:7px;border-bottom:2px solid var(--bd)}
+  h3{font-size:1rem;margin:22px 0 8px;color:var(--accent)}
+  p,li{font-size:.92rem}
+  code{background:var(--panel2);border:1px solid var(--bd);border-radius:4px;
+       padding:1px 5px;font-family:Consolas,"Courier New",monospace;font-size:.86em}
+  pre{background:var(--panel2);border:1px solid var(--bd);border-radius:8px;
+      padding:12px 14px;overflow-x:auto;font-size:.82rem;line-height:1.6}
+  pre code{background:none;border:none;padding:0}
+  .card{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .tblwrap{overflow-x:auto;margin:12px 0}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:.86rem}
+  th,td{border:1px solid var(--bd);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+  .ok{color:var(--ok);font-weight:600}
+  .err{color:var(--err);font-weight:600}
+  .warn{color:var(--warn);font-weight:600}
+  .info{color:var(--info)}
+  .box{border-left:4px solid var(--info);background:var(--panel);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .box.w{border-left-color:var(--warn)}
+  .box.e{border-left-color:var(--err)}
+  .box.g{border-left-color:var(--ok)}
+  /* 只有開頭的標題 <b> 獨立成行，句中的 <b> 維持行內 */
+  .box > b:first-child{display:block;margin-bottom:4px}
+  .big{background:var(--panel);border:2px solid var(--ok);border-radius:10px;padding:18px;margin:18px 0;text-align:center}
+  .big .n{font-size:1.5rem;font-weight:700;color:var(--ok);font-family:Consolas,monospace}
+  .big .l{color:var(--dim);font-size:.82rem;margin-top:4px}
+  ol.steps{counter-reset:s;list-style:none;padding-left:0}
+  ol.steps>li{counter-increment:s;position:relative;padding:10px 0 10px 46px;border-bottom:1px dashed var(--bd)}
+  ol.steps>li:last-child{border-bottom:none}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:11px;width:30px;height:30px;
+    background:var(--info);color:#fff;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:.85rem}
+  .kbd{background:var(--panel2);border:1px solid var(--bd);border-bottom-width:2px;
+       border-radius:5px;padding:2px 7px;font-size:.83em;white-space:nowrap}
+  footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--bd);color:var(--faint);font-size:.8rem}
+  @media print{ body{background:#fff;color:#000} .card,.box,.big{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>GaN 馬達 — 原生位置控制設定與校正</h1>
+<div class="sub">
+  驅動器：OMS/RMS MD1 家族（BLE 模組 LTC8116，Modbus RTU，Slave ID = 1）<br>
+  對應網頁：<code>index-local-ai-motor-v3.html</code> ｜ 實機驗證日期：2026-08-14
+</div>
+
+<div class="big">
+  <div class="n">20,000 step = 馬達 1 圈　→　輸出 1 圈 = 180,000 step</div>
+  <div class="l">這是實機校正後的正確尺度（＝ Encoder 5000 PPR × 4 倍頻 × 減速比 9）</div>
+</div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>一、這次做了什麼</h2>
+<p>把位置控制從「<b>軟體閉環</b>」換成「<b>驅動器原生閉環</b>」：</p>
+<div class="tblwrap"><table>
+<tr><th style="width:50%">舊：軟體閉環</th><th>新：原生 Multi-Drive</th></tr>
+<tr>
+  <td>網頁下轉速指令，自己讀 encoder、自己算何時該停</td>
+  <td>網頁只下「目標位置」，驅動器自己跑完閉環</td>
+</tr>
+<tr>
+  <td>要分段（單段最多 30°）、要預測滑行距離、要防暴衝</td>
+  <td>一次下完整角度，加減速由驅動器處理</td>
+</tr>
+<tr>
+  <td>低速慣性會來回修正，誤差大</td>
+  <td>誤差 0 step（實機驗證）</td>
+</tr>
+</table></div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>二、暫存器對照（實機驗證結果）</h2>
+
+<div class="box e">
+  <b>⚠ 最重要的一件事</b>
+  手冊 <code>EV-UserManual_UM-01-S0271</code> 是 <b>TRUMMAN EV 系列</b>，<b>不是</b>這顆驅動器。
+  兩者<b>只有通訊層相同，參數表不同</b>。參數位址一律以 <code>DRIVERLIST/OMS1MD1*.ddi2/mdi2</code> 為準。
+</div>
+
+<h3>✅ 可用（實機驗證過）</h3>
+<div class="tblwrap"><table>
+<tr><th>位址</th><th>名稱</th><th>說明</th></tr>
+<tr><td><code>010Ah</code></td><td>01-11 控制模式</td>
+    <td><b>本機種真正的控制模式</b>。0=Speed / 1=Duty / <b>2=Position</b>。寫入會正常 Echo</td></tr>
+<tr><td><code>1400h</code></td><td>NET-IO</td><td>RUN/STOP、轉向控制位元</td></tr>
+<tr><td><code>0300h</code></td><td>03-01 轉速</td><td>目標轉速</td></tr>
+<tr><td><code>0400h</code> / <code>0408h</code></td><td>加 / 減速時間</td><td>—</td></tr>
+<tr><td><code>0A00h</code></td><td>Alarm Reset</td><td>寫 1 解除警報</td></tr>
+<tr><td><code>0A27h</code></td><td>Configuration</td><td>寫 1 讓參數重新計算生效</td></tr>
+<tr><td><code>4800h</code></td><td>通訊錯誤碼履歷</td><td><b>診斷神器</b>，寫入失敗時查這裡（見第五節）</td></tr>
+<tr><td><code>4613h</code>~<code>4616h</code></td><td>目標／目前位置</td><td>唯讀監視區</td></tr>
+</table></div>
+
+<h3>❌ 不適用（EV 手冊的位址，本機種無效）</h3>
+<div class="tblwrap"><table>
+<tr><th>位址</th><th>EV 手冊說</th><th>實機結果</th></tr>
+<tr><td><code>0800h</code></td><td>08-01 控制模式</td>
+    <td class="err">寫 2 → Exception 0x04，錯誤碼 140（超出範圍）</td></tr>
+<tr><td><code>080Eh</code></td><td>08-15 位置指令形式</td>
+    <td class="err">讀到的值無意義，<b>不可據此決定解碼方式</b></td></tr>
+<tr><td><code>020Dh</code></td><td>02-14 Driver-Enable</td>
+    <td class="warn">值僅供參考，未證實</td></tr>
+</table></div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>三、Multi-Drive 協定（FC 65h）</h2>
+<p>這部分是手冊<b>唯一可信</b>的內容，封包格式已用手冊範例的 4 組 CRC 逐 byte 驗證通過。</p>
+
+<h3>詢問封包（主站 → 驅動器）</h3>
+<pre><code>00 | 65 | SubID數 | {SubID, CMD, D1hi, D1lo, D2hi, D2lo} × N | CRClo CRChi
+↑    ↑
+必須 00h 廣播   自訂功能碼 65h                        最多 4 台</code></pre>
+
+<h3>應答封包（驅動器 → 主站），固定 8 bytes</h3>
+<pre><code>ID | 66h(正常) 或 67h(異常) | D1hi D1lo | D2hi D2lo | CRClo CRChi
+                              └─ 目前位置，<b>一律用 32-bit 合併解讀</b>：D1×65536 + D2</code></pre>
+
+<div class="box w">
+  <b>⚠ 位置一定要用 32-bit 解讀，不能用「Index + 圈內 Step」</b>
+  實機回報 <code>d1=0, d2=47524</code>，低位欄位 47524 遠超過一圈的量，證明它是 32-bit 的低 16 位。<br>
+  跨 65536 邊界實測：<code>0/47524 → 1/4488</code> = <b>70024</b> ✅<br>
+  若誤用 Index+Step 會算成 14488 —— <b>看起來像馬達倒退了 3 萬多 step</b>。<br>
+  網頁已加自動判形：低位欄位 &gt; 每圈 step 數就強制切 32-bit。
+</div>
+
+<h3>指令表（CMD）</h3>
+<div class="tblwrap"><table>
+<tr><th>指令</th><th>碼</th><th>用途</th><th>條件</th></tr>
+<tr><td><b>MA</b></td><td><code>0Dh</code></td><td>絕對定位 — 轉到指定位置</td><td>使能 + 馬達靜止</td></tr>
+<tr><td><b>MR</b></td><td><code>0Ch</code></td><td>相對移動 — 從現在再轉多少</td><td>使能 + 馬達靜止</td></tr>
+<tr><td><b>CS</b></td><td><code>0Eh</code></td><td>歸零 — 重置目標與目前位置</td><td>使能 + 靜止</td></tr>
+<tr><td><b>NULL</b></td><td><code>63h</code></td><td>純查詢位置，不動作</td><td>隨時可用</td></tr>
+<tr><td><b>SVON</b> / <b>SVOFF</b></td><td><code>06h</code>/<code>07h</code></td><td>伺服激磁 / 解除</td><td>—</td></tr>
+<tr><td><b>IMR</b></td><td><code>0Bh</code></td><td>位置模式的減速停止</td><td>運轉中</td></tr>
+<tr><td>ISTOP</td><td><code>00h</code></td><td>立即停機（<b>轉速</b>模式用）</td><td>運轉中</td></tr>
+</table></div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>四、尺度校正 — 最重要的一步</h2>
+
+<div class="box g">
+  <b>為什麼需要校正</b>
+  手冊寫「10,000 step = 1 圈」，但那是 EV 系列的值。<br>
+  實機校正發現<b>差 2 倍</b>：下 90° 實際只轉 45° → 正確值是 <b>20,000 step/馬達圈</b>。<br>
+  這剛好等於 <code>Encoder 5000 PPR × 4 倍頻</code>，也就是<b>原生位置指令的單位就是 encoder 四倍頻計數</b>，
+  與舊軟體閉環的 <code>outputCountsPerRev()</code> 完全同尺度。
+</div>
+
+<h3>怎麼重新校正（換馬達／換減速比時要重做）</h3>
+<ol class="steps">
+  <li><b>貼標記</b> — 在輸出軸或聯軸器貼一段膠帶當指針，記住它現在對準哪個固定參考（桌邊、螺絲）。</li>
+  <li><b>按 <span class="kbd">📐 校正尺度</span></b> — 輸入測試角度，建議 <b>90</b>。</li>
+  <li><b>看馬達實際轉多少</b> — 對照下表判斷，不需要量角器。</li>
+  <li><b>填入目視角度</b> — 程式自動反推正確的 step/圈，確認後套用並存進瀏覽器。</li>
+  <li><b>再跑一次 <span class="kbd">🔬 一鍵診斷</span></b> 確認誤差接近 0。</li>
+</ol>
+
+<div class="tblwrap"><table>
+<tr><th>下 90° 後你看到</th><th>意義</th><th>校正後的值</th></tr>
+<tr><td><b>1/4 圈</b>（垂直於原方向）</td><td class="ok">尺度正確</td><td>維持不變</td></tr>
+<tr><td><b>1/2 圈</b>（正對反方向）</td><td class="warn">實際轉了 2 倍</td><td>減半</td></tr>
+<tr><td><b>1/8 圈</b>（斜 45°）</td><td class="warn">實際只轉一半</td><td>加倍 ← <b>本機是這種</b></td></tr>
+</table></div>
+
+<div class="box e">
+  <b>⚠ 千萬不要用 360° 來校正</b>
+  如果尺度差 2 倍，下 360° 會轉 720° —— <b>停在同一個位置</b>，看起來完全正確，反而被騙。<br>
+  一定要用 <b>90°</b> 或 180°，錯誤才會在視覺上顯現。
+</div>
+
+<h3>換算公式</h3>
+<pre><code>輸出端一圈 step = 馬達一圈 step × 減速比
+               = 20,000 × 9 = 180,000
+
+想轉的角度 → step：  step = 角度 ÷ 360 × 180,000
+例：  90° → 45,000 step      30° → 15,000 step      360° → 180,000 step</code></pre>
+
+<!-- ══════════════════════════════════════ -->
+<h2>五、疑難排解</h2>
+
+<h3>通訊錯誤碼（讀 <code>4800h</code>）</h3>
+<div class="tblwrap"><table>
+<tr><th>碼</th><th>意義</th><th>怎麼處理</th></tr>
+<tr><td><code>132</code></td><td>封包格式／LRC 錯誤</td><td>檢查鮑率、CRC</td></tr>
+<tr><td><code>133</code></td><td>通訊逾時</td><td>BLE 訊號弱或逾時設太短</td></tr>
+<tr><td><code>136</code></td><td>無效指令（未支援）</td><td><b>位址錯了</b>，此機種沒有這個暫存器</td></tr>
+<tr><td><code>140</code></td><td>設定超出範圍</td><td><b>值不合法，或位址不是你以為的那個參數</b></td></tr>
+<tr><td><code>141</code></td><td>指令無法執行</td><td>馬達還在轉，先 STOP 再寫</td></tr>
+</table></div>
+
+<h3>常見狀況</h3>
+<div class="tblwrap"><table>
+<tr><th>症狀</th><th>原因與解法</th></tr>
+<tr><td>MA / MR 沒反應</td>
+    <td>① <code>010Ah</code> 不是 2 → 按控制模式的 <b>Position</b><br>
+        ② 沒 SERVO ON<br>
+        ③ 馬達還在轉（MA/MR 要求靜止）</td></tr>
+<tr><td>SVON 回 <b>FC 67h</b></td>
+    <td>Driver-Enable 若設成「上電即 Enable」，SVON 不適用也不需要下 —— 這種情況下<b>不算失敗</b></td></tr>
+<tr><td>角度差 2 倍 / 一半</td><td>尺度沒校正 → 做第四節</td></tr>
+<tr><td>位置突然變成負的或暴增</td>
+    <td>32-bit 解碼問題，看是否跨過 65536 邊界（見第三節）</td></tr>
+<tr><td>寫參數沒生效</td>
+    <td>先 STOP → 寫入 → 寫 <code>0A27h</code>=1 → 讀回驗證；失敗查 <code>4800h</code></td></tr>
+</table></div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>六、日常操作</h2>
+<div class="tblwrap"><table>
+<tr><th>我想…</th><th>做法</th></tr>
+<tr><td>知道現在在哪</td><td><span class="kbd">讀取 (NULL)</span></td></tr>
+<tr><td>設定現在為 0°</td><td><span class="kbd">歸零 (CS)</span> — 直接重置驅動器內部計數，不是軟體 offset</td></tr>
+<tr><td>轉到某個絕對角度</td><td>填「目標角度」→ <span class="kbd">🎯 MA 絕對定位</span>（以 CS 歸零點為基準）</td></tr>
+<tr><td>從現在再轉一點</td><td>填「相對角度」→ <span class="kbd">↺ CCW −</span> 或 <span class="kbd">CW + ↻</span></td></tr>
+<tr><td>緊急停止</td><td><span class="kbd">停止 (IMR)</span></td></tr>
+<tr><td>全面檢查</td><td><span class="kbd">🔬 一鍵診斷</span> → 報告可複製</td></tr>
+</table></div>
+
+<div class="box">
+  <b>MA 和 MR 差在哪</b>
+  <b>MA</b>＝轉到某個固定位置（絕對，以歸零點為基準）；<b>MR</b>＝從現在再轉多少（相對）。<br>
+  要回到固定位置用 MA，要連續微調用 MR。
+</div>
+
+<!-- ══════════════════════════════════════ -->
+<h2>七、驗證紀錄</h2>
+<div class="card">
+<p style="margin-top:0"><b>最終實機診斷（2026-08-14）</b></p>
+<pre><code>[1] 01-11 控制模式 (010Ah)   = 2 (Position)        ✅
+[2] 0800h（EV 手冊位址）      本機種不適用           ⚠ 略過
+[3] 080Eh（EV 手冊位址）      不採信                 ⚠ 略過
+[4] 02-14 Driver-Enable      = 1                    ✅
+[5] NULL 查詢（FC65h→66h）    應答正常               ✅
+[6] SVON 伺服致能             應答 FC66h 正常        ✅
+[7] MR 移動測試               誤差 0 step            ✅</code></pre>
+<p style="margin-bottom:0"><b>尺度校正：</b>下 90° → 目視 45° → 倍率 <b>2.0000×</b> →
+   <span class="ok">20,000 step/馬達圈</span></p>
+</div>
+
+<footer>
+  GaN AI motor ｜ 原生位置控制設定說明<br>
+  相關檔案：<code>www/index-local-ai-motor-v3.html</code>（控制頁）<br>
+  參考手冊：<code>EV-UserManual_UM-01-S0271</code>（<b>僅通訊層可信</b>，參數表請用 DRIVERLIST）<br>
+  ※ 用 pdftotext 讀該手冊會掉光中文，需改用 PyMuPDF（<code>import fitz</code>）
+</footer>
+
+</div>
+</body>
+</html>
