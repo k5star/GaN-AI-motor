@@ -181,6 +181,106 @@
   </thead>
   <tbody>
 
+    <!-- 原生位置控制 V4 -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/www/index-local-ai-motor-v4.html" target="_blank">
+          原生位置控制 V4
+        </a>
+        <span class="page-file">www/index-local-ai-motor-v4.html</span>
+      </td>
+      <td><span class="ver">最新</span></td>
+      <td><span class="date latest">2026-08-15</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-robot">位置</span>
+          <span class="tag tag-monitor">速度</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>驅動器原生 Multi-Drive (FC 65h) 位置控制</li>
+          <li>往復擺動可調轉速與兩端各自停留時間</li>
+          <li>停止時自動回原點並維持激磁（載重不滑動）</li>
+          <li>全部停止：NET-IO → IMR → ISTOP → FREE 逐級升壓</li>
+          <li>送位置指令前自動停機（MA/MR 需馬達靜止）</li>
+          <li>一鍵診斷 + 尺度校正，報告可複製</li>
+          <li>保持力 / 斷線保護設定檢視（唯讀）</li>
+        </ul>
+      </td>
+      <td class="note">
+        由 V3 複製後續開發<br>
+        擺動預設 ±60°／70RPM<br>
+        轉速下限 60（低於會被驅動器拒絕）<br>
+        長時間展示請讓分頁保持前景
+      </td>
+    </tr>
+
+    <!-- 原生位置控制 V3 -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/www/index-local-ai-motor-v3.html" target="_blank">
+          原生位置控制 V3（穩定版）
+        </a>
+        <span class="page-file">www/index-local-ai-motor-v3.html</span>
+      </td>
+      <td><span class="ver">V3</span></td>
+      <td><span class="date latest">2026-08-14</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-robot">位置</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>只保留速度控制 + 位置控制（精簡自 V2）</li>
+          <li>FC65h/66h 封包，已用手冊 CRC 範例逐 byte 驗證</li>
+          <li>MA 絕對定位 / MR 相對移動 / CS 歸零</li>
+          <li>一鍵診斷：控制模式・使能・主電源・位置往返</li>
+          <li>尺度校正：實測 20000 step/馬達圈</li>
+          <li>位置一律 32-bit 合併解讀（含自動判形）</li>
+        </ul>
+      </td>
+      <td class="note">
+        已凍結，作為 V4 的回退基準<br>
+        取代原本不穩的軟體閉環
+      </td>
+    </tr>
+
+    <!-- 位置控制設定說明 -->
+    <tr>
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/www/position-setup-guide.html" target="_blank">
+          位置控制設定與校正說明
+        </a>
+        <span class="page-file">www/position-setup-guide.html</span>
+      </td>
+      <td><span class="ver">文件</span></td>
+      <td><span class="date latest">2026-08-14</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-tool">文件</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>暫存器對照（可用 vs 不適用，含實機證據）</li>
+          <li>Multi-Drive FC 65h 封包格式與 CMD 指令表</li>
+          <li>尺度校正步驟（貼標記目視 90°，5 步驟）</li>
+          <li>疑難排解：通訊錯誤碼、常見症狀對照</li>
+          <li>日常操作速查表</li>
+        </ul>
+      </td>
+      <td class="note">
+        V3/V4 的配套說明<br>
+        ⚠ EV 手冊僅通訊層可信<br>
+        參數位址以 DRIVERLIST 定義檔為準<br>
+        可離線開啟、可列印
+      </td>
+    </tr>
+
     <!-- ble-vehicle-control -->
     <tr class="row-latest">
       <td class="col-page">
