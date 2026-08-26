@@ -433,6 +433,44 @@
 
 </main>
 
+<!-- ── AI 修正面板（固定在底部）── -->
+<style>
+  .corr-btn { margin-left:6px; font-size:10px; padding:1px 6px; border-radius:4px;
+              background:#3b2a5a; color:#c4b5fd; border:1px solid #5b4a8a; cursor:pointer; }
+  .corr-btn:hover { background:#4c3a70; }
+  .corr-btn.done  { background:#14432a; color:#6ee7a0; border-color:#1f6b42; cursor:default; }
+  #corrPanel { display:none; position:fixed; left:0; right:0; bottom:0; z-index:120;
+               background:#0f172a; border-top:2px solid #7c3aed; padding:10px 14px;
+               box-shadow:0 -4px 20px rgba(0,0,0,.5); }
+  #corrPanel.open { display:block; }
+  #corrPanel .corr-header { display:flex; justify-content:space-between; align-items:center;
+               font-size:12px; color:#c4b5fd; font-weight:bold; margin-bottom:6px; }
+  #corrPanel .corr-orig { background:#020617; border:1px solid #1e293b; border-radius:6px;
+               padding:6px 8px; font-size:10px; color:#94a3b8; font-family:Consolas,monospace;
+               white-space:pre-wrap; max-height:90px; overflow-y:auto; margin-bottom:6px; }
+  #corrPanel .corr-row { display:flex; gap:6px; }
+  #corrPanel input { flex:1; background:#1e293b; border:1px solid #475569; border-radius:6px;
+               padding:8px; font-size:12px; color:#fff; outline:none; }
+  #corrPanel input:focus { border-color:#7c3aed; }
+  #corrPanel button { border-radius:6px; padding:8px 12px; font-size:12px; font-weight:bold;
+               border:none; cursor:pointer; color:#fff; }
+  #corrSaveBtn  { background:#7c3aed; }
+  #corrVoiceBtn { background:#334155; }
+</style>
+<div id="corrPanel">
+    <div class="corr-header">
+        <span>✏️ 修正此回覆 — 說明正確指令應該是什麼</span>
+        <span style="cursor:pointer;color:#475569;" onclick="closeCorrPanel()">✕</span>
+    </div>
+    <div class="corr-orig" id="corrOrig">—</div>
+    <div class="corr-row">
+        <input id="corrInput" type="text" placeholder="例如：應該是轉到 90 度，不是相對轉 90 度"
+               onkeydown="if(event.key==='Enter')saveCorrection()">
+        <button id="corrVoiceBtn" onclick="startCorrVoice()" title="語音修正">🎙️</button>
+        <button id="corrSaveBtn" onclick="saveCorrection()">儲存修正</button>
+    </div>
+</div>
+
 <!-- ── AI 設定 MODAL ── -->
 <div id="aiSettingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;align-items:center;justify-content:center;">
   <div class="bg-slate-800 border border-purple-600 rounded-xl p-4 w-full" style="max-width:420px">
@@ -457,6 +495,13 @@
       設定存在瀏覽器 localStorage（與 index-local-ai-motor.html 共用同一組金鑰）。<br>
       <b class="text-amber-400">若出現 Failed to fetch</b>：多半是 API 伺服器沒允許本頁的來源（CORS）。<br>
       本頁目前來源：<span id="aiOriginNote" class="font-mono text-slate-400"></span>
+    </div>
+    <div class="border-t border-slate-700 pt-2 mb-3">
+      <div class="text-[10px] text-slate-400 mb-1">✏️ 修正記錄（共 <span id="corrCount">0</span> 筆）</div>
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="exportCorrections()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded text-[11px]">📝 匯出 JSONL</button>
+        <button onclick="clearCorrections();document.getElementById('corrCount').textContent=corrDataset.length" class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded text-[11px]">🗑 清除記錄</button>
+      </div>
     </div>
     <div class="grid grid-cols-3 gap-2">
       <button onclick="testAIConnection()" class="bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded text-xs font-bold">測試連線</button>
@@ -3557,20 +3602,142 @@ none       | params: {}
 輸入：「今天天氣如何」
 輸出：{"action":"none","params":{},"reply":"這超出馬達控制範圍"}`;
 
+// ── 對話記憶：修正過的答案會寫回這裡，下次當作 few-shot 讓 AI 不再犯同樣的錯 ──
+let conversationHistory = [];
+const AI_HISTORY_MAX = 12;          // 只保留最近幾輪，避免 token 爆掉
+
+function buildAIMessages(userMsg) {
+    return [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...conversationHistory, { role: 'user', content: userMsg }];
+}
+
 function aiLog(who, text, color = '#94a3b8') {
     const el = document.getElementById('aiChatLog');
     if (!el) return;
     if (el.querySelector('.text-center')) el.innerHTML = '';
     const d = document.createElement('div');
-    d.innerHTML = `<span style="color:#64748b">[${who}]</span> <span style="color:${color}">${String(text).replace(/</g,'&lt;')}</span>`;
+    d.className = 'leading-relaxed';
+    const span = document.createElement('span');
+    span.innerHTML = `<span style="color:#64748b">[${who}]</span> <span style="color:${color}">${String(text).replace(/</g,'&lt;')}</span>`;
+    d.appendChild(span);
+    // 只有 AI 的回覆能修正
+    if (who === 'AI') {
+        const btn = document.createElement('button');
+        btn.className = 'corr-btn';
+        btn.textContent = '✏️ 修正';
+        btn.onclick = () => openCorrPanel(text, d, btn);
+        d.appendChild(btn);
+    }
     el.appendChild(d);
     el.scrollTop = el.scrollHeight;
     return d;
 }
 
+// ── 修正面板 ────────────────────────────────────────────────────
+let corrTarget = null;
+let corrDataset = (() => { try { return JSON.parse(localStorage.getItem('ai_corrDataset') || '[]'); } catch { return []; } })();
+
+function openCorrPanel(aiReply, msgEl, btnEl) {
+    corrTarget = {
+        userInput: window._lastAIUserInput || '',
+        aiRaw:     window._lastAIParsed || null,
+        aiReply, msgEl, btnEl
+    };
+    const raw = corrTarget.aiRaw ? JSON.stringify(corrTarget.aiRaw, null, 2) : aiReply;
+    document.getElementById('corrOrig').textContent =
+        `使用者輸入：${corrTarget.userInput || '（不明）'}\nAI 輸出：${raw}`;
+    document.getElementById('corrInput').value = '';
+    document.getElementById('corrPanel').classList.add('open');
+    setTimeout(() => document.getElementById('corrInput').focus(), 100);
+}
+
+function closeCorrPanel() {
+    document.getElementById('corrPanel').classList.remove('open');
+    corrTarget = null;
+}
+
+function saveCorrection() {
+    const corrText = document.getElementById('corrInput').value.trim();
+    if (!corrText || !corrTarget) return;
+
+    // 使用者可以直接給正確 JSON，也可以用中文說明
+    let corrJSON = null;
+    try { corrJSON = JSON.parse(corrText); } catch {}
+
+    // ★ 即時對話記憶修正：把 history 裡那筆錯誤的 assistant 回覆換成正確答案，
+    //   下次送出時模型會看到它，等同一則現場 few-shot。
+    const idx = window._lastHistoryAssistantIdx;
+    if (idx !== undefined && idx >= 0 && idx < conversationHistory.length) {
+        conversationHistory[idx] = {
+            role: 'assistant',
+            content: corrJSON ? JSON.stringify(corrJSON)
+                              : JSON.stringify({ action:'none', params:{}, reply:corrText, _correction_note:corrText })
+        };
+        aiLog('系統', '🧠 對話記憶已更新 — AI 下次會參考這個修正', '#a78bfa');
+    }
+
+    // 持久化（可匯出成 JSONL 做訓練資料）
+    corrDataset.push({ ts: Date.now(), userInput: corrTarget.userInput,
+                       aiRaw: corrTarget.aiRaw, aiReply: corrTarget.aiReply,
+                       correction: corrText, corrJSON });
+    try { localStorage.setItem('ai_corrDataset', JSON.stringify(corrDataset)); } catch {}
+
+    if (corrTarget.btnEl) {
+        corrTarget.btnEl.textContent = '✅ 已修正';
+        corrTarget.btnEl.className = 'corr-btn done';
+        corrTarget.btnEl.onclick = null;
+    }
+    aiLog('系統', `✅ 修正已記錄（共 ${corrDataset.length} 筆）`, '#34d399');
+    closeCorrPanel();
+}
+
+// 語音輸入修正內容
+let corrVoiceRec = null;
+function startCorrVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert('語音辨識請使用 Chrome 瀏覽器');
+    if (corrVoiceRec) { try { corrVoiceRec.stop(); } catch {} return; }
+    const btn = document.getElementById('corrVoiceBtn');
+    corrVoiceRec = new SR();
+    corrVoiceRec.lang = 'zh-TW';
+    corrVoiceRec.interimResults = false;
+    if (btn) btn.textContent = '🔴';
+    corrVoiceRec.onresult = e => { document.getElementById('corrInput').value = e.results[0][0].transcript; };
+    corrVoiceRec.onerror  = e => aiLog('系統', `語音錯誤：${e.error}`, '#f87171');
+    corrVoiceRec.onend    = () => { corrVoiceRec = null; if (btn) btn.textContent = '🎙️'; };
+    try { corrVoiceRec.start(); } catch (e) { aiLog('系統', e.message, '#f87171'); corrVoiceRec = null; }
+}
+
+// 匯出修正資料集（JSONL，可做 LoRA 訓練用）
+function exportCorrections() {
+    if (!corrDataset.length) return alert('目前沒有修正記錄');
+    const lines = corrDataset.map(e => JSON.stringify({
+        messages: [
+            { role: 'system',    content: 'GaN 馬達位置控制指令解析器' },
+            { role: 'user',      content: e.userInput },
+            { role: 'assistant', content: e.corrJSON ? JSON.stringify(e.corrJSON) : e.correction }
+        ]
+    })).join('\n');
+    const blob = new Blob([lines], { type: 'application/jsonl' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ai-corrections-${new Date().toISOString().slice(0,10)}.jsonl`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    aiLog('系統', `📝 已匯出 ${corrDataset.length} 筆修正記錄`, '#34d399');
+}
+function clearCorrections() {
+    if (!corrDataset.length) return alert('目前沒有修正記錄');
+    if (!confirm(`確定清除全部 ${corrDataset.length} 筆修正記錄嗎？此操作無法復原。`)) return;
+    corrDataset = [];
+    localStorage.removeItem('ai_corrDataset');
+    aiLog('系統', '🗑 修正記錄已清除', '#fbbf24');
+}
+
 function showAISettings() {
     const on = document.getElementById('aiOriginNote');
     if (on) on.textContent = location.origin || location.protocol;
+    const cc = document.getElementById('corrCount');
+    if (cc) cc.textContent = corrDataset.length;
     const tr = document.getElementById('aiTestResult');
     if (tr) { tr.textContent = ''; tr.className = 'text-[10px] text-slate-500 mb-2'; }
     document.getElementById('aiBaseUrlInput').value = aiConfig.baseUrl;
@@ -3658,7 +3825,11 @@ async function sendAIMessage() {
 
     input.value = '';
     aiLog('你', msg, '#e2e8f0');
-    const loading = aiLog('AI', '思考中…', '#a78bfa');
+    window._lastAIUserInput = msg;          // 供修正面板顯示
+    window._lastAIParsed = null;
+    const loading = document.createElement('div');
+    loading.innerHTML = '<span style="color:#64748b">[AI]</span> <span style="color:#a78bfa">思考中…</span>';
+    document.getElementById('aiChatLog').appendChild(loading);
 
     let parsed = null;
     try {
@@ -3667,10 +3838,7 @@ async function sendAIMessage() {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
             body: JSON.stringify({
                 model: aiConfig.model,
-                messages: [
-                    { role: 'system', content: AI_SYSTEM_PROMPT },
-                    { role: 'user',   content: msg + _aiStateText() }
-                ],
+                messages: buildAIMessages(msg + _aiStateText()),
                 max_tokens: 512, temperature: 0.1,
                 response_format: { type: 'json_object' }
             })
@@ -3699,7 +3867,17 @@ async function sendAIMessage() {
         return;
     }
 
-    if (parsed.reply) aiLog('AI', parsed.reply, '#a78bfa');
+    // 存進對話記憶，並記下 assistant 那筆的索引 —— 修正時要覆蓋它
+    window._lastAIParsed = parsed;
+    conversationHistory.push({ role: 'user', content: msg });
+    conversationHistory.push({ role: 'assistant', content: JSON.stringify(parsed) });
+    window._lastHistoryAssistantIdx = conversationHistory.length - 1;
+    while (conversationHistory.length > AI_HISTORY_MAX) {
+        conversationHistory.shift();
+        window._lastHistoryAssistantIdx--;      // 索引跟著位移，否則修正會改到別筆
+    }
+
+    aiLog('AI', parsed.reply || `${parsed.action}`, '#a78bfa');   // 一定要有一則 AI 訊息才有修正鈕
     await executeAIAction(parsed);
 }
 
