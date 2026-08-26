@@ -181,6 +181,71 @@
   </thead>
   <tbody>
 
+    <!-- 原生位置控制 V6 -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/www/index-local-ai-motor-v6.html" target="_blank">
+          原生位置控制 V6（AI + 轉盤）
+        </a>
+        <span class="page-file">www/index-local-ai-motor-v6.html</span>
+      </td>
+      <td><span class="ver">最新</span></td>
+      <td><span class="date latest">2026-08-26</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-ai">AI</span>
+          <span class="tag tag-robot">位置</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>AI 語音控制（OpenAI 相容，與舊版共用 API 設定）</li>
+          <li>指令白名單改為位置控制：轉到角度／相對移動／擺動／歸零</li>
+          <li>🎯 方向轉盤：拖曳綠點設角度、藍針即時位置、走最短路徑</li>
+          <li>Failed to fetch 自動診斷（CORS / Mixed Content / file://）</li>
+          <li>AI 設定內建「測試連線」，可分辨連不上與認證失敗</li>
+          <li>其餘功能同 V5</li>
+        </ul>
+      </td>
+      <td class="note">
+        由 V5 加上 AI 與轉盤<br>
+        AI 需在 ⚙️設定 填 API Key<br>
+        ⚠ 本機 Ollama 請以 http://localhost 開啟<br>
+        速度模式指令不在白名單（本機種不作動）
+      </td>
+    </tr>
+
+    <!-- 原生位置控制 V5 -->
+    <tr class="row-latest">
+      <td class="col-page">
+        <a class="page-link" href="https://k5star.github.io/GaN-AI-motor/www/index-local-ai-motor-v5.html" target="_blank">
+          原生位置控制 V5（精簡）
+        </a>
+        <span class="page-file">www/index-local-ai-motor-v5.html</span>
+      </td>
+      <td><span class="ver">V5</span></td>
+      <td><span class="date latest">2026-08-26</span></td>
+      <td>
+        <div class="tags">
+          <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>
+          <span class="tag tag-robot">位置</span>
+        </div>
+      </td>
+      <td>
+        <ul class="feat-list">
+          <li>面板精簡：只留「定點保持 / 往復擺動」工作流</li>
+          <li>移除軟體閉環、EV 手冊前置設定、展示模式</li>
+          <li>設原點用的微調 jog 併入步驟①，自成一套</li>
+          <li>保留一鍵診斷、尺度校正、全部停止</li>
+        </ul>
+      </td>
+      <td class="note">
+        適合現場操作，介面最單純<br>
+        需要 AI／轉盤請用 V6
+      </td>
+    </tr>
+
     <!-- 原生位置控制 V4 -->
     <tr class="row-latest">
       <td class="col-page">
@@ -189,8 +254,8 @@
         </a>
         <span class="page-file">www/index-local-ai-motor-v4.html</span>
       </td>
-      <td><span class="ver">最新</span></td>
-      <td><span class="date latest">2026-08-15</span></td>
+      <td><span class="ver">V4</span></td>
+      <td><span class="date latest">2026-08-26</span></td>
       <td>
         <div class="tags">
           <span class="tag tag-active"><span class="dot dot-active"></span>現役</span>

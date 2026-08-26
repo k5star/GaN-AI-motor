@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaN Motor LOCAL AI ROBOT v4.0 — 速度 + 位置控制</title>
+    <title>GaN Motor LOCAL AI ROBOT v5.0 — 定點往復擺動</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -30,7 +30,7 @@
 <nav class="border-b border-slate-700 px-3 py-2 bg-slate-900/95 flex justify-between items-center z-50 shadow-md shrink-0 h-12 md:h-14">
     <div class="flex items-center gap-2">
         <div>
-            <h1 class="text-sm md:text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-emerald-400">ROBOT</span> <span class="text-[10px] text-slate-500 font-mono">v4.0 速度+位置</span></h1>
+            <h1 class="text-sm md:text-base font-bold tracking-tight text-slate-200">GaN Motor <span class="text-emerald-400">ROBOT</span> <span class="text-[10px] text-slate-500 font-mono">v5.0 定點往復</span></h1>
             <p id="navSubtitle" class="text-[9px] md:text-[10px] text-slate-500 font-mono -mt-0.5">ID:1 | 115200 8N1 | Modbus RTU</p>
         </div>
     </div>
@@ -213,37 +213,6 @@
 
             </div>
 
-            <!-- Position Control — 軟體閉環 (Speed mode + encoder feedback，02-14=1 組合位置，已驗證) -->
-            <div id="posPanel" class="bg-slate-900/50 p-3 rounded-lg border border-blue-800 mt-2">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-slate-400 font-bold uppercase">位置控制</span>
-                        <span class="text-[9px] font-mono bg-slate-700 px-1 rounded text-blue-400">軟體閉環（已驗證）</span>
-                    </div>
-                    <span id="posStatusBadge" class="text-[9px] font-mono text-slate-500">待命</span>
-                </div>
-                <div class="flex items-center gap-2 mb-2 text-[9px]">
-                    <span class="text-cyan-300 font-mono">02-14 = 1 組合位置</span>
-                    <button onclick="confirmPosition()"
-                            class="bg-cyan-800/70 hover:bg-cyan-700 text-cyan-100 px-2 py-0.5 rounded font-bold">讀取位置</button>
-                    <span id="posRawValue" class="text-slate-500 font-mono">尚未讀取</span>
-                </div>
-                <div class="grid grid-cols-2 gap-1 text-[10px] mb-2">
-                    <div class="text-slate-500">目前角度：<span id="posCurDisp" class="text-blue-300 font-mono">--</span><span class="text-slate-600"> °</span></div>
-                    <div class="text-slate-500">Raw count：<span id="posCurCnt" class="text-slate-400 font-mono">--</span></div>
-                </div>
-                <div class="flex items-center gap-2 text-xs pt-2 border-t border-slate-700">
-                    <label class="flex items-center gap-1 text-slate-300">
-                        <span class="text-[10px]">目標角度</span>
-                        <input type="number" id="posRotVal" value="90" min="0" max="360" step="1"
-                               class="bg-slate-800 border border-slate-600 rounded w-20 h-9 px-2 text-sm text-white focus:border-blue-500 outline-none">
-                        <span class="text-slate-500 text-[10px]">°</span>
-                    </label>
-                    <button onclick="goToAngleTarget()" class="h-9 px-3 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs font-bold">🎯 GO</button>
-                    <button onclick="abortPosCtrl()" class="h-9 px-3 bg-red-700 hover:bg-red-600 text-white rounded text-xs font-bold">STOP</button>
-                    <button onclick="zeroPosRef()" class="h-9 px-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[10px]">設為 ZERO</button>
-                </div>
-            </div>
 
             <!-- ══ 原生位置控制 Multi-Drive (FC 65h) — 手冊 UM-01-S0271 第 7 章 ══ -->
             <div id="mdPanel" class="bg-slate-900/50 p-3 rounded-lg border border-emerald-700 mt-2">
@@ -255,85 +224,15 @@
                     <span id="mdStatusBadge" class="text-[9px] font-mono text-slate-500">待命</span>
                 </div>
 
-                <!-- 前置設定確認 -->
-                <div class="bg-amber-950/40 border border-amber-800 rounded p-2 mb-2">
-                    <div class="text-[9px] text-amber-300 font-bold mb-1">⚠ 前置設定（改完必須「重新給電」才生效）</div>
-                    <div class="grid grid-cols-2 gap-1 text-[9px] font-mono mb-1">
-                        <div class="text-slate-400">08-01 控制模式：<span id="md0801" class="text-amber-200">--</span></div>
-                        <div class="text-slate-400">08-15 指令形式：<span id="md0815" class="text-amber-200">--</span></div>
-                        <div class="text-slate-400 col-span-2">02-14 Driver-Enable：<span id="md0214" class="text-amber-200">--</span></div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-1">
-                        <button onclick="mdReadSetup()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-1 rounded text-[10px]">📖 讀取設定</button>
-                        <button onclick="mdWriteCtrlMode()" class="bg-amber-700 hover:bg-amber-600 text-white py-1 rounded text-[10px] font-bold">⚙ 切到位置模式</button>
-                    </div>
-                    <div class="text-[9px] text-slate-500 mt-1">
-                        ※ 080Eh / 020Dh 為 EV 手冊位址，本機種參數表不同（0800h 已證實不符），僅供參考不寫入
-                    </div>
-                </div>
-
-                <!-- 伺服致能 -->
-                <div class="grid grid-cols-3 gap-1 mb-2">
-                    <button onclick="mdServoOn()"  class="bg-emerald-700 hover:bg-emerald-600 text-white py-2 rounded text-xs font-bold">SERVO ON</button>
-                    <button onclick="mdServoOff()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded text-xs">SERVO OFF</button>
-                    <button onclick="mdFree()"     class="bg-slate-700 hover:bg-slate-600 text-slate-200 py-2 rounded text-xs">FREE</button>
-                </div>
-
-                <!-- 目前位置 -->
-                <div class="flex items-center gap-2 mb-2 text-[10px] bg-slate-950/50 rounded p-2">
-                    <span class="text-slate-500">目前：<span id="mdCurDeg" class="text-emerald-300 font-mono font-bold">--</span><span class="text-slate-600">°</span></span>
-                    <span class="text-slate-600 font-mono">/ <span id="mdCurStep" class="text-slate-400">--</span> step</span>
-                    <button onclick="mdQueryPos()" class="ml-auto bg-blue-800/70 hover:bg-blue-700 text-blue-100 px-2 py-0.5 rounded text-[10px] font-bold">讀取 (NULL)</button>
-                    <button onclick="mdSetZero()"  class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-0.5 rounded text-[10px]">歸零 (CS)</button>
-                </div>
-
-                <!-- 絕對定位 -->
-                <div class="flex items-center gap-2 mb-2 text-xs">
-                    <label class="flex items-center gap-1 text-slate-300">
-                        <span class="text-[10px]">目標角度</span>
-                        <input type="number" id="mdTargetDeg" value="90" step="1"
-                               class="bg-slate-800 border border-slate-600 rounded w-24 h-9 px-2 text-sm text-white focus:border-emerald-500 outline-none">
-                        <span class="text-slate-500 text-[10px]">°</span>
-                    </label>
-                    <button onclick="mdGoAbsolute()" class="h-9 px-3 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-bold">🎯 MA 絕對定位</button>
-                    <button onclick="mdStop()" class="h-9 px-3 bg-red-700 hover:bg-red-600 text-white rounded text-xs font-bold">停止 (IMR)</button>
-                </div>
-
-                <!-- 相對移動：自訂角度 -->
-                <div class="flex items-center gap-2 mb-2 text-xs">
-                    <label class="flex items-center gap-1 text-slate-300">
-                        <span class="text-[10px]">相對角度</span>
-                        <input type="number" id="mdRelDeg" value="30" step="1" min="0" oninput="mdUpdateRelSteps()"
-                               class="bg-slate-800 border border-slate-600 rounded w-20 h-9 px-2 text-sm text-white focus:border-blue-500 outline-none">
-                        <span class="text-slate-500 text-[10px]">°</span>
-                    </label>
-                    <button onclick="mdGoRelativeInput(-1)" class="h-9 px-3 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs font-bold">↺ CCW −</button>
-                    <button onclick="mdGoRelativeInput(1)"  class="h-9 px-3 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs font-bold">CW + ↻</button>
-                    <span id="mdRelSteps" class="text-[9px] text-slate-500 font-mono ml-auto"></span>
-                </div>
-
-                <!-- 相對移動：快捷 -->
-                <div class="grid grid-cols-4 gap-1">
-                    <button onclick="mdGoRelative(-90)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1.5 rounded text-slate-300">MR −90°</button>
-                    <button onclick="mdGoRelative(-30)" class="bg-slate-700 hover:bg-slate-600 text-[10px] py-1.5 rounded text-slate-300">MR −30°</button>
-                    <button onclick="mdGoRelative(30)"  class="bg-blue-800 hover:bg-blue-700 text-[10px] py-1.5 rounded text-blue-100">MR +30°</button>
-                    <button onclick="mdGoRelative(90)"  class="bg-blue-800 hover:bg-blue-700 text-[10px] py-1.5 rounded text-blue-100">MR +90°</button>
-                </div>
-                <div class="text-[9px] text-slate-600 mt-1 leading-relaxed">
+                <div class="text-[9px] text-slate-600 mb-2 leading-relaxed">
                     <span id="mdScaleNote">20,000 step = 馬達 1 圈（Encoder 5000×4）；×減速比 9 → 輸出 1 圈 = 180,000 step</span>。
-                    MA/MR 需 SERVO ON 且馬達靜止。
+                    實際操作請用下方「定點保持 / 往復擺動」面板。
                 </div>
 
-                <!-- 一鍵診斷 -->
-                <div class="grid grid-cols-2 gap-1 mt-2">
-                    <button onclick="mdDiagnose()"
-                            class="bg-violet-700 hover:bg-violet-600 text-white py-2.5 rounded text-xs font-bold">
-                        🔬 一鍵診斷
-                    </button>
-                    <button onclick="mdCalibrate()"
-                            class="bg-teal-700 hover:bg-teal-600 text-white py-2.5 rounded text-xs font-bold">
-                        📐 校正尺度
-                    </button>
+                <!-- 診斷工具 -->
+                <div class="grid grid-cols-2 gap-1">
+                    <button onclick="mdDiagnose()" class="bg-violet-700 hover:bg-violet-600 text-white py-2.5 rounded text-xs font-bold">🔬 一鍵診斷</button>
+                    <button onclick="mdCalibrate()" class="bg-teal-700 hover:bg-teal-600 text-white py-2.5 rounded text-xs font-bold">📐 校正尺度</button>
                 </div>
                 <a href="position-setup-guide.html" target="_blank"
                    class="block mt-1 text-center text-[10px] text-slate-400 hover:text-blue-300 underline">
@@ -341,93 +240,6 @@
                 </a>
                 <div class="text-[9px] text-slate-600 mt-1 text-center">
                     依序檢查 01-11 / NULL 往返 / SVON / MR +90°，結果可複製貼回對話
-                </div>
-            </div>
-
-            <!-- ══ 展示模式：速度模式來回擺動（不依賴位置控制）══ -->
-            <div id="demoPanel" class="bg-slate-900/50 p-3 rounded-lg border border-fuchsia-700 mt-2">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-fuchsia-300 font-bold uppercase">展示模式</span>
-                        <span class="text-[9px] font-mono bg-fuchsia-900/60 px-1 rounded text-fuchsia-300">速度模式來回</span>
-                    </div>
-                    <span id="demoStatus" class="text-[10px] font-mono text-slate-500">待命</span>
-                </div>
-
-                <label class="block text-[10px] text-slate-400 mb-2">
-                    <span class="block mb-1">展示方式</span>
-                    <select id="demoMode" onchange="demoModeChanged()"
-                            class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                        <option value="speed">速度模式來回（不需位置控制，這顆現在可用）</option>
-                        <option value="position">位置模式定點往復（CMA 絕對定位，需先解決 SVON）</option>
-                    </select>
-                </label>
-
-                <!-- 速度模式專用 -->
-                <div id="demoSpeedFields" class="grid grid-cols-2 gap-2 mb-2">
-                    <label class="text-[10px] text-slate-400">
-                        <span class="block mb-1">正轉時間 (ms)</span>
-                        <input type="number" id="demoCwMs" value="1000" step="100" min="100" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                    <label class="text-[10px] text-slate-400 col-span-2">
-                        <span class="block mb-1">反轉時間 (ms)</span>
-                        <input type="number" id="demoCcwMs" value="1000" step="100" min="100" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                </div>
-
-                <!-- 位置模式專用 -->
-                <div id="demoPosFields" class="hidden grid grid-cols-2 gap-2 mb-2">
-                    <label class="text-[10px] text-slate-400">
-                        <span class="block mb-1">正向角度 (°)</span>
-                        <input type="number" id="demoDegA" value="90" step="1" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                    <label class="text-[10px] text-slate-400">
-                        <span class="block mb-1">反向角度 (°)</span>
-                        <input type="number" id="demoDegB" value="-90" step="1" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                    <div class="col-span-2 text-[9px] text-slate-500">
-                        以「歸零 (CS)」設定的 0 點為基準，兩端都用絕對定位，擺再多次都不累積誤差。
-                    </div>
-                </div>
-
-                <!-- 兩種模式共用：轉速（速度模式＝運轉轉速；位置模式＝移動速度，皆寫 0300h） -->
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <label class="text-[10px] text-slate-400">
-                        <span class="block mb-1">轉速 (RPM)</span>
-                        <input type="number" id="demoRpm" value="280" step="10" min="60" max="3000" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                    <label class="text-[10px] text-slate-400">
-                        <span class="block mb-1">中間停留 (ms)</span>
-                        <input type="number" id="demoDwell" value="100" step="100" min="0" onchange="demoSave()"
-                               class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-fuchsia-500 outline-none">
-                    </label>
-                </div>
-
-                <label class="flex items-start gap-2 mb-2 p-2 bg-slate-950/50 border border-slate-700 rounded cursor-pointer">
-                    <input type="checkbox" id="demoAutoStart" onchange="demoSave()" class="mt-0.5 accent-fuchsia-500">
-                    <span class="text-[10px] text-slate-300 leading-relaxed">
-                        <b class="text-fuchsia-300">連線後自動開始</b><br>
-                        <span class="text-slate-500">
-                            斷電或重開機後，只要點一下「連線」選好 COM 埠，展示就會自己跑起來，不必再按開始。<br>
-                            設定會記在瀏覽器裡，關掉網頁也不會消失。
-                        </span>
-                    </span>
-                </label>
-
-                <div class="grid grid-cols-2 gap-1">
-                    <button onclick="demoStart()" class="bg-fuchsia-700 hover:bg-fuchsia-600 text-white py-2.5 rounded text-xs font-bold">▶ 開始展示</button>
-                    <button onclick="demoStop()" class="bg-red-700 hover:bg-red-600 text-white py-2.5 rounded text-xs font-bold">⏹ 停止</button>
-                </div>
-                <div class="text-[9px] text-slate-600 mt-1 leading-relaxed">
-                    只用已驗證可動的速度控制（0300h 轉速 + 1400h 正反轉），不依賴位置模式。
-                    停止時一律送 1400h ← 0 確保馬達停下。<br>
-                    <span class="text-amber-500">⚠ 長時間展示請讓這個分頁保持在前景</span>
-                    —— 分頁切到背景時瀏覽器會節流計時，正反轉時間會被拉長。
                 </div>
             </div>
 
@@ -444,11 +256,26 @@
                 <!-- ① 設 0 點 -->
                 <div class="bg-slate-950/50 border border-slate-700 rounded p-2 mb-2">
                     <div class="text-[10px] text-slate-300 font-bold mb-1">① 設定原點</div>
-                    <div class="text-[9px] text-slate-500 mb-2">先用上面的 MR 把馬達轉到你要的位置，再按這裡把「現在」定為 0°。</div>
+                    <div class="text-[9px] text-slate-500 mb-2">先用下面的微調把馬達轉到你要的位置，再按「設為 0 點並保持」。</div>
+
+                    <!-- 微調 jog：設原點前把軸轉到定位 -->
+                    <div class="flex items-center gap-2 mb-2 text-xs">
+                        <label class="flex items-center gap-1 text-slate-300">
+                            <span class="text-[10px]">微調</span>
+                            <input type="number" id="mdRelDeg" value="10" step="1" min="0" oninput="mdUpdateRelSteps()"
+                                   class="bg-slate-800 border border-slate-600 rounded w-16 h-9 px-2 text-sm text-white focus:border-blue-500 outline-none">
+                            <span class="text-slate-500 text-[10px]">°</span>
+                        </label>
+                        <button onclick="mdGoRelativeInput(-1)" class="h-9 px-3 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs font-bold">↺ CCW −</button>
+                        <button onclick="mdGoRelativeInput(1)"  class="h-9 px-3 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs font-bold">CW + ↻</button>
+                        <span id="mdRelSteps" class="text-[9px] text-slate-500 font-mono ml-auto"></span>
+                    </div>
+
                     <div class="flex items-center gap-2">
                         <button onclick="mdZeroAndHold()"
                                 class="h-9 px-3 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs font-bold">🎯 設為 0 點並保持</button>
-                        <span class="text-[10px] text-slate-500">目前：<span id="swingCurDeg" class="text-emerald-300 font-mono font-bold">--</span><span class="text-slate-600">°</span></span>
+                        <button onclick="mdQueryPos()" class="h-9 px-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[10px]">讀取位置</button>
+                        <span class="text-[10px] text-slate-500 ml-auto">目前：<span id="swingCurDeg" class="text-emerald-300 font-mono font-bold">--</span><span class="text-slate-600">°</span></span>
                     </div>
                 </div>
 
@@ -488,7 +315,7 @@
                         </label>
                         <label class="text-[10px] text-slate-400">
                             <span class="block mb-1">擺動轉速 (RPM)</span>
-                            <input type="number" id="swingRpm" value="70" step="10" min="60" max="3000" oninput="mdSwingPreview()"
+                            <input type="number" id="swingRpm" value="280" step="10" min="60" max="3000" oninput="mdSwingPreview()"
                                    class="bg-slate-800 border border-slate-600 rounded w-full h-9 px-2 text-sm text-white focus:border-amber-500 outline-none">
                         </label>
                         <label class="text-[10px] text-slate-400">
@@ -1418,14 +1245,13 @@ function showCtrlMode(v) {
 
     // 提示文字（實測 01-11=2 才是速度控制正常運作的設定）
     const hint = document.getElementById('modeHint');
+    // posPanel 已於 v5 移除；這裡必須 null-safe，否則每次讀模式（輪詢會反覆觸發）都會拋錯
     const posPanel = document.getElementById('posPanel');
-    posPanel.style.opacity = '1';
-    posPanel.style.pointerEvents = 'auto';
-    if (v === 2) {
-        hint.innerHTML = '<b class="text-emerald-400">✓ 01-11 = 2（出廠預設）</b> — 這是原本速度控制正常運作的設定。';
-    } else {
-        hint.innerHTML = `<b class="text-amber-400">⚠ 01-11 = ${v}，已偏離出廠預設 2</b> — ` +
-                         '若速度控制沒反應，請按 <b class="text-amber-400">Position</b> 還原成 2 再測。';
+    if (posPanel) { posPanel.style.opacity = '1'; posPanel.style.pointerEvents = 'auto'; }
+    if (hint) {
+        hint.innerHTML = (v === 2)
+            ? '<b class="text-emerald-400">✓ 01-11 = 2</b> — 位置控制模式，MA/MR 與往復擺動可用。'
+            : `<b class="text-amber-400">⚠ 01-11 = ${v}</b> — 位置控制需要 2，請按 <b class="text-amber-400">Position</b> 切換。`;
     }
     log('SYS', `⚙ 目前控制模式：01-11 = ${v} → ${name}`, v === 2 ? 'text-emerald-400' : 'text-amber-400');
 
