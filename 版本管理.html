@@ -761,6 +761,54 @@
 <div class="changelog-grid">
 
   <div class="cl-item">
+    <div class="cl-date">2026-08-26</div>
+    <div class="cl-commit">
+      <b>原生位置控制 V5 / V6</b> 發布與修正<br>
+      <span class="cl-hash">b7d0d6e</span>新增 V5 精簡版與 V6（AI 語音 + 方向轉盤），並修正 V4 實機問題<br>
+      <span class="cl-hash">5122e18</span>V5 / V6 往復擺動預設轉速改為 70 RPM<br>
+      <span class="cl-hash">1fb9099</span>V6 補上 AI 回覆修正功能，形成對話記憶閉環
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-08-20</div>
+    <div class="cl-commit">
+      <b>版本管理頁</b> 更新<br>
+      <span class="cl-hash">2367b3e</span>加入原生位置控制 V3 / V4 與位置設定說明連結
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-08-18</div>
+    <div class="cl-commit">
+      <b>原生位置控制 V3 / V4</b> 發布<br>
+      <span class="cl-hash">c1a9af1</span>新增 V3 穩定版、V4 往復擺動版與位置設定／校正說明頁
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-08-05</div>
+    <div class="cl-commit">
+      <b>原生位置控制展示</b> 新增<br>
+      <span class="cl-hash">79a9f1e</span>加入安全的分步定位展示，避免連續指令造成暴衝
+    </div>
+  </div>
+
+  <div class="cl-item">
+    <div class="cl-date">2026-08-04</div>
+    <div class="cl-commit">
+      <b>LOCAL AI 馬達控制台</b> 原生位置控制更新<br>
+      <span class="cl-hash">b4f08ff</span>新增唯讀參數快照、CSV 比對、參數名稱與位置加減速比<br>
+      <span class="cl-hash">9ed9128</span>修正 Encoder 讀值撕裂，過濾不合理暴衝值<br>
+      <span class="cl-hash">2307387</span>新增圓形角度轉盤<br>
+      <span class="cl-hash">313e84d</span>加入原生位置目標／目前位置唯讀顯示<br>
+      <span class="cl-hash">937cc29</span>套用 V2 可控位置版本<br>
+      <span class="cl-hash">8607a21</span>修正移動前讀取角度逾時，允許自動重試<br>
+      <span class="cl-hash">4664a47</span>加入藍牙斷線保護，避免展示品失控碰撞
+    </div>
+  </div>
+
+  <div class="cl-item">
     <div class="cl-date">2026-06-29</div>
     <div class="cl-commit">
       <b>mobile V8版(ASCII).html</b> 新增<br>
@@ -851,7 +899,7 @@
 <footer>
   GaN AI Motor Project ·
   <a href="https://github.com/k5star/GaN-AI-motor" target="_blank">github.com/k5star/GaN-AI-motor</a> ·
-  最後整理：2026-06-29（V8 新增）
+  最後整理：2026-08-26（原生位置控制 V6 AI 回覆修正）
 </footer>
 
 </body>
